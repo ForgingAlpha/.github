@@ -1,0 +1,70 @@
+# Composite action: Rust CI checks.
+#
+# Identical to the steps previously in analyzingalpha-vault, alphaapps-composer,
+# and analyzingalpha-engine ci.yml files. Single source of truth — edit here to
+# roll changes to all Rust repos in the org.
+#
+# Usage (in the consuming repo's .github/workflows/ci.yml):
+#
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 30
+#       steps:
+#         - uses: actions/checkout@v6
+#         - uses: ForgingAlpha/.github/actions/ci-rust@main
+#
+# The checkout step MUST be in the caller — composite actions cannot check out
+# a different repo's code.
+
+name: CI Rust
+description: "Rust CI: fmt, clippy, dead-code check, tests, cargo audit"
+
+inputs:
+  toolchain:
+    description: "Rust toolchain (stable, beta, nightly, or a version like 1.82)"
+    required: false
+    default: "stable"
+  run-audit:
+    description: "Run cargo audit after tests (true/false)"
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Rust (${{ inputs.toolchain }})
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: clippy, rustfmt
+
+    - name: Cache Rust
+      uses: Swatinem/rust-cache@v2
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+      shell: bash
+
+    - name: Clippy (deny warnings)
+      run: cargo clippy --all-targets --all-features -- -D warnings
+      shell: bash
+
+    - name: Compile (deny dead code)
+      run: RUSTFLAGS="-D dead_code" cargo check --all-targets
+      shell: bash
+
+    - name: Run tests
+      run: cargo test --all-targets --all-features
+      shell: bash
+
+    - name: Install cargo-audit
+      if: ${{ inputs.run-audit == 'true' }}
+      run: cargo install cargo-audit --locked
+      shell: bash
+
+    - name: Audit dependencies
+      if: ${{ inputs.run-audit == 'true' }}
+      run: cargo audit
+      shell: bash

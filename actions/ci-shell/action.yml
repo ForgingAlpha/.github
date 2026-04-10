@@ -1,0 +1,52 @@
+# Composite action: Shell script CI checks.
+#
+# New — no existing repo had shell CI before. Runs shellcheck on all *.sh files
+# and bash -n syntax validation. Intended for alphaapps-infra, alphaapps-adr-pipeline,
+# and any repo with shell scripts in scripts/ or bin/ directories.
+#
+# Usage:
+#
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 10
+#       steps:
+#         - uses: actions/checkout@v6
+#         - uses: ForgingAlpha/.github/actions/ci-shell@main
+
+name: CI Shell
+description: "Shell CI: shellcheck + bash syntax validation"
+
+inputs:
+  shellcheck-severity:
+    description: "Minimum severity for shellcheck (error|warning|info|style)"
+    required: false
+    default: "warning"
+
+runs:
+  using: composite
+  steps:
+    - name: Run shellcheck
+      uses: ludeeus/action-shellcheck@master
+      env:
+        SHELLCHECK_OPTS: -e SC1091
+      with:
+        severity: ${{ inputs.shellcheck-severity }}
+        scandir: "."
+
+    - name: Bash syntax check (bash -n)
+      run: |
+        set -euo pipefail
+        fail=0
+        while IFS= read -r -d '' file; do
+          if ! bash -n "$file"; then
+            echo "syntax error in: $file"
+            fail=1
+          fi
+        done < <(find . -type f \( -name "*.sh" -o -name "*.bash" \) \
+                 ! -path "./.git/*" \
+                 ! -path "./node_modules/*" \
+                 -print0)
+        exit "$fail"
+      shell: bash

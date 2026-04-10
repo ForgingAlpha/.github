@@ -1,0 +1,86 @@
+# Composite action: Elixir CI checks.
+#
+# Mirrors the steps in turnkeyleads-app and whosyouragent-app. The Postgres
+# service MUST be declared in the calling workflow's job (composite actions
+# cannot define services). See usage example below.
+#
+# Usage (in the consuming repo's .github/workflows/ci.yml):
+#
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 30
+#       services:
+#         postgres:
+#           image: postgres:15
+#           env:
+#             POSTGRES_USER: postgres
+#             POSTGRES_PASSWORD: postgres
+#             POSTGRES_DB: test
+#           ports:
+#             - 5432:5432
+#           options: >-
+#             --health-cmd pg_isready
+#             --health-interval 10s
+#             --health-timeout 5s
+#             --health-retries 5
+#       env:
+#         MIX_ENV: test
+#         DATABASE_URL: postgres://postgres:postgres@localhost:5432/test
+#       steps:
+#         - uses: actions/checkout@v6
+#         - uses: ForgingAlpha/.github/actions/ci-elixir@main
+
+name: CI Elixir
+description: "Elixir CI: deps, format, compile strict, credo, tests"
+
+inputs:
+  elixir-version:
+    description: "Elixir version"
+    required: false
+    default: "1.18"
+  otp-version:
+    description: "Erlang/OTP version"
+    required: false
+    default: "27"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Elixir / OTP
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: ${{ inputs.elixir-version }}
+        otp-version: ${{ inputs.otp-version }}
+
+    - name: Cache deps + build
+      uses: actions/cache@v5
+      with:
+        path: |
+          deps
+          _build
+        key: ${{ runner.os }}-mix-${{ inputs.elixir-version }}-${{ inputs.otp-version }}-${{ hashFiles('**/mix.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-mix-${{ inputs.elixir-version }}-${{ inputs.otp-version }}-
+          ${{ runner.os }}-mix-
+
+    - name: Install dependencies
+      run: mix deps.get
+      shell: bash
+
+    - name: Check formatting
+      run: mix format --check-formatted
+      shell: bash
+
+    - name: Compile (warnings as errors)
+      run: mix compile --warnings-as-errors
+      shell: bash
+
+    - name: Credo (strict)
+      run: mix credo --strict
+      shell: bash
+
+    - name: Run tests
+      run: mix test
+      shell: bash
