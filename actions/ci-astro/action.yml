@@ -1,0 +1,68 @@
+# Composite action: Astro static site CI checks.
+#
+# Mirrors the steps in alphaapps-site, analyzingalpha-site, and turnkeyleads-site.
+# Runs prettier, eslint, astro check, and npm build.
+#
+# Usage:
+#
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 20
+#       steps:
+#         - uses: actions/checkout@v6
+#         - uses: ForgingAlpha/.github/actions/ci-astro@main
+
+name: CI Astro
+description: "Astro CI: prettier, eslint, astro check, build"
+
+inputs:
+  node-version:
+    description: "Node.js version"
+    required: false
+    default: "22"
+  working-directory:
+    description: "Subdirectory containing package.json"
+    required: false
+    default: "."
+  run-build:
+    description: "Run npm run build after lint/typecheck (true/false)"
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js (${{ inputs.node-version }})
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: "npm"
+        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Check formatting (Prettier)
+      run: npx prettier --check .
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Lint (ESLint)
+      run: npx eslint --max-warnings 0 .
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Type check (Astro)
+      run: npx astro check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Build check
+      if: ${{ inputs.run-build == 'true' }}
+      run: npm run build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}

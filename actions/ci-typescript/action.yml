@@ -1,0 +1,91 @@
+# Composite action: TypeScript CI checks (non-Astro).
+#
+# Mirrors the steps in openclaw-prompt-guard and openclaw-email-manager.
+# Supports repos where TypeScript lives in a subdirectory (e.g. plugin/).
+#
+# Usage:
+#
+#   # TypeScript plugin in plugin/ subdirectory:
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 20
+#       steps:
+#         - uses: actions/checkout@v6
+#         - uses: ForgingAlpha/.github/actions/ci-typescript@main
+#           with:
+#             working-directory: plugin
+#
+#   # TypeScript at repo root:
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 20
+#       steps:
+#         - uses: actions/checkout@v6
+#         - uses: ForgingAlpha/.github/actions/ci-typescript@main
+
+name: CI TypeScript
+description: "TypeScript CI: prettier, eslint, tsc, tests"
+
+inputs:
+  node-version:
+    description: "Node.js version"
+    required: false
+    default: "22"
+  working-directory:
+    description: "Subdirectory containing package.json"
+    required: false
+    default: "."
+  run-format-check:
+    description: "Run npx prettier --check . (true/false)"
+    required: false
+    default: "true"
+  run-lint:
+    description: "Run npx eslint --max-warnings 0 . (true/false)"
+    required: false
+    default: "true"
+  run-tests:
+    description: "Run npm test (true/false)"
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js (${{ inputs.node-version }})
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: "npm"
+        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Check formatting (Prettier)
+      if: ${{ inputs.run-format-check == 'true' }}
+      run: npx prettier --check .
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Lint (ESLint)
+      if: ${{ inputs.run-lint == 'true' }}
+      run: npx eslint --max-warnings 0 .
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Type check (tsc)
+      run: npx tsc --noEmit
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Run tests
+      if: ${{ inputs.run-tests == 'true' }}
+      run: npm test
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
