@@ -1,8 +1,13 @@
 # Composite action: Enforce merge flow policy.
 #
-# Fails the `CI` job when a pull request targets `main` with a source branch
-# that is not `dev`, `hotfix/*`, or `release/*`. This closes a gap in GitHub
-# Rulesets, which have no native rule to restrict a PR's source branch.
+# Fails the `CI` job when a pull request targets `main` or `staging` with
+# a source branch other than `dev`. Enforces the strict linear flow:
+#
+#     feature → dev → {staging, main}
+#
+# All code lands in `dev` first. Hotfix and release branches must PR into
+# `dev`, not directly into `main`/`staging`. Closes a gap in GitHub Rulesets,
+# which have no native rule to restrict a PR's source branch.
 #
 # Automatically exempts repos that have no `dev` branch (main-only repos are
 # not subject to the gitflow merge policy). Detection uses the GitHub API,
@@ -22,13 +27,13 @@
 # `pull_request` via their callers' `ci.yml`.
 
 name: CI Merge Flow
-description: "Enforce that PRs into main come from dev, hotfix/*, or release/*"
+description: "Enforce that PRs into main or staging come from dev"
 
 runs:
   using: composite
   steps:
     - name: Enforce merge flow policy
-      if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' }}
+      if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'staging') }}
       env:
         GH_TOKEN: ${{ github.token }}
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -55,21 +60,19 @@ runs:
           exit 1
         fi
 
-        case "$HEAD_REF" in
-          dev|hotfix/*|release/*)
-            echo "✓ Allowed source branch: '${HEAD_REF}' → '${BASE_REF}'"
-            exit 0
-            ;;
-          *)
-            echo "✗ PR source branch '${HEAD_REF}' may not merge directly into '${BASE_REF}'"
-            echo ""
-            echo "  WHY: Alpha Apps merge flow requires feature branches to PR into 'dev' first."
-            echo "       Only 'dev', 'hotfix/*', or 'release/*' may target 'main'."
-            echo "       See the 'Merge Flow' section of Alpha Apps Git and GitHub Process."
-            echo ""
-            echo "  HOW: Retarget this PR to 'dev' in the GitHub UI (Edit → change base to 'dev'),"
-            echo "       or close this PR and open a new one:"
-            echo "         gh pr create --base dev --head '${HEAD_REF}'"
-            exit 1
-            ;;
-        esac
+        if [[ "$HEAD_REF" == "dev" ]]; then
+          echo "✓ Allowed source branch: 'dev' → '${BASE_REF}'"
+          exit 0
+        fi
+
+        echo "✗ PR source branch '${HEAD_REF}' may not merge directly into '${BASE_REF}'"
+        echo ""
+        echo "  WHY: Alpha Apps merge flow requires all code to land in 'dev' first."
+        echo "       Only 'dev' may target 'main' or 'staging'. Hotfix and release"
+        echo "       branches must flow: feature → dev → {staging, main}."
+        echo "       See the 'Merge Flow' section of Alpha Apps Git and GitHub Process."
+        echo ""
+        echo "  HOW: Retarget this PR to 'dev' in the GitHub UI (Edit → change base to 'dev'),"
+        echo "       or close this PR and open a new one:"
+        echo "         gh pr create --base dev --head '${HEAD_REF}'"
+        exit 1
