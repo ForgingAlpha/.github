@@ -1,0 +1,78 @@
+# Composite action: Enforce merge flow policy.
+#
+# Fails the `CI` job when a pull request targets `main` or `staging` with
+# a source branch other than `dev`. Enforces the strict linear flow:
+#
+#     feature → dev → {staging, main}
+#
+# All code lands in `dev` first. Hotfix and release branches must PR into
+# `dev`, not directly into `main`/`staging`. Closes a gap in GitHub Rulesets,
+# which have no native rule to restrict a PR's source branch.
+#
+# Automatically exempts repos that have no `dev` branch (main-only repos are
+# not subject to the gitflow merge policy). Detection uses the GitHub API,
+# so the guard runs correctly before `actions/checkout`.
+#
+# Wired as the first step inside each language composite (ci-astro,
+# ci-elixir, ci-rust, ci-shell, ci-typescript) so enforcement rides on the
+# existing `CI` required status check — no per-repo workflow changes needed.
+# A failure here fails the entire `CI` job, which the `release-branches`
+# org ruleset already blocks on.
+#
+# SECURITY: This action must be invoked from workflows triggered by the
+# `pull_request` event, NOT `pull_request_target`. The `pull_request_target`
+# trigger grants write permissions and secrets to workflows executed from
+# fork PRs, enabling the "pwn request" attack vector documented by the
+# GitHub Security Lab. All consuming `ci-*` composites already use
+# `pull_request` via their callers' `ci.yml`.
+
+name: CI Merge Flow
+description: "Enforce that PRs into main or staging come from dev"
+
+runs:
+  using: composite
+  steps:
+    - name: Enforce merge flow policy
+      if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'staging') }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        BASE_REF: ${{ github.event.pull_request.base.ref }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Main-only repos are exempt: skip if no `dev` branch exists.
+        # Differentiate 404 (no dev) from other failures (auth, rate-limit)
+        # so transient errors fail closed instead of silently disabling the gate.
+        if gh_output=$(gh api "repos/${GITHUB_REPOSITORY}/branches/dev" 2>&1); then
+          :  # dev branch exists; proceed to policy check
+        elif echo "$gh_output" | grep -qiE 'not found|"status":[[:space:]]*"404"'; then
+          echo "✓ Repo has no 'dev' branch — merge flow policy does not apply"
+          exit 0
+        else
+          echo "✗ Unable to verify existence of 'dev' branch on ${GITHUB_REPOSITORY}" >&2
+          echo "  gh api output: ${gh_output}" >&2
+          echo ""
+          echo "  WHY: The merge flow guard refuses to fail open on detection errors."
+          echo "  HOW: Re-run the failed CI job; if the problem persists, check" >&2
+          echo "       the GITHUB_TOKEN permissions on the calling workflow." >&2
+          exit 1
+        fi
+
+        if [[ "$HEAD_REF" == "dev" ]]; then
+          echo "✓ Allowed source branch: 'dev' → '${BASE_REF}'"
+          exit 0
+        fi
+
+        echo "✗ PR source branch '${HEAD_REF}' may not merge directly into '${BASE_REF}'"
+        echo ""
+        echo "  WHY: Alpha Apps merge flow requires all code to land in 'dev' first."
+        echo "       Only 'dev' may target 'main' or 'staging'. Hotfix and release"
+        echo "       branches must flow: feature → dev → {staging, main}."
+        echo "       See the 'Merge Flow' section of Alpha Apps Git and GitHub Process."
+        echo ""
+        echo "  HOW: Retarget this PR to 'dev' in the GitHub UI (Edit → change base to 'dev'),"
+        echo "       or close this PR and open a new one:"
+        echo "         gh pr create --base dev --head '${HEAD_REF}'"
+        exit 1

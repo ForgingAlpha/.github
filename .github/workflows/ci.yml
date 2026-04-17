@@ -15,6 +15,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
+
+      # Dogfood: exercise the merge-flow guard against this PR itself.
+      # Uses a local path so the PR validates the in-branch version of the
+      # action (rather than `@main`, which does not yet contain ci-merge-flow
+      # until this PR merges). Since `.github` has no `dev` branch, the guard
+      # should skip with "merge flow policy does not apply".
+      - name: Enforce merge flow (self)
+        uses: ./actions/ci-merge-flow
+
       - name: Validate YAML
         run: |
           set -euo pipefail

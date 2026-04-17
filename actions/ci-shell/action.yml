@@ -27,6 +27,9 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Enforce merge flow
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
+
     - name: Run shellcheck
       uses: ludeeus/action-shellcheck@master
       env:
