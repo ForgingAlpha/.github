@@ -48,6 +48,9 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Enforce merge flow
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
+
     - name: Setup Elixir / OTP
       uses: erlef/setup-beam@v1
       with:
