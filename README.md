@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
-      - uses: ForgingAlpha/.github/actions/ci-rust@main
+      - uses: ForgingAlpha/.github/actions/ci-rust@v1
 ```
 
 **Elixir** (requires Postgres service in the caller — composite actions cannot define services):
@@ -74,7 +74,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/test
     steps:
       - uses: actions/checkout@v6
-      - uses: ForgingAlpha/.github/actions/ci-elixir@main
+      - uses: ForgingAlpha/.github/actions/ci-elixir@v1
 ```
 
 **Astro / TypeScript / Shell:** Same pattern — swap the action reference. See each action's `action.yml` header for the full usage example with available inputs.
