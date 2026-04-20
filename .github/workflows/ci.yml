@@ -48,10 +48,15 @@ jobs:
         shell: bash
         run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
 
+      # actionlint's schema validation is scoped to workflow files
+      # (`.github/workflows/*.yml`). Composite `action.yml` files have a
+      # different schema (inputs/runs/composite) that actionlint parses as
+      # malformed workflows. The earlier YAML validation step covers
+      # action.yml syntax; `uses:` / schema issues in composite actions
+      # surface at consumer CI time.
       - name: Run actionlint
         shell: bash
         run: |
           set -euo pipefail
           ${{ steps.get_actionlint.outputs.executable }} -color \
-            .github/workflows/*.yml \
-            actions/*/action.yml
+            .github/workflows/*.yml
