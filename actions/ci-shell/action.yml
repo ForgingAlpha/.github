@@ -13,7 +13,7 @@
 #       timeout-minutes: 10
 #       steps:
 #         - uses: actions/checkout@v6
-#         - uses: ForgingAlpha/.github/actions/ci-shell@main
+#         - uses: ForgingAlpha/.github/actions/ci-shell@v1
 
 name: CI Shell
 description: "Shell CI: shellcheck + bash syntax validation"

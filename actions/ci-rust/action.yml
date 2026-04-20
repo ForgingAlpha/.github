@@ -13,7 +13,7 @@
 #       timeout-minutes: 30
 #       steps:
 #         - uses: actions/checkout@v6
-#         - uses: ForgingAlpha/.github/actions/ci-rust@main
+#         - uses: ForgingAlpha/.github/actions/ci-rust@v1
 #
 # The checkout step MUST be in the caller — composite actions cannot check out
 # a different repo's code.

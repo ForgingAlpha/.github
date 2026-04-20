@@ -30,7 +30,7 @@
 #         DATABASE_URL: postgres://postgres:postgres@localhost:5432/test
 #       steps:
 #         - uses: actions/checkout@v6
-#         - uses: ForgingAlpha/.github/actions/ci-elixir@main
+#         - uses: ForgingAlpha/.github/actions/ci-elixir@v1
 
 name: CI Elixir
 description: "Elixir CI: deps, format, compile strict, credo, tests"

@@ -13,7 +13,7 @@
 #       timeout-minutes: 20
 #       steps:
 #         - uses: actions/checkout@v6
-#         - uses: ForgingAlpha/.github/actions/ci-typescript@main
+#         - uses: ForgingAlpha/.github/actions/ci-typescript@v1
 #           with:
 #             working-directory: plugin
 #
@@ -25,7 +25,7 @@
 #       timeout-minutes: 20
 #       steps:
 #         - uses: actions/checkout@v6
-#         - uses: ForgingAlpha/.github/actions/ci-typescript@main
+#         - uses: ForgingAlpha/.github/actions/ci-typescript@v1
 
 name: CI TypeScript
 description: "TypeScript CI: prettier, eslint, tsc, tests"
