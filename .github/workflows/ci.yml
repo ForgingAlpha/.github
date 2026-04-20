@@ -36,3 +36,27 @@ jobs:
               print(f\"  FAIL: {e}\", file=sys.stderr)
               sys.exit(1)
           " {} \;
+
+      # actionlint: static analysis for GitHub Actions YAML (workflows +
+      # composite actions). Catches the class of bug that wedged every
+      # Rust repo on 2026-04-20 (broken `dtolnay/rust-toolchain@stable`
+      # SHA resolution) plus shell-injection vectors, bad `uses:` refs,
+      # and schema drift. Download-and-run keeps the image small and the
+      # version transparent.
+      - name: Install actionlint
+        id: get_actionlint
+        shell: bash
+        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
+      # actionlint's schema validation is scoped to workflow files
+      # (`.github/workflows/*.yml`). Composite `action.yml` files have a
+      # different schema (inputs/runs/composite) that actionlint parses as
+      # malformed workflows. The earlier YAML validation step covers
+      # action.yml syntax; `uses:` / schema issues in composite actions
+      # surface at consumer CI time.
+      - name: Run actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          ${{ steps.get_actionlint.outputs.executable }} -color \
+            .github/workflows/*.yml
