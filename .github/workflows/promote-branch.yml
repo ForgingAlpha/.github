@@ -1,0 +1,151 @@
+name: Promote Branch
+
+on:
+  workflow_call:
+    inputs:
+      source_branch:
+        description: Branch to promote from.
+        required: false
+        type: string
+        default: dev
+      target_branch:
+        description: Branch to promote to.
+        required: false
+        type: string
+        default: main
+      required_checks:
+        description: Comma-separated check names required on the source SHA.
+        required: false
+        type: string
+        default: CI
+      tag_prefix:
+        description: Prefix for the annotated promotion tag.
+        required: false
+        type: string
+        default: prod
+      release_app_client_id:
+        description: GitHub App client ID for the release automation identity.
+        required: true
+        type: string
+    secrets:
+      release_app_private_key:
+        description: GitHub App private key for the release automation identity.
+        required: true
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: promote-${{ github.repository }}-${{ inputs.target_branch }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Fast-forward ${{ inputs.target_branch }} to ${{ inputs.source_branch }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint release app token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          client-id: ${{ inputs.release_app_client_id }}
+          private-key: ${{ secrets.release_app_private_key }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-checks: read
+
+      - name: Checkout target repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
+
+      - name: Validate and promote
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          REQUIRED_CHECKS: ${{ inputs.required_checks }}
+          TAG_PREFIX: ${{ inputs.tag_prefix }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "✗ $*" >&2
+            exit 1
+          }
+
+          git check-ref-format --branch "${SOURCE_BRANCH}" >/dev/null \
+            || fail "invalid source_branch '${SOURCE_BRANCH}'"
+          git check-ref-format --branch "${TARGET_BRANCH}" >/dev/null \
+            || fail "invalid target_branch '${TARGET_BRANCH}'"
+
+          git fetch --prune origin \
+            "+refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}" \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+
+          source_sha="$(git rev-parse "origin/${SOURCE_BRANCH}")"
+          target_sha_before="$(git rev-parse "origin/${TARGET_BRANCH}")"
+
+          if [[ "${source_sha}" == "${target_sha_before}" ]]; then
+            echo "✓ ${TARGET_BRANCH} already matches ${SOURCE_BRANCH} at ${source_sha}"
+            {
+              echo "## Promotion skipped"
+              echo
+              echo "\`${TARGET_BRANCH}\` already matches \`${SOURCE_BRANCH}\`."
+              echo
+              echo "- SHA: \`${source_sha}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          git merge-base --is-ancestor "origin/${TARGET_BRANCH}" "origin/${SOURCE_BRANCH}" \
+            || fail "${TARGET_BRANCH} is not an ancestor of ${SOURCE_BRANCH}; refusing non-fast-forward promotion. See the Alpha Apps Git runbook."
+
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${source_sha}/check-runs?per_page=100" > /tmp/check-runs.json
+
+          IFS=',' read -ra checks <<< "${REQUIRED_CHECKS}"
+          for raw_check in "${checks[@]}"; do
+            check="$(echo "${raw_check}" | xargs)"
+            [[ -n "${check}" ]] || continue
+
+            conclusion="$(jq -r --arg name "${check}" \
+              '[.check_runs[] | select(.name == $name)]
+               | sort_by(.completed_at // .started_at // .created_at)
+               | last
+               | .conclusion // empty' /tmp/check-runs.json)"
+
+            if [[ "${conclusion}" != "success" ]]; then
+              fail "required check '${check}' is not successful on ${SOURCE_BRANCH} (${source_sha}); observed conclusion='${conclusion:-missing}'"
+            fi
+            echo "✓ required check '${check}' passed on ${source_sha}"
+          done
+
+          git config user.name "forgingalpha-release"
+          git config user.email "forgingalpha-release@users.noreply.github.com"
+
+          git push origin "refs/remotes/origin/${SOURCE_BRANCH}:refs/heads/${TARGET_BRANCH}"
+
+          timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          tag="${TAG_PREFIX}-${timestamp}"
+          git tag -a "${tag}" "${source_sha}" \
+            -m "Promoted ${SOURCE_BRANCH} to ${TARGET_BRANCH} at ${timestamp}" \
+            -m "Repository: ${GITHUB_REPOSITORY}" \
+            -m "Source SHA: ${source_sha}" \
+            -m "Previous ${TARGET_BRANCH} SHA: ${target_sha_before}"
+          git push origin "refs/tags/${tag}"
+
+          {
+            echo "## Promotion complete"
+            echo
+            echo "- Repository: \`${GITHUB_REPOSITORY}\`"
+            echo "- Source branch: \`${SOURCE_BRANCH}\`"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+            echo "- Previous target SHA: \`${target_sha_before}\`"
+            echo "- Promoted SHA: \`${source_sha}\`"
+            echo "- Tag: \`${tag}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
