@@ -51,6 +51,8 @@ jobs:
         with:
           client-id: ${{ inputs.release_app_client_id }}
           private-key: ${{ secrets.release_app_private_key }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
           permission-contents: write
           permission-checks: read
 
