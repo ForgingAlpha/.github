@@ -87,6 +87,33 @@ jobs:
 
 No per-repo PRs needed. One change here = org-wide rollout.
 
+## Reusable Workflows
+
+### Fast-forward branch promotion
+
+`promote-branch.yml` promotes one branch to another by fast-forward only. It is
+used for the Alpha Apps release model:
+
+```text
+feature/* → dev by PR
+dev → main by fast-forward promotion
+main → deploy
+```
+
+The workflow:
+
+- mints a short-lived token for the dedicated `forgingalpha-release` GitHub App
+- verifies the target branch is an ancestor of the source branch
+- verifies required checks passed on the source commit
+- pushes the source branch to the target branch
+- creates an annotated `prod-*` tag
+
+Consumer repos should add a small `workflow_dispatch` caller and pass the
+release App client ID/private key through GitHub Actions variables/secrets
+synced from Doppler. The release App must be a bypass actor on the
+`release-branches` ruleset only; `branch-safety` remains no-bypass so deletion
+and non-fast-forward updates stay blocked.
+
 ### Why composite actions (not reusable workflows)
 
 Reusable workflows produce a compound status check name (`CI / CI`) that doesn't match the `release-branches` ruleset's `required_status_checks: [{context: "CI"}]`. Composite actions run inside the caller's job, so the check name stays `CI`. This was validated during the initial architecture setup and is documented in the Obsidian vault.
