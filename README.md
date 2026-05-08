@@ -9,7 +9,7 @@ CI logic is centralized in `actions/`. Each repo's `.github/workflows/ci.yml` is
 | Action | Ecosystem | What it checks |
 |---|---|---|
 | [`ci-rust`](actions/ci-rust/action.yml) | Rust | `cargo fmt --all`, `cargo clippy -D warnings`, dead-code check, `cargo test`, `cargo audit` |
-| [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix test` |
+| [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, optional `mix credo --strict`, `mix test` |
 | [`ci-astro`](actions/ci-astro/action.yml) | Astro | `prettier`, `eslint`, `astro check`, `npm run build` |
 | [`ci-typescript`](actions/ci-typescript/action.yml) | TypeScript | `prettier`, `eslint`, `tsc --noEmit`, `npm test` (all conditional via inputs) |
 | [`ci-shell`](actions/ci-shell/action.yml) | Shell | `shellcheck`, `bash -n` syntax validation |
@@ -75,7 +75,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ForgingAlpha/.github/actions/ci-elixir@v1
+        with:
+          elixir-version: "1.19"
+          otp-version: "28"
 ```
+
+`ci-elixir` runs Credo in `auto` mode by default: repos with a checked-in
+`.credo.exs` get `mix credo --strict`; repos without a Credo config skip Credo.
+Set `credo: strict` to force Credo or `credo: skip` to disable it explicitly.
 
 **Astro / TypeScript / Shell:** Same pattern — swap the action reference. See each action's `action.yml` header for the full usage example with available inputs.
 
@@ -170,6 +177,7 @@ jobs:
       merge_method: squash
     secrets:
       github_token: ${{ secrets.GITHUB_TOKEN }}
+```
 
 ## Standards
 

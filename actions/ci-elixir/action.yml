@@ -31,9 +31,12 @@
 #       steps:
 #         - uses: actions/checkout@v6
 #         - uses: ForgingAlpha/.github/actions/ci-elixir@v1
+#           with:
+#             elixir-version: "1.19"
+#             otp-version: "28"
 
 name: CI Elixir
-description: "Elixir CI: deps, format, compile strict, credo, tests"
+description: "Elixir CI: deps, format, compile strict, optional credo, tests"
 
 inputs:
   elixir-version:
@@ -44,6 +47,10 @@ inputs:
     description: "Erlang/OTP version"
     required: false
     default: "27"
+  credo:
+    description: "Credo mode: auto runs strict Credo when .credo.exs exists; strict always runs; skip disables Credo"
+    required: false
+    default: "auto"
 
 runs:
   using: composite
@@ -80,8 +87,27 @@ runs:
       run: mix compile --warnings-as-errors
       shell: bash
 
-    - name: Credo (strict)
-      run: mix credo --strict
+    - name: Credo
+      run: |
+        case "${{ inputs.credo }}" in
+          auto)
+            if [ -f .credo.exs ]; then
+              mix credo --strict
+            else
+              echo "No .credo.exs found; skipping Credo. Set credo: strict to force it."
+            fi
+            ;;
+          strict)
+            mix credo --strict
+            ;;
+          skip)
+            echo "Credo skipped by input."
+            ;;
+          *)
+            echo "::error::Invalid credo input '${{ inputs.credo }}'. Expected auto, strict, or skip."
+            exit 1
+            ;;
+        esac
       shell: bash
 
     - name: Run tests
