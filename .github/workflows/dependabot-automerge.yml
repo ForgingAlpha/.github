@@ -10,7 +10,7 @@ permissions:
 jobs:
   skip-nondependabot:
     name: Skip non-Dependabot PR
-    if: github.actor != 'dependabot[bot]'
+    if: ${{ github.actor != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - name: Explain skip
@@ -18,7 +18,7 @@ jobs:
 
   call-dependabot-automerge:
     name: Enable auto-merge
-    if: github.actor == 'dependabot[bot]'
+    if: ${{ github.actor == 'dependabot[bot]' }}
     uses: ./.github/workflows/dependabot-automerge-reusable.yml
     with:
       allow_patch: true
