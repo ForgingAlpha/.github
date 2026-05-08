@@ -191,7 +191,7 @@ jobs:
           allow_patch: "true"
           allow_minor: "true"
           allow_major: "false"
-          merge_method: squash
+          merge_method: merge
 ```
 
 ## Standards
