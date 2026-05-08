@@ -170,9 +170,17 @@ permissions:
   contents: write
   pull-requests: write
 jobs:
+  skip-nondependabot:
+    name: Skip non-Dependabot PR
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skip
+        run: echo "Dependabot auto-merge only runs for Dependabot PRs."
+
   call-dependabot-automerge:
     name: Enable auto-merge
-    if: github.actor == 'dependabot[bot]'
+    if: ${{ github.actor == 'dependabot[bot]' }}
     uses: ForgingAlpha/.github/.github/workflows/dependabot-automerge-reusable.yml@v1
     with:
       allow_patch: true
