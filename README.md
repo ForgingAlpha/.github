@@ -160,8 +160,7 @@ configuration is repository-local. The standard schedule is weekly Tuesday,
 grouped by security/minor-patch/major.
 
 Dependabot auto-merge behavior is centralized in
-`.github/workflows/dependabot-automerge-reusable.yml`. Repos should keep only a
-thin caller workflow:
+`actions/dependabot-automerge`. Repos should keep only a thin caller workflow:
 
 ```yaml
 name: Dependabot Auto-merge
@@ -171,26 +170,28 @@ permissions:
 jobs:
   skip-nondependabot:
     name: Skip non-Dependabot PR
-    if: ${{ github.actor != 'dependabot[bot]' }}
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - name: Explain skip
         run: echo "Dependabot auto-merge only runs for Dependabot PRs."
 
-  call-dependabot-automerge:
+  dependabot-automerge:
     name: Enable auto-merge
-    if: ${{ github.actor == 'dependabot[bot]' }}
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
     permissions:
       contents: write
       pull-requests: write
-    uses: ForgingAlpha/.github/.github/workflows/dependabot-automerge-reusable.yml@v1
-    with:
-      allow_patch: true
-      allow_minor: true
-      allow_major: false
-      merge_method: squash
-    secrets:
-      github_token: ${{ secrets.GITHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge
+        uses: ForgingAlpha/.github/actions/dependabot-automerge@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allow_patch: "true"
+          allow_minor: "true"
+          allow_major: "false"
+          merge_method: squash
 ```
 
 ## Standards
