@@ -27,16 +27,25 @@ on:
       github_token:
         description: Token with permission to read Dependabot metadata and enable PR auto-merge.
         required: true
+  push:
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
+  no-op:
+    name: No-op for direct or non-Dependabot runs
+    if: github.actor != 'dependabot[bot]' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain no-op
+        run: echo "Dependabot auto-merge only enables auto-merge for Dependabot pull requests."
+
   dependabot:
     name: Enable auto-merge
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    if: github.actor == 'dependabot[bot]' && github.event_name != 'push'
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
