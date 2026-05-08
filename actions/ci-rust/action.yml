@@ -28,10 +28,6 @@ inputs:
     description: "Rust toolchain (stable, beta, nightly, or a version like 1.82)"
     required: false
     default: "stable"
-  run-audit:
-    description: "Run cargo audit after tests (true/false)"
-    required: false
-    default: "true"
   working-directory:
     description: "Directory containing Cargo.toml"
     required: false
@@ -77,12 +73,10 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: Install cargo-audit
-      if: ${{ inputs.run-audit == 'true' }}
       run: cargo install cargo-audit --locked
       shell: bash
 
     - name: Audit dependencies
-      if: ${{ inputs.run-audit == 'true' }}
       run: cargo audit
       shell: bash
       working-directory: ${{ inputs.working-directory }}

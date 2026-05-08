@@ -84,6 +84,10 @@ jobs:
 `.credo.exs` when they need explicit project policy, but missing config is not
 an exemption from Credo.
 
+`ci-rust` always runs every listed Rust check, including `cargo audit`. Missing
+lint or audit readiness must be fixed in the consuming repo rather than skipped
+in CI.
+
 **Astro / TypeScript / Shell:** Same pattern — swap the action reference. See each action's `action.yml` header for the full usage example with available inputs.
 
 ### Modify CI for all repos of a language
