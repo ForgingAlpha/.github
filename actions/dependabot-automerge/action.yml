@@ -19,7 +19,7 @@ inputs:
   merge_method:
     description: Pull request merge method.
     required: false
-    default: squash
+    default: merge
 runs:
   using: composite
   steps:
