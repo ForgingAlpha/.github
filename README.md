@@ -16,9 +16,24 @@ CI logic is centralized in `actions/`. Each repo's `.github/workflows/ci.yml` is
 
 ### Add CI to a new repo
 
+There are two repo classes:
+
+- **Code repos**: `feature → dev` PRs, fast-forward `dev → main` promotion, deploy from `main`.
+- **Infrastructure/control-plane repos**: `feature → main` PRs, no `dev`, no release promotion.
+
+For both classes, the `CI` job name must be uppercase so it matches the org-wide
+required status check.
+
+**Code repos** use:
+
 1. Create `.github/workflows/ci.yml` in the repo with the appropriate wrapper (examples below).
-2. The `CI` job name must be uppercase — it matches the org-wide `release-branches` ruleset's required status check.
-3. Triggers must be `push: [dev]` + `pull_request: [main, staging]` to support the AI-first dev model (agents push directly to `dev`, PRs gate promotion to `main`/`staging`).
+2. Triggers must be `push: [dev]` + `pull_request: [main, staging, dev]` to support the AI-first dev model (agents push directly to `dev`, feature PRs target `dev`, and promotion PRs or checks can still target `main`/`staging` when needed).
+
+**Infrastructure/control-plane repos** use:
+
+1. Create `.github/workflows/ci.yml`.
+2. Triggers must be `push: [main]` + `pull_request: [main]`.
+3. Keep the repo on `main` only. Do not add the fast-forward promotion caller.
 
 **Rust:**
 ```yaml
@@ -27,7 +42,7 @@ on:
   push:
     branches: [dev]
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, dev]
 permissions:
   contents: read
 jobs:
@@ -47,7 +62,7 @@ on:
   push:
     branches: [dev]
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, dev]
 permissions:
   contents: read
 jobs:
@@ -120,27 +135,33 @@ The workflow:
 - creates an annotated `prod-*` tag
 
 Consumer repos should add a small `workflow_dispatch` caller and pass the
-release App client ID/private key through GitHub Actions variables/secrets
-synced from Doppler. The release App must be a bypass actor on the
-`release-branches` ruleset only; `branch-safety` remains no-bypass so deletion
-and non-fast-forward updates stay blocked.
+release App ID/private key through GitHub Actions variables/secrets synced from
+Doppler. The release App must be a bypass actor on the `code-release-branches`
+ruleset only; `branch-safety` remains no-bypass so deletion and
+non-fast-forward updates stay blocked.
 
 ### Why composite actions (not reusable workflows)
 
-Reusable workflows produce a compound status check name (`CI / CI`) that doesn't match the `release-branches` ruleset's `required_status_checks: [{context: "CI"}]`. Composite actions run inside the caller's job, so the check name stays `CI`. This was validated during the initial architecture setup and is documented in the Obsidian vault.
+Reusable workflows produce a compound status check name (`CI / CI`) that doesn't match the required `CI` status check used in the org rulesets. Composite actions run inside the caller's job, so the check name stays `CI`. This was validated during the initial architecture setup and is documented in the Obsidian vault.
 
 ## Branch Protection (Org-Wide Rulesets)
 
-Two rulesets enforce rules across all repos in the org:
+Three rulesets enforce rules across all repos in the org:
 
 | Ruleset | Branches | Rules |
 |---|---|---|
 | `branch-safety` | `main`, `staging`, `dev` | Block deletions + block force pushes |
-| `release-branches` | `main`, `staging` only | Require PR (1 approval), require CI, linear history, CodeQL, Copilot review |
+| `code-release-branches` | `main`, `staging` on code repos | Require PR, CI, CodeQL, Copilot review; release App bypass allowed |
+| `control-plane-main` | `main` on `.github` and `alphaapps-docs` | Require PR, CI, CodeQL; no release App bypass |
 
-`dev` is intentionally excluded from `release-branches` so agents can push directly. The `branch-safety` ruleset still protects `dev` from deletion and force-push.
+`dev` is intentionally excluded from `code-release-branches` so agents can push directly. The `branch-safety` ruleset still protects `dev` from deletion and force-push. `.github` and `alphaapps-docs` are infrastructure/control-plane repos and therefore use `feature → main` PRs under `control-plane-main`, not `dev → main` release promotion.
 
-Bypass: Organization Admin only (Leo). The bot (`forgingalpha-bot`) is an org member with write access and cannot bypass any rule.
+Bypass:
+- `branch-safety`: none
+- `code-release-branches`: Organization Admin + `forgingalpha-release` GitHub App
+- `control-plane-main`: Organization Admin only
+
+The bot (`forgingalpha-bot`) is an org member with write access and cannot bypass any rule.
 
 ## Security Baseline (`forgingalpha-secure`)
 
