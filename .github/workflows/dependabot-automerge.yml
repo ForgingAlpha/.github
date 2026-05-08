@@ -1,29 +1,21 @@
 name: Dependabot Auto-merge
-on: pull_request
+
+on:
+  pull_request:
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  dependabot:
-    name: Auto-Approve & Merge
-    runs-on: ubuntu-latest
+  call-dependabot-automerge:
+    name: Enable auto-merge
     if: github.actor == 'dependabot[bot]'
-    steps:
-      - name: Fetch Dependabot metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@v3
-        with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Approve and Enable Auto-merge
-        if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-minor'
-        run: |
-          gh pr review --approve "$PR_URL"
-          gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/dependabot-automerge-reusable.yml
+    with:
+      allow_patch: true
+      allow_minor: true
+      allow_major: false
+      merge_method: squash
+    secrets:
+      github_token: ${{ secrets.GITHUB_TOKEN }}

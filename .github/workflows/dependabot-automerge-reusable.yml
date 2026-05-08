@@ -1,0 +1,101 @@
+name: Reusable Dependabot Auto-merge
+
+on:
+  workflow_call:
+    inputs:
+      allow_patch:
+        description: Enable auto-merge for Dependabot semver patch updates.
+        required: false
+        type: boolean
+        default: true
+      allow_minor:
+        description: Enable auto-merge for Dependabot semver minor updates.
+        required: false
+        type: boolean
+        default: true
+      allow_major:
+        description: Enable auto-merge for Dependabot semver major updates.
+        required: false
+        type: boolean
+        default: false
+      merge_method:
+        description: Pull request merge method.
+        required: false
+        type: string
+        default: squash
+    secrets:
+      github_token:
+        description: Token with permission to read Dependabot metadata and enable PR auto-merge.
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.github_token }}
+
+      - name: Decide auto-merge eligibility
+        id: eligibility
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          ALLOW_PATCH: ${{ inputs.allow_patch }}
+          ALLOW_MINOR: ${{ inputs.allow_minor }}
+          ALLOW_MAJOR: ${{ inputs.allow_major }}
+        run: |
+          set -euo pipefail
+
+          allowed=false
+          case "${UPDATE_TYPE}" in
+            version-update:semver-patch)
+              allowed="${ALLOW_PATCH}"
+              ;;
+            version-update:semver-minor)
+              allowed="${ALLOW_MINOR}"
+              ;;
+            version-update:semver-major)
+              allowed="${ALLOW_MAJOR}"
+              ;;
+            *)
+              allowed=false
+              ;;
+          esac
+
+          echo "update_type=${UPDATE_TYPE}"
+          echo "allowed=${allowed}"
+          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"
+
+      - name: Validate merge method
+        if: steps.eligibility.outputs.allowed == 'true'
+        env:
+          MERGE_METHOD: ${{ inputs.merge_method }}
+        run: |
+          set -euo pipefail
+
+          case "${MERGE_METHOD}" in
+            merge|squash|rebase)
+              ;;
+            *)
+              echo "Unsupported merge_method '${MERGE_METHOD}'. Use merge, squash, or rebase." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Enable auto-merge
+        if: steps.eligibility.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.github_token }}
+          MERGE_METHOD: ${{ inputs.merge_method }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          gh pr merge --auto "--${MERGE_METHOD}" "${PR_URL}"
