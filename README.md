@@ -167,8 +167,7 @@ thin caller workflow:
 name: Dependabot Auto-merge
 on: pull_request
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 jobs:
   skip-nondependabot:
     name: Skip non-Dependabot PR
@@ -181,6 +180,9 @@ jobs:
   call-dependabot-automerge:
     name: Enable auto-merge
     if: ${{ github.actor == 'dependabot[bot]' }}
+    permissions:
+      contents: write
+      pull-requests: write
     uses: ForgingAlpha/.github/.github/workflows/dependabot-automerge-reusable.yml@v1
     with:
       allow_patch: true
