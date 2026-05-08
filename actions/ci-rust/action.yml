@@ -14,6 +14,8 @@
 #       steps:
 #         - uses: actions/checkout@v6
 #         - uses: ForgingAlpha/.github/actions/ci-rust@v1
+#           with:
+#             working-directory: cli
 #
 # The checkout step MUST be in the caller — composite actions cannot check out
 # a different repo's code.
@@ -30,6 +32,10 @@ inputs:
     description: "Run cargo audit after tests (true/false)"
     required: false
     default: "true"
+  working-directory:
+    description: "Directory containing Cargo.toml"
+    required: false
+    default: "."
 
 runs:
   using: composite
@@ -47,22 +53,28 @@ runs:
 
     - name: Cache Rust
       uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      with:
+        workspaces: ${{ inputs.working-directory }} -> target
 
     - name: Check formatting
       run: cargo fmt --all -- --check
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Clippy (deny warnings)
       run: cargo clippy --all-targets --all-features -- -D warnings
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Compile (deny dead code)
       run: RUSTFLAGS="-D dead_code" cargo check --all-targets
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Run tests
       run: cargo test --all-targets --all-features
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Install cargo-audit
       if: ${{ inputs.run-audit == 'true' }}
@@ -73,3 +85,4 @@ runs:
       if: ${{ inputs.run-audit == 'true' }}
       run: cargo audit
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
