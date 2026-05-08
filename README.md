@@ -144,7 +144,32 @@ Location: [Org Settings > Code security > Configurations](https://github.com/org
 
 ## Dependabot
 
-Every repo has `.github/dependabot.yml` (weekly Tuesday, grouped by security/minor-patch/major) and `.github/workflows/dependabot-automerge.yml` (auto-approves + squash-merges patch/minor PRs).
+Every repo keeps its own `.github/dependabot.yml` because Dependabot update
+configuration is repository-local. The standard schedule is weekly Tuesday,
+grouped by security/minor-patch/major.
+
+Dependabot auto-merge behavior is centralized in
+`.github/workflows/dependabot-automerge-reusable.yml`. Repos should keep only a
+thin caller workflow:
+
+```yaml
+name: Dependabot Auto-merge
+on: pull_request
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  call-dependabot-automerge:
+    name: Enable auto-merge
+    if: github.actor == 'dependabot[bot]'
+    uses: ForgingAlpha/.github/.github/workflows/dependabot-automerge-reusable.yml@v1
+    with:
+      allow_patch: true
+      allow_minor: true
+      allow_major: false
+      merge_method: squash
+    secrets:
+      github_token: ${{ secrets.GITHUB_TOKEN }}
 
 ## Standards
 
