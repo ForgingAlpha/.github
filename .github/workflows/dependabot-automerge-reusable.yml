@@ -30,8 +30,7 @@ on:
   push:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   no-op:
@@ -46,6 +45,9 @@ jobs:
     name: Enable auto-merge
     runs-on: ubuntu-latest
     if: ${{ github.actor == 'dependabot[bot]' && github.event_name != 'push' }}
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
