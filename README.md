@@ -9,7 +9,7 @@ CI logic is centralized in `actions/`. Each repo's `.github/workflows/ci.yml` is
 | Action | Ecosystem | What it checks |
 |---|---|---|
 | [`ci-rust`](actions/ci-rust/action.yml) | Rust | `cargo fmt --all`, `cargo clippy -D warnings`, dead-code check, `cargo test`, `cargo audit` |
-| [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix test` |
+| [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, optional repo strict checks, `mix credo --strict`, optional pre-test setup, test command |
 | [`ci-astro`](actions/ci-astro/action.yml) | Astro | `prettier`, `eslint`, `astro check`, `npm run build` |
 | [`ci-typescript`](actions/ci-typescript/action.yml) | TypeScript | `prettier`, `eslint`, `tsc --noEmit`, `npm test` (all conditional via inputs) |
 | [`ci-shell`](actions/ci-shell/action.yml) | Shell | `shellcheck`, `bash -n` syntax validation |
@@ -99,6 +99,19 @@ jobs:
 `.credo.exs` when they need explicit project policy, but missing config is not
 an exemption from Credo.
 
+Repos with stricter local gates should keep the shared action and pass explicit
+commands instead of forking CI logic:
+
+```yaml
+      - uses: ForgingAlpha/.github/actions/ci-elixir@v1
+        with:
+          elixir-version: "1.19.5-otp-28"
+          otp-version: "28.5"
+          extra-checks-command: mix boundary.strict
+          pre-test-command: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f infrastructure/ci/init-users.sql
+          test-command: mix test.core
+```
+
 `ci-rust` always runs every listed Rust check, including `cargo audit`. Missing
 lint or audit readiness must be fixed in the consuming repo rather than skipped
 in CI.
@@ -109,9 +122,12 @@ in CI.
 
 1. Edit the composite action in `actions/ci-<language>/action.yml`.
 2. Open a PR to this repo's `main` branch.
-3. Once merged, every repo using that action picks up the change on its next CI run.
+3. After merge, push a semver tag such as `v1.0.1`; the release workflow moves
+   the `v1` tag so consumers pinned to `@v1` pick up the change on their next
+   CI run.
 
-No per-repo PRs needed. One change here = org-wide rollout.
+No per-repo PRs needed unless a repository must pass new inputs or different
+commands. One released change here = org-wide rollout.
 
 ## Reusable Workflows
 
