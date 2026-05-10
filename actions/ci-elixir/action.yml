@@ -34,6 +34,9 @@
 #           with:
 #             elixir-version: "1.19"
 #             otp-version: "28"
+#             extra-checks-command: mix boundary.strict
+#             pre-test-command: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f infrastructure/ci/init-users.sql
+#             test-command: mix test.core
 
 name: CI Elixir
 description: "Elixir CI: deps, format, compile strict, credo strict, tests"
@@ -47,6 +50,18 @@ inputs:
     description: "Erlang/OTP version"
     required: false
     default: "27"
+  extra-checks-command:
+    description: "Optional repo-specific strict checks to run after compile and before Credo"
+    required: false
+    default: ""
+  pre-test-command:
+    description: "Optional repo-specific setup command to run immediately before tests"
+    required: false
+    default: ""
+  test-command:
+    description: "Repo-specific test command"
+    required: false
+    default: "mix test"
 
 runs:
   using: composite
@@ -83,10 +98,20 @@ runs:
       run: mix compile --warnings-as-errors
       shell: bash
 
+    - name: Extra strict checks
+      if: ${{ inputs.extra-checks-command != '' }}
+      run: ${{ inputs.extra-checks-command }}
+      shell: bash
+
     - name: Credo (strict)
       run: mix credo --strict
       shell: bash
 
+    - name: Pre-test setup
+      if: ${{ inputs.pre-test-command != '' }}
+      run: ${{ inputs.pre-test-command }}
+      shell: bash
+
     - name: Run tests
-      run: mix test
+      run: ${{ inputs.test-command }}
       shell: bash
