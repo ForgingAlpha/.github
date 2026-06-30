@@ -6,7 +6,7 @@ Status: pass
 
 Base Ref: main
 Base SHA: 88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4
-Head SHA: 81fa188a8a3caafcc74065e1b6a6f67b9d18122b
+Head SHA: b63de2a8b411183d52139a875fc7b918a3d41405
 Reviewer: reviewer-product-development-lifecycle
 Review Date: 2026-06-30
 
@@ -61,7 +61,7 @@ Changed lifecycle files:
 ## Verification Evidence
 
 - Confirmed `git rev-parse HEAD` for the reviewed implementation commit equals
-  `81fa188a8a3caafcc74065e1b6a6f67b9d18122b`.
+  `b63de2a8b411183d52139a875fc7b918a3d41405`.
 - Confirmed `git merge-base origin/main HEAD` equals
   `88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4`.
 - Confirmed the changed lifecycle files since base are `docs/intent.md`,
@@ -71,12 +71,13 @@ Changed lifecycle files:
   `docs/architecture.md` are `status: approved`.
 - Confirmed `docs/plans/shared-ci-policy-baseline.md` records Definition
   Sources, glossary/ADR/design/story waivers, bounded phase context packets,
-  operator rollout decisions, Phase 5 close receipt, deterministic proof,
-  manual verification, and reviewer gates.
+  operator rollout decisions, Phase 5 and Phase 6 close receipts,
+  deterministic proof, manual verification, and reviewer gates.
 - Confirmed `README.md` and `docs/evidence/product-evidence-view.md` keep
-  Product Evidence downstream of source truth and describe language-composite
+  Product Evidence downstream of source truth, describe language-composite
   GitHub Actions safety as conditional on changed workflow/action files or
-  `github-actions-mode: all`.
+  `github-actions-mode: all`, and document manual remote diagnostic probes as
+  evidence-only, non-required workflows.
 - Confirmed `actions/ci-alphaapps-policy/action.yml` is self-contained, runs
   Product Evidence validation for active policy-checked repos, and exposes no
   normal Product Evidence opt-out input.
@@ -88,6 +89,15 @@ Changed lifecycle files:
 - Confirmed public plan and audit surfaces retain only the same-runtime
   reduced-independence fallback fact and do not record exact reviewer transport
   failure details.
+- Confirmed Phase 6 adds a constrained `ci-remote-probe-guard` action and
+  copyable `workflow-templates/ci-probe.yml` without moving merge authority away
+  from required `CI`.
+- Confirmed Phase 6 validates `checkout_ref`, probe mode, lane, file root, file
+  path, line, output label, and file suffixes before target checkout or command
+  construction.
+- Confirmed Phase 6 Product Evidence covers REQ-011, REQ-012, REQ-014, and
+  REQ-015 through guard/template tests, README documentation, and action
+  metadata.
 - Reviewed passed final Phase 5 deterministic command set:
   - `python3 -m unittest discover -s tests` (17 tests)
   - `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests`
@@ -121,15 +131,47 @@ Changed lifecycle files:
   - `reviewer-security-general`
   - `reviewer-knowledgebase-integrity`
   - `reviewer-greenfield-scope`
+- Reviewed passed final Phase 6 deterministic command set:
+  - `python3 -m unittest discover -s tests` (17 tests)
+  - `python3 -m unittest discover -s actions/ci-github-actions/tests`
+  - `python3 -m unittest discover -s actions/ci-markdown/tests`
+  - `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests`
+  - `python3 -m unittest discover -s actions/ci-dependency-review/tests`
+  - `python3 -m unittest discover -s actions/ci-dependabot-coverage/tests`
+  - `python3 -m unittest discover -s actions/ci-remote-probe-guard/tests`
+  - `python3 scripts/validate-github-actions.py`
+  - `python3 actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py`
+  - `python3 actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py`
+  - `python3 actions/ci-alphaapps-policy/scripts/validate_product_evidence.py`
+  - `python3 actions/ci-dependabot-coverage/scripts/check_dependabot_coverage.py`
+  - README/docs Markdown lint with pinned `markdownlint-cli2@0.22.1`
+  - pinned actionlint `v1.7.12` with checksum verification for both repo
+    workflows and the probe template
+  - ShellCheck `style` plus `bash -n` for tracked shell scripts
+  - action/template YAML parse checks and Product Evidence JSON parse check
+  - public/private disclosure grep for changed public surfaces
+  - `git diff --check` and `git diff --cached --check`
+- Reviewed Phase 6 reviewer passes after fixes and reruns:
+  - `reviewer-plan-compliance`
+  - `reviewer-definition-traceability`
+  - `reviewer-product-evidence`
+  - `reviewer-reuse-patterns`
+  - `reviewer-test-discipline`
+  - `reviewer-code-quality`
+  - `reviewer-performance-efficiency`
+  - `reviewer-test-runtime-isolation`
+  - `reviewer-security-general`
+  - `reviewer-knowledgebase-integrity`
+  - `reviewer-greenfield-scope`
 
 ## Lifecycle Verdict
 
-Pass. Phase 5 preserves the approved lifecycle authority planes. The approved
+Pass. Phase 6 preserves the approved lifecycle authority planes. The approved
 intent, requirements, and architecture remain source truth; Product Evidence
-remains downstream evidence; public README guidance describes the released CI
-contract without creating new product scope; and the plan receipt records
-operator decisions, deterministic verification, manual verification, reviewer
-gates, and same-runtime reduced-independence fallback.
+remains downstream evidence; public README guidance describes the CI and manual
+diagnostic probe contracts without creating new product scope; and the plan
+receipt records deterministic verification, manual verification status,
+reviewer gates, and same-runtime reduced-independence fallback.
 
 Phase 5 implements the planned public CI wiring without a source-truth
 amendment. Parent CI dogfoods local shared actions, while published language
@@ -139,6 +181,13 @@ approved "changed workflow/action files or explicitly enabled" plan behavior.
 The changed mode uses fail-closed, pathspec-limited Git diff detection before
 resolving `ci-github-actions@v1`, and code/package composites resolve
 dependency review only on consumer pull requests.
+
+Phase 6 implements the planned manual remote diagnostic probe standard without
+a source-truth amendment. Required `CI` remains merge authority; probes are
+manual, read-only, non-required evidence workflows. The guard validates
+constrained selectors before target checkout or command construction, and the
+template keeps repo-specific runtime command mapping in consumer-owned shell
+array `case` branches.
 
 ## Residual Risk
 
