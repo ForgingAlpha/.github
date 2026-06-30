@@ -1765,7 +1765,7 @@ as a required check.
 ### Phase Close Receipt
 
 - **Phase**: Phase 6 - Add Remote Diagnostic Probe Standard.
-- **Commit**: pending.
+- **Commit**: `b63de2a8b411183d52139a875fc7b918a3d41405`.
 - **Definition Sources Loaded**: `docs/intent.md`, `docs/requirements.md`,
   `docs/architecture.md`, Product Evidence manifest/view, Phase 6 context
   packet, and the private consumer-probe context waiver summarized in this
