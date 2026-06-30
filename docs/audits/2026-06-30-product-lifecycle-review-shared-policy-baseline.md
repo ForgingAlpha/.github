@@ -6,7 +6,7 @@ Status: pass
 
 Base Ref: main
 Base SHA: 88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4
-Head SHA: 195dfeb9c94f9ab1adbadeb271d21958178446e8
+Head SHA: 81fa188a8a3caafcc74065e1b6a6f67b9d18122b
 Reviewer: reviewer-product-development-lifecycle
 Review Date: 2026-06-30
 
@@ -28,9 +28,10 @@ Changed lifecycle files:
 - docs/evidence/product-evidence.json
 - docs/evidence/product-evidence-view.md
 - README.md
+- .github/workflows/ci.yml
 - scripts/validate-github-actions.py
 - tests/test_validate_github_actions.py
-- actions/ci-shell/action.yml
+- tests/test_shared_ci_contract.py
 - actions/ci-alphaapps-policy/action.yml
 - actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py
 - actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py
@@ -38,136 +39,110 @@ Changed lifecycle files:
 - actions/ci-alphaapps-policy/tests/test_validate_product_lifecycle_baseline.py
 - actions/ci-alphaapps-policy/tests/test_validate_durable_evidence_references.py
 - actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py
-- .markdownlint-cli2.yaml
 - actions/ci-markdown/action.yml
 - actions/ci-markdown/scripts/changed_markdown.sh
 - actions/ci-markdown/tests/test_ci_markdown.py
 - actions/ci-github-actions/action.yml
 - actions/ci-github-actions/scripts/check_workflows.py
 - actions/ci-github-actions/tests/test_check_workflows.py
-- .github/workflows/ci.yml
 - actions/ci-dependency-review/action.yml
 - actions/ci-dependency-review/tests/test_ci_dependency_review.py
 - actions/ci-dependabot-coverage/action.yml
 - actions/ci-dependabot-coverage/scripts/check_dependabot_coverage.py
 - actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py
+- actions/ci-rust/action.yml
+- actions/ci-elixir/action.yml
+- actions/ci-astro/action.yml
+- actions/ci-typescript/action.yml
+- actions/ci-shell/action.yml
 - templates/dependabot/README.md
 - templates/dependabot/*.yml
 
 ## Verification Evidence
 
-- Confirmed `git rev-parse HEAD` equals
-  `195dfeb9c94f9ab1adbadeb271d21958178446e8`.
+- Confirmed `git rev-parse HEAD` for the reviewed implementation commit equals
+  `81fa188a8a3caafcc74065e1b6a6f67b9d18122b`.
 - Confirmed `git merge-base origin/main HEAD` equals
   `88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4`.
-- Confirmed no non-evidence lifecycle file changed after reviewed head
-  `195dfeb9c94f9ab1adbadeb271d21958178446e8`.
+- Confirmed the changed lifecycle files since base are `docs/intent.md`,
+  `docs/requirements.md`, `docs/architecture.md`, and
+  `docs/plans/shared-ci-policy-baseline.md`.
 - Confirmed `docs/intent.md`, `docs/requirements.md`, and
   `docs/architecture.md` are `status: approved`.
-- Confirmed `docs/plans/shared-ci-policy-baseline.md` cites Definition Sources,
-  records glossary, ADR, design, and story waivers, and includes the bounded
-  Phase 1, Phase 2, Phase 3, and Phase 4 context packets.
+- Confirmed `docs/plans/shared-ci-policy-baseline.md` records Definition
+  Sources, glossary/ADR/design/story waivers, bounded phase context packets,
+  operator rollout decisions, Phase 5 close receipt, deterministic proof,
+  manual verification, and reviewer gates.
 - Confirmed `README.md` and `docs/evidence/product-evidence-view.md` keep
-  Product Evidence downstream of source truth.
-- Confirmed the Phase 1, Phase 2, Phase 3, and Phase 4 close receipts record implementation proof,
-  reviewer gates, post-receipt lifecycle audit refresh requirements, and
-  reduced-independence fallback.
-- Confirmed `actions/ci-alphaapps-policy/action.yml` is self-contained, exposes
-  only `product-lifecycle` and `durable-evidence-references` policy toggles, and
-  does not expose a normal Product Evidence opt-out input.
-- Confirmed `ci-markdown` and `ci-github-actions` are reusable shared-action
-  surfaces, keep Product Evidence downstream, and do not invent new product
-  source truth.
-- Confirmed `ci-dependency-review` and `ci-dependabot-coverage` are reusable
-  dependency-safety surfaces, keep dependency review additive to
-  language-specific audit tools, and do not move Dependabot configuration out
-  of repo-local source control.
-- Reviewed passed Phase 1 commands:
-  - `python3 scripts/validate-github-actions.py`
-  - `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests`
-  - action metadata YAML parse check
-  - pinned actionlint `v1.7.12` with checksum verification
-  - markdownlint-cli2 `0.22.1` using the approved Alpha Apps config
-  - Product Evidence render check
-  - `git diff --check 88e8291..b2fb8a7`
-  - public-disclosure sweep over committed changed files
-  - internal shared-action `@main` sweep
-  - Dependabot `/` and `/actions/*` coverage assertion
-- Reviewed passed Phase 2 commands:
-  - `python3 scripts/validate-github-actions.py`
-  - `python3 -m unittest discover -s tests`
-  - `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests`
-  - `python3 actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py`
-  - `python3 actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py`
-  - `python3 actions/ci-alphaapps-policy/scripts/validate_product_evidence.py`
-  - action metadata YAML parse check
-  - `python3 -m py_compile actions/ci-alphaapps-policy/scripts/*.py`
-  - Product Evidence render check
-  - `git diff --check`
-  - markdownlint-cli2 `0.22.1` using the approved Alpha Apps config
-  - pinned actionlint `v1.7.12` with checksum verification
-  - public-disclosure sweep over committed changed files
-- Reviewed passed Phase 3 commands:
-  - `python3 scripts/validate-github-actions.py`
-  - `python3 -m unittest discover -s tests`
-  - `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests`
-  - `python3 -m unittest discover -s actions/ci-markdown/tests`
-  - `python3 -m unittest discover -s actions/ci-github-actions/tests`
-  - `python3 actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py`
-  - `python3 actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py`
-  - `python3 actions/ci-alphaapps-policy/scripts/validate_product_evidence.py`
-  - markdownlint-cli2 `0.22.1` using the parent config
-  - action metadata YAML parse check
-  - `python3 -m py_compile` for changed Python scripts
-  - pinned actionlint `v1.7.12` with checksum verification
-  - Product Evidence render `--check`
-  - `git diff --check`
-  - internal shared-action `@main` sweep
-  - public-disclosure sweep over committed changed files
-- Reviewed passed Phase 4 commands:
-  - `python3 scripts/validate-github-actions.py`
-  - `python3 -m unittest discover -s tests`
+  Product Evidence downstream of source truth and describe language-composite
+  GitHub Actions safety as conditional on changed workflow/action files or
+  `github-actions-mode: all`.
+- Confirmed `actions/ci-alphaapps-policy/action.yml` is self-contained, runs
+  Product Evidence validation for active policy-checked repos, and exposes no
+  normal Product Evidence opt-out input.
+- Confirmed Phase 5 parent CI dogfoods local shared actions rather than remote
+  `@v1` refs, preserving branch-local self validation.
+- Confirmed Phase 5 language composites add shared policy, Markdown,
+  pathspec-limited conditional GitHub Actions safety, Dependabot coverage, and
+  PR-only dependency review before language-specific checks.
+- Confirmed public plan and audit surfaces retain only the same-runtime
+  reduced-independence fallback fact and do not record exact reviewer transport
+  failure details.
+- Reviewed passed final Phase 5 deterministic command set:
+  - `python3 -m unittest discover -s tests` (17 tests)
   - `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests`
   - `python3 -m unittest discover -s actions/ci-markdown/tests`
   - `python3 -m unittest discover -s actions/ci-github-actions/tests`
   - `python3 -m unittest discover -s actions/ci-dependency-review/tests`
   - `python3 -m unittest discover -s actions/ci-dependabot-coverage/tests`
   - `python3 actions/ci-dependabot-coverage/scripts/check_dependabot_coverage.py`
-  - `python3 actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py`
+  - `python3 scripts/validate-github-actions.py`
   - `python3 actions/ci-alphaapps-policy/scripts/validate_product_evidence.py`
-  - Product Evidence render `--check`
-  - markdownlint-cli2 `0.22.1` using the parent config
-  - action, workflow, and Dependabot template YAML parse check
-  - `python3 -m py_compile` for changed Python scripts
+  - `python3 actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py`
+  - `python3 /home/leosmigel/src/github.com/forgingalpha/alphaapps-docs/system/scripts/render-product-evidence.py --check`
+  - `npx --yes markdownlint-cli2@0.22.1 --config .markdownlint-cli2.yaml README.md docs/**/*.md templates/dependabot/*.md`
   - pinned actionlint `v1.7.12` with checksum verification
-  - `git diff --cached --check` and `git diff --check`
-  - internal shared-action `@main` sweep over runtime/public surfaces
-  - targeted public-disclosure sweep over runtime/public surfaces
+  - action/workflow/template YAML parse sweep
+  - `python3 -m compileall -q actions scripts tests`
+  - ShellCheck `style` plus `bash -n` for tracked shell scripts
+  - runtime/public `@main` shared-action reference sweep
+  - reviewer-transport disclosure sweep
+  - `git diff --check` and `git diff --cached --check`
+- Reviewed Phase 5 reviewer passes after fixes and reruns:
+  - `reviewer-plan-compliance`
+  - `reviewer-definition-traceability`
+  - `reviewer-product-development-lifecycle`
+  - `reviewer-product-evidence`
+  - `reviewer-reuse-patterns`
+  - `reviewer-test-discipline`
+  - `reviewer-code-quality`
+  - `reviewer-performance-efficiency`
+  - `reviewer-test-runtime-isolation`
+  - `reviewer-security-general`
+  - `reviewer-knowledgebase-integrity`
+  - `reviewer-greenfield-scope`
 
 ## Lifecycle Verdict
 
-Pass. Phase 1, Phase 2, Phase 3, and Phase 4 keep lifecycle authority planes coherent: intent,
-requirements, and architecture are approved source truth; the plan records
-bounded waivers for design, story, glossary, and ADR artifacts; Product
-Evidence remains downstream evidence instead of product source truth; and the
-close receipts honestly record the operator-confirmed required Product Evidence
-baseline, reviewer reruns, verification proof, and reduced-independence runtime
-fallback. The Phase 2 action implements public shared-policy checks without
-inventing downstream product scope. The Phase 3 Markdown and GitHub Actions
-safety actions add reusable policy enforcement without moving product authority
-out of the approved source-truth chain. The Phase 4 dependency-review and
-Dependabot coverage actions implement the approved dependency update model while
-preserving language-specific audits and repo-local Dependabot configuration
-ownership.
+Pass. Phase 5 preserves the approved lifecycle authority planes. The approved
+intent, requirements, and architecture remain source truth; Product Evidence
+remains downstream evidence; public README guidance describes the released CI
+contract without creating new product scope; and the plan receipt records
+operator decisions, deterministic verification, manual verification, reviewer
+gates, and same-runtime reduced-independence fallback.
+
+Phase 5 implements the planned public CI wiring without a source-truth
+amendment. Parent CI dogfoods local shared actions, while published language
+composites enforce the shared baseline before language-specific checks.
+`github-actions-mode: changed|all` is an allowed implementation input for the
+approved "changed workflow/action files or explicitly enabled" plan behavior.
+The changed mode uses fail-closed, pathspec-limited Git diff detection before
+resolving `ci-github-actions@v1`, and code/package composites resolve
+dependency review only on consumer pull requests.
 
 ## Residual Risk
 
-- Opposite-runtime Claude CLI reviewer auth failed with `401 Invalid
-  authentication credentials`, both directly and through the
-  `forgingalpha-bot` launcher. This review was performed as a
-  reduced-independence fallback while still applying the full lifecycle
-  reviewer checklist.
-- The primary local `alphaapps-docs` checkout still showed stale Product
-  Evidence wording during closeout. The operator confirmed the upstream Product
-  Evidence required-baseline policy was completed out of band, so this is
-  recorded as residual risk rather than a blocker.
+- Same-runtime reviewer fallback was used as reduced-independence evidence
+  while still applying the full lifecycle reviewer checklist.
+- Local `main` in this worktree was stale during review; `origin/main` resolved
+  to the reviewed base SHA `88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4`.
