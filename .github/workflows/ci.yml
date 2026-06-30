@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
 
       # Dogfood: exercise the merge-flow guard against this PR itself.
       # Uses a local path so the PR validates the in-branch version of the
@@ -23,13 +25,24 @@ jobs:
       - name: Enforce merge flow (self)
         uses: ./actions/ci-merge-flow
 
-      - name: Validate GitHub Actions safety
-        uses: ./actions/ci-github-actions
+      - name: Validate Alpha Apps policy
+        uses: ./actions/ci-alphaapps-policy
 
       - name: Validate Markdown
         uses: ./actions/ci-markdown
         with:
           mode: all
+
+      - name: Validate GitHub Actions safety
+        uses: ./actions/ci-github-actions
+
+      - name: Validate Dependabot coverage
+        uses: ./actions/ci-dependabot-coverage
+
+      - name: Validate Shell
+        uses: ./actions/ci-shell
+        with:
+          markdown-mode: all
 
       - name: Test GitHub Actions contract validator
         run: |
@@ -55,9 +68,6 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s actions/ci-dependency-review/tests
-
-      - name: Validate Dependabot coverage
-        uses: ./actions/ci-dependabot-coverage
 
       - name: Test Dependabot coverage action
         run: |

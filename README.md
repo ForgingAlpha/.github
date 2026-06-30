@@ -14,6 +14,8 @@ pick up the change on their next CI run.
 | [`ci-alphaapps-policy`](actions/ci-alphaapps-policy/action.yml) | Alpha Apps | approved source truth, durable evidence references, required Product Evidence |
 | [`ci-markdown`](actions/ci-markdown/action.yml) | Markdown | pinned `markdownlint-cli2`, all-file or changed-file docs linting |
 | [`ci-github-actions`](actions/ci-github-actions/action.yml) | GitHub Actions | pinned actionlint, workflow permissions, trigger, action ref, and composite metadata safety |
+| [`ci-dependabot-coverage`](actions/ci-dependabot-coverage/action.yml) | Dependabot | detected dependency-surface coverage in `.github/dependabot.yml` |
+| [`ci-dependency-review`](actions/ci-dependency-review/action.yml) | Dependencies | PR dependency vulnerability and license review |
 | [`ci-rust`](actions/ci-rust/action.yml) | Rust | `cargo fmt --all`, `cargo clippy -D warnings`, dead-code check, `cargo test`, `cargo audit` |
 | [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, optional repo strict checks, `mix credo --strict`, optional pre-test setup, test command |
 | [`ci-astro`](actions/ci-astro/action.yml) | Astro | `prettier`, `eslint`, `astro check`, `npm run build` |
@@ -30,16 +32,91 @@ There are two repo classes:
 For both classes, the `CI` job name must be uppercase so it matches the org-wide
 required status check.
 
+Every workflow that uses `ci-alphaapps-policy` directly or through a language
+composite should checkout with `fetch-depth: 0`; the policy validators compare
+the branch against the appropriate base ref.
+
 **Code repos** use:
 
 1. Create `.github/workflows/ci.yml` in the repo with the appropriate wrapper (examples below).
 2. Triggers must be `push: [dev]` + `pull_request: [main, staging, dev]` to support the AI-first dev model (agents push directly to `dev`, feature PRs target `dev`, and promotion PRs or checks can still target `main`/`staging` when needed).
+
+**Canonical code repo workflow** (Rust shown; swap the language wrapper as needed):
+
+```yaml
+name: CI
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main, staging, dev]
+permissions:
+  contents: read
+jobs:
+  CI:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ForgingAlpha/.github/actions/ci-rust@v1
+        with:
+          markdown-mode: all
+```
 
 **Infrastructure/control-plane repos** use:
 
 1. Create `.github/workflows/ci.yml`.
 2. Triggers must be `push: [main]` + `pull_request: [main]`.
 3. Keep the repo on `main` only. Do not add the fast-forward promotion caller.
+
+**Canonical control-plane repo workflow**:
+
+```yaml
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  CI:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
+      - uses: ForgingAlpha/.github/actions/ci-markdown@v1
+        with:
+          mode: all
+      - uses: ForgingAlpha/.github/actions/ci-github-actions@v1
+      - uses: ForgingAlpha/.github/actions/ci-dependabot-coverage@v1
+```
+
+Strict defaults:
+
+- ShellCheck runs at `style` severity.
+- Markdown uses `all` for new or clean repos; legacy repos may start with
+  `changed` plus an explicit ignore list while docs are cleaned up.
+- Active ForgingAlpha repos require approved source truth and Product Evidence.
+- Dependabot coverage validation fails when detected dependency surfaces are
+  missing update coverage or a documented unmanaged reason.
+- GitHub Actions safety runs for changed workflow/action files by default in
+  language composites; set `github-actions-mode: all` to force every run.
+- Dependency review runs on pull requests for code/package repos.
+- Keep `permissions: contents: read` unless a job has a specific elevated
+  permission requirement.
+
+Moving `v1` after the language composite wiring lands will enforce baseline
+docs and Product Evidence in consuming repos. Do not move `v1` until active
+repo baseline and Product Evidence backfill is ready for rollout.
 
 **Rust:**
 
@@ -59,6 +136,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ForgingAlpha/.github/actions/ci-rust@v1
 ```
 
@@ -97,6 +176,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/test
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ForgingAlpha/.github/actions/ci-elixir@v1
         with:
           elixir-version: "1.20"
@@ -138,11 +219,17 @@ while existing docs are cleaned up. The action fails if the configured
 Markdown lint config is missing.
 
 **GitHub Actions safety:** repos with workflows or composite actions should run
-the reusable safety gate:
+the reusable safety gate directly, or let a language composite run it when
+workflow/action files change:
 
 ```yaml
       - uses: ForgingAlpha/.github/actions/ci-github-actions@v1
 ```
+
+Language composites default to `github-actions-mode: changed`, which compares
+workflow and composite-action files before resolving `ci-github-actions@v1`.
+Use `github-actions-mode: all` when a repo needs the safety gate on every CI
+run.
 
 Reviewed exceptions for `pull_request_target`, broad root permissions, or
 unpinned third-party action refs live in
@@ -151,6 +238,10 @@ carry a non-empty reason.
 
 **Astro / TypeScript / Shell:** Same pattern — swap the action reference. See
 each action's `action.yml` header for the usage example and supported inputs.
+Language composites run the shared policy, Markdown, and Dependabot coverage
+checks before their language-specific checks. They also run GitHub Actions
+safety when workflow/action files changed or `github-actions-mode: all` is set;
+code/package composites run dependency review on pull requests.
 
 ### Modify CI for all repos of a language
 

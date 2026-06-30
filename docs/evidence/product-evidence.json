@@ -6,8 +6,13 @@
       "source_ref": "docs/requirements.md#REQ-001",
       "title": "Preserve one required CI status",
       "type": "integration/contract",
-      "status": "manual-only",
+      "status": "covered",
       "evidence": [
+        {
+          "ref": "path:tests/test_shared_ci_contract.py",
+          "kind": "auto",
+          "summary": "Tests that parent CI dogfoods local shared actions and language composites preserve the shared CI contract inside one caller job."
+        },
         {
           "ref": "path:README.md",
           "kind": "manual",
@@ -41,6 +46,11 @@
           "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
           "kind": "auto",
           "summary": "Tests deterministic Dependabot coverage validation for detected dependency surfaces and documented unmanaged exceptions."
+        },
+        {
+          "ref": "path:tests/test_shared_ci_contract.py",
+          "kind": "auto",
+          "summary": "Tests that published language composites run shared policy, Markdown, conditional GitHub Actions safety, and Dependabot coverage before language-specific checks."
         }
       ]
     },
@@ -126,6 +136,11 @@
           "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
           "kind": "auto",
           "summary": "Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy."
+        },
+        {
+          "ref": "path:tests/test_shared_ci_contract.py",
+          "kind": "auto",
+          "summary": "Tests parent self-CI dogfood wiring and parseable public workflow examples before release."
         }
       ]
     },

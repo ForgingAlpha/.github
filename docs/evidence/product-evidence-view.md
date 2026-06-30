@@ -14,14 +14,6 @@ No promises in this status.
 
 ## Manual-only
 
-### REQ-001 - Preserve one required CI status
-
-- Source: `docs/requirements.md#REQ-001`
-- Type: `integration/contract`
-- Status: `manual-only`
-- Evidence:
-  - `manual` `path:README.md` - Documents the uppercase CI job contract and composite-action usage that preserves the required status.
-
 ### REQ-007 - Roll shared automation out through released tags
 
 - Source: `docs/requirements.md#REQ-007`
@@ -40,6 +32,15 @@ No promises in this status.
 
 ## Covered
 
+### REQ-001 - Preserve one required CI status
+
+- Source: `docs/requirements.md#REQ-001`
+- Type: `integration/contract`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:tests/test_shared_ci_contract.py` - Tests that parent CI dogfoods local shared actions and language composites preserve the shared CI contract inside one caller job.
+  - `manual` `path:README.md` - Documents the uppercase CI job contract and composite-action usage that preserves the required status.
+
 ### REQ-003 - Run strict reproducible shared checks
 
 - Source: `docs/requirements.md#REQ-003`
@@ -50,6 +51,7 @@ No promises in this status.
   - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests reusable GitHub Actions safety policy for composite action refs, allowlist reasons, privileged triggers, root permissions, and data-driven first-party pinning.
   - `auto` `path:actions/ci-dependency-review/tests/test_ci_dependency_review.py` - Tests the dependency-review wrapper defaults, pull-request scope, official action wrapper, and license-policy validation.
   - `auto` `path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py` - Tests deterministic Dependabot coverage validation for detected dependency surfaces and documented unmanaged exceptions.
+  - `auto` `path:tests/test_shared_ci_contract.py` - Tests that published language composites run shared policy, Markdown, conditional GitHub Actions safety, and Dependabot coverage before language-specific checks.
 
 ### REQ-009 - Do not require private alphaapps-docs checkout in consumer CI
 
@@ -77,6 +79,7 @@ No promises in this status.
 - Evidence:
   - `auto` `path:tests/test_validate_github_actions.py` - Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery.
   - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy.
+  - `auto` `path:tests/test_shared_ci_contract.py` - Tests parent self-CI dogfood wiring and parseable public workflow examples before release.
 
 ### REQ-016 - Define a Dependabot coverage standard
 

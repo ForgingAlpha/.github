@@ -249,8 +249,10 @@ First-principles conclusion:
   dogfooded. Status: implemented in Phase 1 after upstream policy approval.
 - **Active repo adoption decision** - wiring `ci-alphaapps-policy` into all
   language composites will freeze ordinary work in repos missing approved
-  baseline docs. Status: TODO before Phase 5; operator must confirm this is
-  intentional or identify a smaller pilot wiring set.
+  baseline docs. Status: operator-confirmed during implementation on
+  2026-06-30; language composites should enforce the shared baseline, but
+  `v1` must not move until active repo baseline and Product Evidence backfill
+  is ready or the operator explicitly approves release.
 - **Remote probe default-branch landing** - `workflow_dispatch` probe workflows
   must exist on the default branch before they can be manually run. Status:
   TODO in consumer repos; Phase 6 documents the shared standard and private
@@ -681,9 +683,8 @@ gates pass. Do not tag/release `v1` from this foundation commit.
   reusing one tracked shell-file list for ShellCheck and `bash -n`.
 - **Reviewer proof**: all Phase 1 reviewers passed after reruns, with
   `reviewer-error-handling` waived because no Elixir code changed.
-- **Reduced-independence note**: opposite-runtime Claude CLI reviewer auth
-  failed with `401 Invalid authentication credentials`; same-runtime reviewers
-  were used as reduced-independence fallback evidence.
+- **Reduced-independence note**: same-runtime reviewer fallback was used as
+  reduced-independence evidence.
 - **Lifecycle audit handling**: the existing lifecycle audit passed against the
   foundation checkpoint. Because this receipt changes the active lifecycle plan,
   refresh `docs/audits/2026-06-30-product-lifecycle-review-shared-policy-baseline.md`
@@ -910,9 +911,8 @@ gates pass.
   `reviewer-test-runtime-isolation`, `reviewer-security-general`, and
   `reviewer-greenfield-scope`. `reviewer-error-handling` is waived because no
   Elixir code changed.
-- **Reduced-independence note**: opposite-runtime Claude CLI reviewer auth
-  failed with `401 Invalid authentication credentials`; same-runtime reviewers
-  were used as reduced-independence fallback evidence.
+- **Reduced-independence note**: same-runtime reviewer fallback was used as
+  reduced-independence evidence.
 - **Scope note**: `docs/handoffs/2026-06-30 12-13 shared-policy-baseline.md`
   remains local resume context and is intentionally excluded from the Phase 2
   commit.
@@ -1120,9 +1120,8 @@ gates pass.
   `reviewer-security-general`, `reviewer-greenfield-scope`, and
   `reviewer-plan-compliance`.
   `reviewer-error-handling` is waived because no Elixir code changed.
-- **Reduced-independence note**: opposite-runtime Claude CLI reviewer auth
-  failed earlier in this plan with `401 Invalid authentication credentials`;
-  same-runtime reviewers were used as reduced-independence fallback evidence.
+- **Reduced-independence note**: same-runtime reviewer fallback was used as
+  reduced-independence evidence.
 - **Scope note**: `docs/handoffs/2026-06-30 12-13 shared-policy-baseline.md`
   remains local resume context and is intentionally excluded from the Phase 3
   commit.
@@ -1353,9 +1352,8 @@ gates pass.
   reasons; CI dogfoods `./actions/ci-dependabot-coverage`; coverage action
   inputs emit WHAT/WHY/HOW diagnostics before Python; `config-path` is
   restricted to canonical Dependabot config paths.
-- **Reduced-independence note**: opposite-runtime Claude CLI reviewer auth
-  failed earlier in this plan with `401 Invalid authentication credentials`;
-  same-runtime reviewers were used as reduced-independence fallback evidence.
+- **Reduced-independence note**: same-runtime reviewer fallback was used as
+  reduced-independence evidence.
 - **Scope note**: `docs/handoffs/2026-06-30 12-13
   shared-policy-baseline.md` remains local resume context and is intentionally
   excluded from the Phase 4 commit.
@@ -1443,57 +1441,57 @@ truth; this phase wires only the new reusable actions that earlier phases add.
 
 #### Automated Verification
 
-- [ ] Parent CI-equivalent command passes locally.
-- [ ] New local actions run successfully from `.github/workflows/ci.yml`.
-- [ ] Parent Dependabot coverage validation passes for workflow files and
+- [x] Parent CI-equivalent command passes locally.
+- [x] New local actions run successfully from `.github/workflows/ci.yml`.
+- [x] Parent Dependabot coverage validation passes for workflow files and
   nested shared composite action manifests.
-- [ ] `.github/workflows/ci.yml` uses the control-plane trigger shape:
+- [x] `.github/workflows/ci.yml` uses the control-plane trigger shape:
   `push` to `main` and `pull_request` to `main`.
-- [ ] README examples parse as valid YAML snippets where practical.
-- [ ] Parent Markdown lint passes.
-- [ ] Parent actionlint passes.
-- [ ] No internal `@main` shared-action refs remain after adding the new
+- [x] README examples parse as valid YAML snippets where practical.
+- [x] Parent Markdown lint passes.
+- [x] Parent actionlint passes.
+- [x] No internal `@main` shared-action refs remain after adding the new
   cross-cutting action calls.
-- [ ] Git diff whitespace check passes: `git diff --check`
-- [ ] Full-suite phase-close gate passes: all available `.github` tests and
+- [x] Git diff whitespace check passes: `git diff --check`
+- [x] Full-suite phase-close gate passes: all available `.github` tests and
   self CI-equivalent checks.
-- [ ] Push-equivalent proof passes: same as full-suite phase-close gate.
-- [ ] Customer/web suite: `n/a - control-plane CI action only`.
+- [x] Push-equivalent proof passes: same as full-suite phase-close gate.
+- [x] Customer/web suite: `n/a - control-plane CI action only`.
 
 #### Test Durability
 
-- [ ] New/changed tests are durable contract tests.
-- [ ] No retirement tests are introduced.
+- [x] New/changed tests are durable contract tests.
+- [x] No retirement tests are introduced.
 
 #### Manual Verification
 
-- [ ] Operator decides whether to tag/release `v1` immediately or wait for
+- [x] Operator decides whether to tag/release `v1` immediately or wait for
   active repo baseline and Product Evidence backfill.
-- [ ] Operator confirms language composite wiring should enforce baseline policy
+- [x] Operator confirms language composite wiring should enforce baseline policy
   across consuming repos.
 
 #### Plan Alignment Verification
 
-- [ ] README accurately describes what CI enforces.
-- [ ] `.github` dogfoods the same checks it publishes.
-- [ ] No extra org-wide standards outside this plan were added.
+- [x] README accurately describes what CI enforces.
+- [x] `.github` dogfoods the same checks it publishes.
+- [x] No extra org-wide standards outside this plan were added.
 
 #### Agent Review Gates
 
-- [ ] `reviewer-plan-compliance`
-- [ ] `reviewer-definition-traceability`
-- [ ] `reviewer-product-development-lifecycle`
-- [ ] `reviewer-product-evidence`
-- [ ] `reviewer-reuse-patterns`
-- [ ] `reviewer-test-discipline`
-- [ ] `reviewer-error-handling` - waived unless Elixir code changes; the
+- [x] `reviewer-plan-compliance`
+- [x] `reviewer-definition-traceability`
+- [x] `reviewer-product-development-lifecycle`
+- [x] `reviewer-product-evidence`
+- [x] `reviewer-reuse-patterns`
+- [x] `reviewer-test-discipline`
+- [x] `reviewer-error-handling` - waived unless Elixir code changes; the
   current reviewer is Elixir/CQRS-specific.
-- [ ] `reviewer-code-quality`
-- [ ] `reviewer-performance-efficiency`
-- [ ] `reviewer-test-runtime-isolation`
-- [ ] `reviewer-security-general`
-- [ ] `reviewer-knowledgebase-integrity`
-- [ ] `reviewer-greenfield-scope`
+- [x] `reviewer-code-quality`
+- [x] `reviewer-performance-efficiency`
+- [x] `reviewer-test-runtime-isolation`
+- [x] `reviewer-security-general`
+- [x] `reviewer-knowledgebase-integrity`
+- [x] `reviewer-greenfield-scope`
 
 #### Reviewer Execution Plan
 
@@ -1516,6 +1514,79 @@ truth; this phase wires only the new reusable actions that earlier phases add.
 
 **Implementation Note**: Commit Phase 5 after deterministic checks and reviewer
 gates pass. Do not tag/release `v1` without explicit operator approval.
+
+### Phase Close Receipt
+
+- **Phase**: Phase 5 - Wire Standard Checks And Update Public Contract.
+- **Commit**: pending.
+- **Definition Sources Loaded**: `docs/intent.md`, `docs/requirements.md`,
+  `docs/architecture.md`, Product Evidence View, Phase 5 context packet, and
+  Phase 5 operator decisions.
+- **Phase Context Packet Loaded**: Phase 5 context packet and reviewer
+  execution plan.
+- **Automated Verification**: final Phase 5 proof passed on 2026-06-30:
+  `python3 -m unittest discover -s tests` (17 tests), alphaapps-policy tests
+  (23), markdown tests (10), GitHub Actions safety tests (9),
+  dependency-review tests (4), Dependabot coverage tests (9), Dependabot
+  coverage validation, GitHub Actions safety validation, Product Evidence
+  validation, durable evidence reference validation, Product Evidence render
+  `--check`, README/docs/template Markdown lint, action/workflow/template YAML
+  parse sweep (24 YAML files), Python bytecode compile, ShellCheck plus
+  `bash -n` for tracked shell scripts, pinned actionlint `v1.7.12` with
+  checksum verification, `git diff --check`, runtime/public `@main` reference
+  sweep, and reviewer-transport disclosure sweep.
+- **Full-Suite / Push-Equivalent Proof**: the full-suite command set above is
+  the push-equivalent proof for this control-plane CI action repo; customer/web
+  suite is not applicable.
+- **Reviewer Gates**: passed after fixes and reruns:
+  `reviewer-plan-compliance`, `reviewer-definition-traceability`,
+  `reviewer-product-development-lifecycle`, `reviewer-product-evidence`,
+  `reviewer-reuse-patterns`, `reviewer-test-discipline`,
+  `reviewer-code-quality`, `reviewer-performance-efficiency`,
+  `reviewer-test-runtime-isolation`, `reviewer-security-general`,
+  `reviewer-knowledgebase-integrity`, and `reviewer-greenfield-scope`.
+  `reviewer-error-handling` is waived because no Elixir code changed.
+- **Reviewer Findings Fixed And Rerun**: definition traceability required the
+  active repo rollout decision to be recorded; code quality and test discipline
+  required durable assertion rationale and stronger README/dependency ordering
+  tests; performance required composite-level gating so `ci-github-actions@v1`
+  and dependency review are not unnecessarily resolved; greenfield scope
+  required removal of an unauthorized `skip` mode; knowledgebase integrity
+  required conditional GitHub Actions safety wording and scrubbing exact
+  reviewer transport failure details from public docs; code quality required
+  changed-mode `git diff` handling to fail closed; performance required
+  pathspec-limited workflow/action diff detection; code quality required
+  explicit test lookup helpers instead of raw `next(...)` calls.
+- **Reduced-Independence Fallbacks**: same-runtime reviewer fallback was used as
+  reduced-independence evidence for Phase 5 reviewer gates.
+- **Manual Verification**: operator confirmed waiting to move `v1` until active
+  repo baseline/Product Evidence backfill is ready or explicitly approved, and
+  confirmed language composites should enforce the shared baseline across
+  consuming repos.
+- **Plan Checkboxes Updated**: automated verification, test durability, manual
+  verification, plan alignment, and all Phase 5 reviewer gates are checked.
+- **Upstream Amendments / Backfills**: Product Evidence now records Phase 5
+  contract-test coverage for REQ-001, REQ-003, and REQ-015. Public docs were
+  aligned to the approved source-truth boundary; no intent, requirements, or
+  architecture source-truth changes were made in Phase 5.
+
+#### Deviations From Plan And Definition Sources
+
+- **Planned**: language composites run `ci-github-actions@v1` when
+  workflow/action files changed or when explicitly enabled.
+- **Implemented**: language composites expose `github-actions-mode:
+  changed|all`; `changed` performs a local fail-closed, pathspec-limited diff
+  planner before resolving the remote action, and `all` forces the safety gate.
+- **Difference**: `github-actions-mode` is a controlled implementation input
+  for the plan-approved changed-file/explicit-enable behavior; no `skip` mode is
+  exposed.
+- **Evidence Used**: README contract, `tests/test_shared_ci_contract.py`,
+  GitHub Actions safety validation, reviewer-performance-efficiency,
+  reviewer-greenfield-scope, reviewer-knowledgebase-integrity, and
+  reviewer-code-quality reruns.
+- **Classification**: allowed implementation choice.
+- **Resolution**: contract tests and README/Product Evidence now describe the
+  conditional behavior precisely.
 
 ---
 
