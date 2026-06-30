@@ -2,7 +2,7 @@
 status: approved
 tags:
   - org/alpha-apps
-  - repo/forgingalpha-github
+  - topic/github
 ---
 # ForgingAlpha/.github - Architecture
 

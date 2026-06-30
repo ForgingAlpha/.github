@@ -29,7 +29,7 @@ runs:
     - name: Enforce merge flow
       uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
 
-    - name: Run shellcheck
+    - name: Run shell checks
       env:
         SHELLCHECK_SEVERITY: ${{ inputs.shellcheck-severity }}
       run: |
@@ -47,41 +47,42 @@ runs:
         esac
 
         if ! command -v shellcheck >/dev/null 2>&1; then
-          sudo apt-get update
-          sudo apt-get install -y shellcheck
+          echo "✗ ShellCheck is not installed on PATH."
+          echo "  WHY: shared shell CI must run the caller's pinned or runner-provided ShellCheck binary without network package installation."
+          echo "  HOW: install ShellCheck before ci-shell or use a runner image that includes shellcheck."
+          exit 1
+        fi
+
+        if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          echo "✗ ci-shell must run inside a Git checkout."
+          echo "  WHY: shared shell CI scopes checks to tracked .sh/.bash files so generated and untracked files cannot change results."
+          echo "  HOW: run actions/checkout before ForgingAlpha/.github/actions/ci-shell."
+          exit 1
         fi
 
         shellcheck --version
 
+        mapfile -d '' shell_files < <(git ls-files -z -- '*.sh' '*.bash')
+        if [ "${#shell_files[@]}" -eq 0 ]; then
+          echo "✓ No tracked .sh or .bash files found."
+          exit 0
+        fi
+
         fail=0
-        while IFS= read -r -d '' file; do
+        for file in "${shell_files[@]}"; do
           if ! shellcheck -S "${SHELLCHECK_SEVERITY}" "$file"; then
             echo "✗ ShellCheck failed for ${file}"
             echo "  WHY: shared shell CI requires ShellCheck at ${SHELLCHECK_SEVERITY} severity."
             echo "  HOW: fix the finding above or document a narrow inline ShellCheck directive."
             fail=1
           fi
-        done < <(find . -type f \( -name "*.sh" -o -name "*.bash" \) \
-                 ! -path "./.git/*" \
-                 ! -path "./node_modules/*" \
-                 -print0)
-        exit "$fail"
-      shell: bash
 
-    - name: Bash syntax check (bash -n)
-      run: |
-        set -euo pipefail
-        fail=0
-        while IFS= read -r -d '' file; do
           if ! bash -n "$file"; then
             echo "✗ Bash syntax validation failed for ${file}"
-            echo "  WHY: shared shell CI requires every .sh/.bash file to parse before merge."
+            echo "  WHY: shared shell CI requires every tracked .sh/.bash file to parse before merge."
             echo "  HOW: run 'bash -n ${file}' locally and fix the reported syntax error."
             fail=1
           fi
-        done < <(find . -type f \( -name "*.sh" -o -name "*.bash" \) \
-                 ! -path "./.git/*" \
-                 ! -path "./node_modules/*" \
-                 -print0)
+        done
         exit "$fail"
       shell: bash

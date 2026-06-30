@@ -253,9 +253,10 @@ jobs:
 ## Source Truth
 
 The public source truth for this repository lives in `docs/intent.md`,
-`docs/requirements.md`, `docs/architecture.md`, and repo-local Product Evidence
-under `docs/evidence/`. Active ForgingAlpha repositories need approved baseline
-source truth and Product Evidence before the strict shared policy action can
-pass ordinary code, test, dependency, runtime, maintenance, release, or broad
-planning changes. Private Alpha Apps process and operator guidance remains in
-`alphaapps-docs`.
+`docs/requirements.md`, and `docs/architecture.md`. Repo-local Product
+Evidence under `docs/evidence/` is downstream verification evidence; it does
+not create or change source truth. Active ForgingAlpha repositories need
+approved baseline source truth and Product Evidence before the strict shared
+policy action can pass ordinary code, test, dependency, runtime, maintenance,
+release, or broad planning changes. Private Alpha Apps process and operator
+guidance remains in `alphaapps-docs`.

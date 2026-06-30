@@ -545,87 +545,87 @@ for the work already present in this branch.
 
 #### Automated Verification
 
-- [ ] GitHub Actions contract validator passes:
+- [x] GitHub Actions contract validator passes:
   `python3 scripts/validate-github-actions.py`
-- [ ] Validator tests pass: `python3 -m unittest discover -s tests`
-- [ ] YAML/action files remain parseable:
+- [x] Validator tests pass: `python3 -m unittest discover -s tests`
+- [x] YAML/action files remain parseable:
   `find actions -name action.yml -print -exec python3 -c 'import yaml,sys; yaml.safe_load(open(sys.argv[1]))' {} \;`
-- [ ] Parent workflow lint passes with pinned actionlint and checksum
+- [x] Parent workflow lint passes with pinned actionlint and checksum
   verification.
-- [ ] Markdown lint passes for changed Markdown:
+- [x] Markdown lint passes for changed Markdown:
   `ALPHAAPPS_MARKDOWNLINT_CONFIG=<approved-config-path>; npx --yes markdownlint-cli2@0.22.1 --config "$ALPHAAPPS_MARKDOWNLINT_CONFIG" README.md docs/intent.md docs/requirements.md docs/architecture.md docs/evidence/product-evidence-view.md docs/plans/shared-ci-policy-baseline.md`
-- [ ] Product Evidence view is current after generation with the approved
+- [x] Product Evidence view is current after generation with the approved
   `alphaapps-docs` renderer.
-- [ ] Git diff whitespace check passes: `git diff --check`
-- [ ] Public disclosure sweep passes:
+- [x] Git diff whitespace check passes: `git diff --check`
+- [x] Public disclosure sweep passes:
   `mapfile -t changed < <({ git diff --name-only --diff-filter=ACMR HEAD -- README.md docs actions .github; git ls-files --others --exclude-standard -- README.md docs actions .github; } | sort -u); ((${#changed[@]} == 0)) || ! rg '[/]home/[^ ]+|~[/]wt|[D]OPPLER|[P]RIVATE KEY|[G]ITHUB_FORGINGALPHA|[B]EGIN [A-Z ]*[P]RIVATE KEY' "${changed[@]}"`
-- [ ] No internal `@main` shared-action refs remain:
+- [x] No internal `@main` shared-action refs remain:
   `! rg 'ForgingAlpha/.github/actions/.+@main' actions .github README.md`
-- [ ] Dependabot config parses and covers `/` plus `/actions/*`.
-- [ ] `.github` source truth and Product Evidence wording matches the approved
+- [x] Dependabot config parses and covers `/` plus `/actions/*`.
+- [x] `.github` source truth and Product Evidence wording matches the approved
   alphaapps-docs required-baseline policy.
-- [ ] Full-suite phase-close gate passes: `.github` self CI-equivalent command
+- [x] Full-suite phase-close gate passes: `.github` self CI-equivalent command
   set above.
-- [ ] Push-equivalent proof passes: same as `.github` self CI-equivalent
+- [x] Push-equivalent proof passes: same as `.github` self CI-equivalent
   command set.
-- [ ] Customer/web suite: `n/a - control-plane foundation only; no customer/web
+- [x] Customer/web suite: `n/a - control-plane foundation only; no customer/web
   surface changed`.
 
 #### Test Durability
 
-- [ ] Validator tests are durable contract tests for the parent CI safety
+- [x] Validator tests are durable contract tests for the parent CI safety
   contract.
-- [ ] Assertions include clear failure messages.
-- [ ] No retirement tests are introduced.
+- [x] Assertions include clear failure messages.
+- [x] No retirement tests are introduced.
 
 #### Manual Verification
 
-- [ ] Operator approves or confirms source-truth status as `approved`.
-- [ ] Operator confirms Product Evidence is required for active ForgingAlpha
+- [x] Operator approves or confirms source-truth status as `approved`.
+- [x] Operator confirms Product Evidence is required for active ForgingAlpha
   repos and `.github` has no repo-specific waiver.
-- [ ] Confirm docs do not invent product behavior for consuming repos beyond
+- [x] Confirm docs do not invent product behavior for consuming repos beyond
   the agreed shared CI policy.
-- [ ] Confirm public `.github` docs contain no local paths, secrets, private
+- [x] Confirm public `.github` docs contain no local paths, secrets, private
   branch diagnostics, or private repo evidence that belongs in `alphaapps-docs`.
 
 #### Plan Alignment Verification
 
-- [ ] Source truth exists before reusable policy enforcement is introduced.
-- [ ] Required Product Evidence exists before reusable policy enforcement is
+- [x] Source truth exists before reusable policy enforcement is introduced.
+- [x] Required Product Evidence exists before reusable policy enforcement is
   introduced.
-- [ ] No private token or per-repo secret rollout is introduced.
-- [ ] Completed foundation items are not duplicated in later phases.
+- [x] No private token or per-repo secret rollout is introduced.
+- [x] Completed foundation items are not duplicated in later phases.
 
 #### Agent Review Gates
 
-- [ ] `reviewer-plan-compliance` - verify Phase 1 matches this rebaselined
+- [x] `reviewer-plan-compliance` - verify Phase 1 matches this rebaselined
   foundation scope.
-- [ ] `reviewer-product-development-lifecycle` - verify changed lifecycle
+- [x] `reviewer-product-development-lifecycle` - verify changed lifecycle
   source truth, the active plan, and review evidence freshness.
-- [ ] `reviewer-definition-traceability` - verify source truth is derived from
+- [x] `reviewer-definition-traceability` - verify source truth is derived from
   README and Alpha Apps Git/GitHub process, not from implementation convenience.
-- [ ] `reviewer-product-evidence` - verify `.github` Product Evidence promises,
+- [x] `reviewer-product-evidence` - verify `.github` Product Evidence promises,
   evidence statuses, and generated view honesty.
-- [ ] `reviewer-knowledgebase-integrity` - verify docs live in the right repo
+- [x] `reviewer-knowledgebase-integrity` - verify docs live in the right repo
   and do not duplicate vault-only process docs unnecessarily.
-- [ ] `reviewer-naming-sweep` - verify action, status, and artifact names match
+- [x] `reviewer-naming-sweep` - verify action, status, and artifact names match
   Alpha Apps naming conventions.
-- [ ] `reviewer-test-discipline` - verify validator tests cover the new
+- [x] `reviewer-test-discipline` - verify validator tests cover the new
   deterministic safety contract.
-- [ ] `reviewer-reuse-patterns` - verify validator/workflow changes reuse local
+- [x] `reviewer-reuse-patterns` - verify validator/workflow changes reuse local
   action and test patterns.
-- [ ] `reviewer-test-runtime-isolation` - verify self-CI/test execution remains
+- [x] `reviewer-test-runtime-isolation` - verify self-CI/test execution remains
   isolated and does not depend on private runtime state.
-- [ ] `reviewer-security-general` - verify public action/workflow changes do not
+- [x] `reviewer-security-general` - verify public action/workflow changes do not
   create secret, pinning, permission, or injection risks.
-- [ ] `reviewer-error-handling` - waived for Phase 1 unless Elixir code changes;
+- [x] `reviewer-error-handling` - waived for Phase 1 unless Elixir code changes;
   the current reviewer is Elixir/CQRS-specific and does not provide meaningful
   Python/Bash/YAML failure-output review.
-- [ ] `reviewer-code-quality` - verify validator and workflow changes are
+- [x] `reviewer-code-quality` - verify validator and workflow changes are
   maintainable and scoped.
-- [ ] `reviewer-performance-efficiency` - verify validator scans are bounded
+- [x] `reviewer-performance-efficiency` - verify validator scans are bounded
   and avoid obviously wasteful traversal.
-- [ ] `reviewer-greenfield-scope` - verify the new baseline docs do not carry
+- [x] `reviewer-greenfield-scope` - verify the new baseline docs do not carry
   legacy exceptions or compatibility shims.
 
 #### Reviewer Execution Plan
@@ -650,6 +650,44 @@ for the work already present in this branch.
 
 **Implementation Note**: Commit Phase 1 after automated checks and reviewer
 gates pass. Do not tag/release `v1` from this foundation commit.
+
+#### Phase 1 Close Receipt
+
+- **Status**: implementation complete; do not push until the lifecycle audit is
+  refreshed against the post-receipt commit.
+- **Foundation content checkpoint**:
+  `e4b75fd30548b00c0f2a995b395a9c5c904caae3`.
+- **Definition sources loaded**: `docs/intent.md`, `docs/requirements.md`,
+  `docs/architecture.md`, `README.md`, Alpha Apps Git/GitHub process notes,
+  Product Evidence renderer contract, lifecycle baseline validator contract,
+  durable evidence reference validator contract.
+- **Operator decisions applied**: source-truth docs are `status: approved`;
+  Product Evidence is required for every active ForgingAlpha repo; a missing
+  Product Evidence manifest blocks ordinary work; `.github` has no
+  repo-specific Product Evidence waiver; ShellCheck default severity remains
+  the strict `style` setting.
+- **Automated proof**: the Phase 1 closeout command set passed on 2026-06-30:
+  GitHub Actions contract validator, validator unit tests, action YAML parsing,
+  pinned actionlint `v1.7.12` with checksum verification, markdownlint-cli2
+  `0.22.1` with the approved Alpha Apps config, Product Evidence render
+  `--check`, `git diff --check`, public-disclosure sweep, internal `@main`
+  shared-action sweep, Dependabot `/` plus `/actions/*` coverage assertion, and
+  ShellCheck `0.11.0` availability at `style` severity.
+- **Corrections during closeout**: Product Evidence rows were narrowed to avoid
+  overclaiming coverage, validator tests added remote script-execution
+  fixtures and WHAT/WHY/HOW assertion messages, docs tags were normalized to
+  canonical `topic/github`, the stale handoff Product Evidence wording was
+  corrected, and `ci-shell` now fails fast when ShellCheck is absent while
+  reusing one tracked shell-file list for ShellCheck and `bash -n`.
+- **Reviewer proof**: all Phase 1 reviewers passed after reruns, with
+  `reviewer-error-handling` waived because no Elixir code changed.
+- **Reduced-independence note**: opposite-runtime Claude CLI reviewer auth
+  failed with `401 Invalid authentication credentials`; same-runtime reviewers
+  were used as reduced-independence fallback evidence.
+- **Lifecycle audit handling**: the existing lifecycle audit passed against the
+  foundation checkpoint. Because this receipt changes the active lifecycle plan,
+  refresh `docs/audits/2026-06-30-product-lifecycle-review-shared-policy-baseline.md`
+  against the post-receipt Head SHA before push.
 
 ---
 

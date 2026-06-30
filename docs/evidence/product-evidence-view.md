@@ -10,7 +10,29 @@ No promises in this status.
 
 ## None
 
-No promises in this status.
+### REQ-009 - Do not require private alphaapps-docs checkout in consumer CI
+
+- Source: `docs/requirements.md#REQ-009`
+- Type: `security/safety`
+- Status: `none`
+- Planned context: `Phase 2 ci-alphaapps-policy implementation and public action review`
+- Evidence: none
+
+### REQ-018 - Require approved baseline source truth for policy-checked repos
+
+- Source: `docs/requirements.md#REQ-018`
+- Type: `technical/architecture`
+- Status: `none`
+- Planned context: `Phase 2 baseline lifecycle validator implementation`
+- Evidence: none
+
+### REQ-020 - Require Product Evidence for active policy-checked repos
+
+- Source: `docs/requirements.md#REQ-020`
+- Type: `technical/architecture`
+- Status: `none`
+- Planned context: `Phase 2 required Product Evidence validator implementation`
+- Evidence: none
 
 ## Manual-only
 
@@ -36,31 +58,7 @@ No promises in this status.
 - Type: `security/safety`
 - Status: `manual-only`
 - Evidence:
-  - `manual` `manual:phase-1-public-disclosure-sweep` - Phase 1 closeout runs a public-disclosure sweep over changed public files before commit.
-
-### REQ-009 - Do not require private alphaapps-docs checkout in consumer CI
-
-- Source: `docs/requirements.md#REQ-009`
-- Type: `security/safety`
-- Status: `manual-only`
-- Evidence:
-  - `manual` `path:docs/architecture.md` - Defines the public/private boundary and self-contained shared policy action model.
-
-### REQ-018 - Require approved baseline source truth for policy-checked repos
-
-- Source: `docs/requirements.md#REQ-018`
-- Type: `technical/architecture`
-- Status: `manual-only`
-- Evidence:
-  - `manual` `path:docs/requirements.md` - Defines approved intent, requirements, and architecture enforcement for active ForgingAlpha repositories that run the policy check.
-
-### REQ-020 - Require Product Evidence for active policy-checked repos
-
-- Source: `docs/requirements.md#REQ-020`
-- Type: `technical/architecture`
-- Status: `manual-only`
-- Evidence:
-  - `manual` `path:docs/requirements.md` - Defines the required Product Evidence behavior and the source-truth/evidence-backfill-only path while a manifest is missing.
+  - `manual` `manual:public-disclosure-sweep` - A public-disclosure sweep checks changed public files for local paths, private-key markers, and credential-like strings.
 
 ## Covered
 

@@ -37,9 +37,9 @@
       "status": "manual-only",
       "evidence": [
         {
-          "ref": "manual:phase-1-public-disclosure-sweep",
+          "ref": "manual:public-disclosure-sweep",
           "kind": "manual",
-          "summary": "Phase 1 closeout runs a public-disclosure sweep over changed public files before commit."
+          "summary": "A public-disclosure sweep checks changed public files for local paths, private-key markers, and credential-like strings."
         }
       ]
     },
@@ -48,14 +48,9 @@
       "source_ref": "docs/requirements.md#REQ-009",
       "title": "Do not require private alphaapps-docs checkout in consumer CI",
       "type": "security/safety",
-      "status": "manual-only",
-      "evidence": [
-        {
-          "ref": "path:docs/architecture.md",
-          "kind": "manual",
-          "summary": "Defines the public/private boundary and self-contained shared policy action model."
-        }
-      ]
+      "status": "none",
+      "planned_ref": "Phase 2 ci-alphaapps-policy implementation and public action review",
+      "evidence": []
     },
     {
       "id": "REQ-015",
@@ -76,28 +71,18 @@
       "source_ref": "docs/requirements.md#REQ-018",
       "title": "Require approved baseline source truth for policy-checked repos",
       "type": "technical/architecture",
-      "status": "manual-only",
-      "evidence": [
-        {
-          "ref": "path:docs/requirements.md",
-          "kind": "manual",
-          "summary": "Defines approved intent, requirements, and architecture enforcement for active ForgingAlpha repositories that run the policy check."
-        }
-      ]
+      "status": "none",
+      "planned_ref": "Phase 2 baseline lifecycle validator implementation",
+      "evidence": []
     },
     {
       "id": "REQ-020",
       "source_ref": "docs/requirements.md#REQ-020",
       "title": "Require Product Evidence for active policy-checked repos",
       "type": "technical/architecture",
-      "status": "manual-only",
-      "evidence": [
-        {
-          "ref": "path:docs/requirements.md",
-          "kind": "manual",
-          "summary": "Defines the required Product Evidence behavior and the source-truth/evidence-backfill-only path while a manifest is missing."
-        }
-      ]
+      "status": "none",
+      "planned_ref": "Phase 2 required Product Evidence validator implementation",
+      "evidence": []
     }
   ]
 }
