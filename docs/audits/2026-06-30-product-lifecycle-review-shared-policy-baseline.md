@@ -4,13 +4,15 @@ Status: pass
 
 ## Review Metadata
 
-- Base Ref: origin/main
-- Base SHA: 88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4
-- Head SHA: b2fb8a7f202dfc27bf288f4c0af2c7924e2cbb28
-- Reviewer: reviewer-product-development-lifecycle
-- Review Date: 2026-06-30
+Base Ref: main
+Base SHA: 88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4
+Head SHA: b2fb8a7f202dfc27bf288f4c0af2c7924e2cbb28
+Reviewer: reviewer-product-development-lifecycle
+Review Date: 2026-06-30
 
 ## Changed Lifecycle Files
+
+Changed lifecycle files:
 
 - docs/intent.md
 - docs/requirements.md
