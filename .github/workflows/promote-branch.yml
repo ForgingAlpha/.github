@@ -47,7 +47,7 @@ jobs:
     steps:
       - name: Mint release app token
         id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ inputs.release_app_id }}
           private-key: ${{ secrets.release_app_private_key }}
@@ -57,7 +57,7 @@ jobs:
           permission-checks: read
 
       - name: Checkout target repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
@@ -75,14 +75,25 @@ jobs:
           set -euo pipefail
 
           fail() {
-            echo "✗ $*" >&2
+            local what="$1"
+            local why="$2"
+            local how="$3"
+            echo "✗ ${what}" >&2
+            echo "  WHY: ${why}" >&2
+            echo "  HOW: ${how}" >&2
             exit 1
           }
 
           git check-ref-format --branch "${SOURCE_BRANCH}" >/dev/null \
-            || fail "invalid source_branch '${SOURCE_BRANCH}'"
+            || fail \
+              "Invalid source_branch '${SOURCE_BRANCH}'" \
+              "promotion inputs must be valid Git branch names" \
+              "pass a branch name accepted by 'git check-ref-format --branch'"
           git check-ref-format --branch "${TARGET_BRANCH}" >/dev/null \
-            || fail "invalid target_branch '${TARGET_BRANCH}'"
+            || fail \
+              "Invalid target_branch '${TARGET_BRANCH}'" \
+              "promotion inputs must be valid Git branch names" \
+              "pass a branch name accepted by 'git check-ref-format --branch'"
 
           git fetch --prune origin \
             "+refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}" \
@@ -104,7 +115,10 @@ jobs:
           fi
 
           git merge-base --is-ancestor "origin/${TARGET_BRANCH}" "origin/${SOURCE_BRANCH}" \
-            || fail "${TARGET_BRANCH} is not an ancestor of ${SOURCE_BRANCH}; refusing non-fast-forward promotion. See the Alpha Apps Git runbook."
+            || fail \
+              "${TARGET_BRANCH} is not an ancestor of ${SOURCE_BRANCH}" \
+              "branch promotion must be fast-forward-only" \
+              "merge or rebase ${SOURCE_BRANCH} so it contains origin/${TARGET_BRANCH}, then rerun promotion"
 
           gh api "repos/${GITHUB_REPOSITORY}/commits/${source_sha}/check-runs?per_page=100" > /tmp/check-runs.json
 
@@ -120,7 +134,10 @@ jobs:
                | .conclusion // empty' /tmp/check-runs.json)"
 
             if [[ "${conclusion}" != "success" ]]; then
-              fail "required check '${check}' is not successful on ${SOURCE_BRANCH} (${source_sha}); observed conclusion='${conclusion:-missing}'"
+              fail \
+                "Required check '${check}' is not successful on ${SOURCE_BRANCH} (${source_sha})" \
+                "only commits with successful required checks may be promoted" \
+                "fix or rerun '${check}' on ${SOURCE_BRANCH}; observed conclusion='${conclusion:-missing}'"
             fi
             echo "✓ required check '${check}' passed on ${source_sha}"
           done

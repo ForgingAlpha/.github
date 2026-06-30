@@ -1,12 +1,19 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/actions/*"
+    # Shared CI changes can affect every consuming repo after the v1 rollout.
+    # Batch them early in the week so review happens deliberately and during
+    # normal working hours.
     schedule:
       interval: "weekly"
       day: "tuesday"
       time: "09:00"
       timezone: "America/New_York"
+    # Keep one grouped PR open at a time to avoid dependency-noise queues in the
+    # public control-plane repo.
     open-pull-requests-limit: 1
     labels:
       - "dependencies"

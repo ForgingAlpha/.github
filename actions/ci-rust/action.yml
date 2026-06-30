@@ -1,8 +1,7 @@
 # Composite action: Rust CI checks.
 #
-# Identical to the steps previously in analyzingalpha-vault, alphaapps-composer,
-# and analyzingalpha-engine ci.yml files. Single source of truth — edit here to
-# roll changes to all Rust repos in the org.
+# Runs the standard Rust CI gate. This action is the shared source for Rust
+# format, lint, dead-code, test, and audit checks across consumer repos.
 #
 # Usage (in the consuming repo's .github/workflows/ci.yml):
 #
@@ -12,7 +11,7 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 30
 #       steps:
-#         - uses: actions/checkout@v6
+#         - uses: actions/checkout@v7
 #         - uses: ForgingAlpha/.github/actions/ci-rust@v1
 #           with:
 #             working-directory: cli
@@ -37,7 +36,7 @@ runs:
   using: composite
   steps:
     - name: Enforce merge flow
-      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
 
     - name: Setup Rust (${{ inputs.toolchain }})
       # Pinned to the SHA currently on dtolnay/rust-toolchain@stable at pin-time.
@@ -48,7 +47,7 @@ runs:
         components: clippy, rustfmt
 
     - name: Cache Rust
-      uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         workspaces: ${{ inputs.working-directory }} -> target
 
@@ -73,7 +72,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: Install cargo-audit
-      run: cargo install cargo-audit --locked
+      run: cargo install cargo-audit --locked --version 0.22.2
       shell: bash
 
     - name: Audit dependencies

@@ -13,16 +13,45 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
-  contents: write
+  contents: read
+  checks: read
 
 jobs:
   update-major-tag:
     name: Update major version tag
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      checks: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+
+      - name: Verify tagged commit CI
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          checks_json="${RUNNER_TEMP:-/tmp}/tag-check-runs.json"
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100" > "${checks_json}"
+
+          conclusion="$(jq -r \
+            '[.check_runs[] | select(.name == "CI")]
+             | sort_by(.completed_at // .started_at // .created_at)
+             | last
+             | .conclusion // empty' "${checks_json}")"
+
+          if [[ "${conclusion}" != "success" ]]; then
+            echo "✗ Tagged commit ${GITHUB_SHA} does not have a successful CI check"
+            echo "  WHY: release tags move consumer-facing major tags; self CI must pass before rollout."
+            echo "  HOW: tag only a commit whose CI check succeeded; observed conclusion='${conclusion:-missing}'."
+            exit 1
+          fi
+
+          echo "✓ Tagged commit ${GITHUB_SHA} passed CI"
 
       - name: Force-move major tag
         shell: bash

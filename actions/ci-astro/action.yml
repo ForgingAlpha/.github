@@ -1,7 +1,7 @@
 # Composite action: Astro static site CI checks.
 #
-# Mirrors the steps in alphaapps-site, analyzingalpha-site, and turnkeyleads-site.
-# Runs prettier, eslint, astro check, and npm build.
+# Runs the standard Astro static-site CI gate: prettier, eslint, astro check,
+# and npm build.
 #
 # Usage:
 #
@@ -11,7 +11,7 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 20
 #       steps:
-#         - uses: actions/checkout@v6
+#         - uses: actions/checkout@v7
 #         - uses: ForgingAlpha/.github/actions/ci-astro@v1
 
 name: CI Astro
@@ -21,24 +21,19 @@ inputs:
   node-version:
     description: "Node.js version"
     required: false
-    default: "22"
+    default: "24"
   working-directory:
     description: "Subdirectory containing package.json"
     required: false
     default: "."
-  run-build:
-    description: "Run npm run build after lint/typecheck (true/false)"
-    required: false
-    default: "true"
-
 runs:
   using: composite
   steps:
     - name: Enforce merge flow
-      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
 
     - name: Setup Node.js (${{ inputs.node-version }})
-      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       with:
         node-version: ${{ inputs.node-version }}
         cache: "npm"
@@ -65,7 +60,6 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: Build check
-      if: ${{ inputs.run-build == 'true' }}
       run: npm run build
       shell: bash
       working-directory: ${{ inputs.working-directory }}

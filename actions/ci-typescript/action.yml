@@ -1,7 +1,7 @@
 # Composite action: TypeScript CI checks (non-Astro).
 #
-# Mirrors the steps in openclaw-prompt-guard and openclaw-email-manager.
-# Supports repos where TypeScript lives in a subdirectory (e.g. plugin/).
+# Runs the standard TypeScript CI gate for non-Astro repos. Supports repos
+# where TypeScript lives at the root or in a subdirectory.
 #
 # Usage:
 #
@@ -12,7 +12,7 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 20
 #       steps:
-#         - uses: actions/checkout@v6
+#         - uses: actions/checkout@v7
 #         - uses: ForgingAlpha/.github/actions/ci-typescript@v1
 #           with:
 #             working-directory: plugin
@@ -24,7 +24,7 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 20
 #       steps:
-#         - uses: actions/checkout@v6
+#         - uses: actions/checkout@v7
 #         - uses: ForgingAlpha/.github/actions/ci-typescript@v1
 
 name: CI TypeScript
@@ -34,32 +34,19 @@ inputs:
   node-version:
     description: "Node.js version"
     required: false
-    default: "22"
+    default: "24"
   working-directory:
     description: "Subdirectory containing package.json"
     required: false
     default: "."
-  run-format-check:
-    description: "Run npx prettier --check . (true/false)"
-    required: false
-    default: "true"
-  run-lint:
-    description: "Run npx eslint --max-warnings 0 . (true/false)"
-    required: false
-    default: "true"
-  run-tests:
-    description: "Run npm test (true/false)"
-    required: false
-    default: "true"
-
 runs:
   using: composite
   steps:
     - name: Enforce merge flow
-      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
 
     - name: Setup Node.js (${{ inputs.node-version }})
-      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       with:
         node-version: ${{ inputs.node-version }}
         cache: "npm"
@@ -71,13 +58,11 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: Check formatting (Prettier)
-      if: ${{ inputs.run-format-check == 'true' }}
       run: npx prettier --check .
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Lint (ESLint)
-      if: ${{ inputs.run-lint == 'true' }}
       run: npx eslint --max-warnings 0 .
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -88,7 +73,6 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: Run tests
-      if: ${{ inputs.run-tests == 'true' }}
       run: npm test
       shell: bash
       working-directory: ${{ inputs.working-directory }}

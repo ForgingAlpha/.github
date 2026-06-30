@@ -1,8 +1,7 @@
 # Composite action: Shell script CI checks.
 #
-# New — no existing repo had shell CI before. Runs shellcheck on all *.sh files
-# and bash -n syntax validation. Intended for alphaapps-infra, alphaapps-adr-pipeline,
-# and any repo with shell scripts in scripts/ or bin/ directories.
+# Runs ShellCheck on all tracked shell scripts and Bash syntax validation for
+# repos with shell scripts in standard script directories.
 #
 # Usage:
 #
@@ -12,7 +11,7 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 10
 #       steps:
-#         - uses: actions/checkout@v6
+#         - uses: actions/checkout@v7
 #         - uses: ForgingAlpha/.github/actions/ci-shell@v1
 
 name: CI Shell
@@ -22,21 +21,52 @@ inputs:
   shellcheck-severity:
     description: "Minimum severity for shellcheck (error|warning|info|style)"
     required: false
-    default: "warning"
+    default: "style"
 
 runs:
   using: composite
   steps:
     - name: Enforce merge flow
-      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
 
     - name: Run shellcheck
-      uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca # master
       env:
-        SHELLCHECK_OPTS: -e SC1091
-      with:
-        severity: ${{ inputs.shellcheck-severity }}
-        scandir: "."
+        SHELLCHECK_SEVERITY: ${{ inputs.shellcheck-severity }}
+      run: |
+        set -euo pipefail
+
+        case "${SHELLCHECK_SEVERITY}" in
+          error|warning|info|style)
+            ;;
+          *)
+            echo "✗ Unsupported shellcheck severity '${SHELLCHECK_SEVERITY}'"
+            echo "  WHY: ShellCheck supports only error, warning, info, or style severity levels."
+            echo "  HOW: set shellcheck-severity to one of: error, warning, info, style."
+            exit 1
+            ;;
+        esac
+
+        if ! command -v shellcheck >/dev/null 2>&1; then
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+        fi
+
+        shellcheck --version
+
+        fail=0
+        while IFS= read -r -d '' file; do
+          if ! shellcheck -S "${SHELLCHECK_SEVERITY}" "$file"; then
+            echo "✗ ShellCheck failed for ${file}"
+            echo "  WHY: shared shell CI requires ShellCheck at ${SHELLCHECK_SEVERITY} severity."
+            echo "  HOW: fix the finding above or document a narrow inline ShellCheck directive."
+            fail=1
+          fi
+        done < <(find . -type f \( -name "*.sh" -o -name "*.bash" \) \
+                 ! -path "./.git/*" \
+                 ! -path "./node_modules/*" \
+                 -print0)
+        exit "$fail"
+      shell: bash
 
     - name: Bash syntax check (bash -n)
       run: |
@@ -44,7 +74,9 @@ runs:
         fail=0
         while IFS= read -r -d '' file; do
           if ! bash -n "$file"; then
-            echo "syntax error in: $file"
+            echo "✗ Bash syntax validation failed for ${file}"
+            echo "  WHY: shared shell CI requires every .sh/.bash file to parse before merge."
+            echo "  HOW: run 'bash -n ${file}' locally and fix the reported syntax error."
             fail=1
           fi
         done < <(find . -type f \( -name "*.sh" -o -name "*.bash" \) \

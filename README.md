@@ -4,14 +4,17 @@ Org-wide CI, security configuration, and standards for all ForgingAlpha reposito
 
 ## Composite Actions (CI Library)
 
-CI logic is centralized in `actions/`. Each repo's `.github/workflows/ci.yml` is a thin wrapper (~8 lines) that calls the right action. Edit the action once — every repo picks up the change on the next CI run.
+CI logic is centralized in `actions/`. Each repo's `.github/workflows/ci.yml`
+is a thin wrapper that calls the right action. Edit an action here, merge the
+PR, then move a released major tag such as `v1`; consumers pinned to that tag
+pick up the change on their next CI run.
 
 | Action | Ecosystem | What it checks |
-|---|---|---|
+| --- | --- | --- |
 | [`ci-rust`](actions/ci-rust/action.yml) | Rust | `cargo fmt --all`, `cargo clippy -D warnings`, dead-code check, `cargo test`, `cargo audit` |
 | [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, optional repo strict checks, `mix credo --strict`, optional pre-test setup, test command |
 | [`ci-astro`](actions/ci-astro/action.yml) | Astro | `prettier`, `eslint`, `astro check`, `npm run build` |
-| [`ci-typescript`](actions/ci-typescript/action.yml) | TypeScript | `prettier`, `eslint`, `tsc --noEmit`, `npm test` (all conditional via inputs) |
+| [`ci-typescript`](actions/ci-typescript/action.yml) | TypeScript | `prettier`, `eslint`, `tsc --noEmit`, `npm test` |
 | [`ci-shell`](actions/ci-shell/action.yml) | Shell | `shellcheck`, `bash -n` syntax validation |
 
 ### Add CI to a new repo
@@ -51,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ForgingAlpha/.github/actions/ci-rust@v1
 ```
 
@@ -88,11 +91,11 @@ jobs:
       MIX_ENV: test
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/test
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ForgingAlpha/.github/actions/ci-elixir@v1
         with:
-          elixir-version: "1.19"
-          otp-version: "28"
+          elixir-version: "1.20"
+          otp-version: "29"
 ```
 
 `ci-elixir` always runs `mix credo --strict`. Elixir repos should check in a
@@ -105,18 +108,18 @@ commands instead of forking CI logic:
 ```yaml
       - uses: ForgingAlpha/.github/actions/ci-elixir@v1
         with:
-          elixir-version: "1.19.5-otp-28"
-          otp-version: "28.5"
-          extra-checks-command: mix boundary.strict
-          pre-test-command: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f infrastructure/ci/init-users.sql
-          test-command: mix test.core
+          elixir-version: "1.20"
+          otp-version: "29"
+          extra-checks-command: "<repo-owned extra check command>"
+          pre-test-command: "<repo-owned pre-test setup command>"
+          test-command: "<repo-owned test command>"
 ```
 
 `ci-rust` always runs every listed Rust check, including `cargo audit`. Missing
 lint or audit readiness must be fixed in the consuming repo rather than skipped
 in CI.
 
-**Astro / TypeScript / Shell:** Same pattern — swap the action reference. See each action's `action.yml` header for the full usage example with available inputs.
+**Astro / TypeScript / Shell:** Same pattern — swap the action reference. See each action's `action.yml` header for the usage example and supported inputs.
 
 ### Modify CI for all repos of a language
 
@@ -158,14 +161,14 @@ non-fast-forward updates stay blocked.
 
 ### Why composite actions (not reusable workflows)
 
-Reusable workflows produce a compound status check name (`CI / CI`) that doesn't match the required `CI` status check used in the org rulesets. Composite actions run inside the caller's job, so the check name stays `CI`. This was validated during the initial architecture setup and is documented in the Obsidian vault.
+Reusable workflows produce a compound status check name (`CI / CI`) that doesn't match the required `CI` status check used in the org rulesets. Composite actions run inside the caller's job, so the check name stays `CI`. The architecture source is [docs/architecture.md](docs/architecture.md).
 
 ## Branch Protection (Org-Wide Rulesets)
 
 Three rulesets enforce rules across all repos in the org:
 
 | Ruleset | Branches | Rules |
-|---|---|---|
+| --- | --- | --- |
 | `branch-safety` | `main`, `staging`, `dev` | Block deletions + block force pushes |
 | `code-release-branches` | `main`, `staging` on code repos | Require PR, CI, CodeQL, Copilot review; release App bypass allowed |
 | `control-plane-main` | `main` on `.github` and `alphaapps-docs` | Require PR, CI, CodeQL; no release App bypass |
@@ -194,7 +197,15 @@ Location: [Org Settings > Code security > Configurations](https://github.com/org
 
 Every repo keeps its own `.github/dependabot.yml` because Dependabot update
 configuration is repository-local. The standard schedule is weekly Tuesday,
-grouped by security/minor-patch/major.
+with grouped ecosystem updates and one open version-update PR at a time.
+In this repo, Dependabot checks both workflow files and shared composite action
+manifests under `actions/*`.
+
+This cadence keeps update review predictable and early in the week. It also
+limits noise in this public control-plane repo, where a merged action update can
+affect every consuming repository after the `v1` rollout. Patch and minor
+Dependabot PRs may auto-merge through the shared helper; major updates require
+deliberate review.
 
 Dependabot auto-merge behavior is centralized in
 `actions/dependabot-automerge`. Repos should keep only a thin caller workflow:
@@ -234,9 +245,17 @@ jobs:
 ## Standards
 
 - [Repo naming convention](docs/repo-naming.md)
+- [Intent](docs/intent.md)
+- [Requirements](docs/requirements.md)
+- [Architecture](docs/architecture.md)
+- [Product Evidence](docs/evidence/product-evidence-view.md)
 
-## Full Architecture Documentation
+## Source Truth
 
-The complete architectural context (why decisions were made, the bot permission model, authentication contract, deployment mapping) lives in the Obsidian vault:
-
-**Alpha Apps Git and GitHub Process** in `alphaapps-docs`
+The public source truth for this repository lives in `docs/intent.md`,
+`docs/requirements.md`, `docs/architecture.md`, and repo-local Product Evidence
+under `docs/evidence/`. Active ForgingAlpha repositories need approved baseline
+source truth and Product Evidence before the strict shared policy action can
+pass ordinary code, test, dependency, runtime, maintenance, release, or broad
+planning changes. Private Alpha Apps process and operator guidance remains in
+`alphaapps-docs`.

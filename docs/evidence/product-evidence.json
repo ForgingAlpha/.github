@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "promises": [
+    {
+      "id": "REQ-001",
+      "source_ref": "docs/requirements.md#REQ-001",
+      "title": "Preserve one required CI status",
+      "type": "integration/contract",
+      "status": "manual-only",
+      "evidence": [
+        {
+          "ref": "path:README.md",
+          "kind": "manual",
+          "summary": "Documents the uppercase CI job contract and composite-action usage that preserves the required status."
+        }
+      ]
+    },
+    {
+      "id": "REQ-007",
+      "source_ref": "docs/requirements.md#REQ-007",
+      "title": "Roll shared automation out through released tags",
+      "type": "operational/quality",
+      "status": "manual-only",
+      "evidence": [
+        {
+          "ref": "path:README.md",
+          "kind": "manual",
+          "summary": "Documents that merging to main does not roll out shared action changes until a released major tag such as v1 moves."
+        }
+      ]
+    },
+    {
+      "id": "REQ-008",
+      "source_ref": "docs/requirements.md#REQ-008",
+      "title": "Keep public repository content safe to expose",
+      "type": "security/safety",
+      "status": "manual-only",
+      "evidence": [
+        {
+          "ref": "manual:phase-1-public-disclosure-sweep",
+          "kind": "manual",
+          "summary": "Phase 1 closeout runs a public-disclosure sweep over changed public files before commit."
+        }
+      ]
+    },
+    {
+      "id": "REQ-009",
+      "source_ref": "docs/requirements.md#REQ-009",
+      "title": "Do not require private alphaapps-docs checkout in consumer CI",
+      "type": "security/safety",
+      "status": "manual-only",
+      "evidence": [
+        {
+          "ref": "path:docs/architecture.md",
+          "kind": "manual",
+          "summary": "Defines the public/private boundary and self-contained shared policy action model."
+        }
+      ]
+    },
+    {
+      "id": "REQ-015",
+      "source_ref": "docs/requirements.md#REQ-015",
+      "title": "Self-validate workflow and action contracts before release",
+      "type": "technical/architecture",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:tests/test_validate_github_actions.py",
+          "kind": "auto",
+          "summary": "Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery."
+        }
+      ]
+    },
+    {
+      "id": "REQ-018",
+      "source_ref": "docs/requirements.md#REQ-018",
+      "title": "Require approved baseline source truth for policy-checked repos",
+      "type": "technical/architecture",
+      "status": "manual-only",
+      "evidence": [
+        {
+          "ref": "path:docs/requirements.md",
+          "kind": "manual",
+          "summary": "Defines approved intent, requirements, and architecture enforcement for active ForgingAlpha repositories that run the policy check."
+        }
+      ]
+    },
+    {
+      "id": "REQ-020",
+      "source_ref": "docs/requirements.md#REQ-020",
+      "title": "Require Product Evidence for active policy-checked repos",
+      "type": "technical/architecture",
+      "status": "manual-only",
+      "evidence": [
+        {
+          "ref": "path:docs/requirements.md",
+          "kind": "manual",
+          "summary": "Defines the required Product Evidence behavior and the source-truth/evidence-backfill-only path while a manifest is missing."
+        }
+      ]
+    }
+  ]
+}
