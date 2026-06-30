@@ -11,6 +11,7 @@ pick up the change on their next CI run.
 
 | Action | Ecosystem | What it checks |
 | --- | --- | --- |
+| [`ci-alphaapps-policy`](actions/ci-alphaapps-policy/action.yml) | Alpha Apps | approved source truth, durable evidence references, required Product Evidence |
 | [`ci-rust`](actions/ci-rust/action.yml) | Rust | `cargo fmt --all`, `cargo clippy -D warnings`, dead-code check, `cargo test`, `cargo audit` |
 | [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, optional repo strict checks, `mix credo --strict`, optional pre-test setup, test command |
 | [`ci-astro`](actions/ci-astro/action.yml) | Astro | `prettier`, `eslint`, `astro check`, `npm run build` |

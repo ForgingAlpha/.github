@@ -33,6 +33,11 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s tests
 
+      - name: Test Alpha Apps policy action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-alphaapps-policy/tests
+
       # actionlint: static analysis for GitHub Actions YAML (workflows +
       # composite actions). Catches shell-injection vectors, bad expressions,
       # and workflow schema drift.

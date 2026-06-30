@@ -48,9 +48,14 @@
       "source_ref": "docs/requirements.md#REQ-009",
       "title": "Do not require private alphaapps-docs checkout in consumer CI",
       "type": "security/safety",
-      "status": "none",
-      "planned_ref": "Phase 2 ci-alphaapps-policy implementation and public action review",
-      "evidence": []
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py",
+          "kind": "auto",
+          "summary": "Tests that ci-alphaapps-policy has no private docs checkout dependency and no Product Evidence opt-out input."
+        }
+      ]
     },
     {
       "id": "REQ-015",
@@ -71,18 +76,28 @@
       "source_ref": "docs/requirements.md#REQ-018",
       "title": "Require approved baseline source truth for policy-checked repos",
       "type": "technical/architecture",
-      "status": "none",
-      "planned_ref": "Phase 2 baseline lifecycle validator implementation",
-      "evidence": []
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-alphaapps-policy/tests/test_validate_product_lifecycle_baseline.py",
+          "kind": "auto",
+          "summary": "Tests approved, missing, definition-only, and provisional baseline source-truth behavior for policy-checked repositories."
+        }
+      ]
     },
     {
       "id": "REQ-020",
       "source_ref": "docs/requirements.md#REQ-020",
       "title": "Require Product Evidence for active policy-checked repos",
       "type": "technical/architecture",
-      "status": "none",
-      "planned_ref": "Phase 2 required Product Evidence validator implementation",
-      "evidence": []
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py",
+          "kind": "auto",
+          "summary": "Tests required manifest behavior, source-truth/evidence backfill allowance, malformed manifests, orphaned views, and stale generated views."
+        }
+      ]
     }
   ]
 }

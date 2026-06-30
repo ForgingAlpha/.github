@@ -778,11 +778,11 @@ validation for active ForgingAlpha repositories.
 
 #### Automated Verification
 
-- [ ] Unit tests for policy scripts pass:
+- [x] Unit tests for policy scripts pass:
   `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests`
-- [ ] Action YAML parses:
+- [x] Action YAML parses:
   `python3 -c 'import yaml; yaml.safe_load(open("actions/ci-alphaapps-policy/action.yml"))'`
-- [ ] Local fixture repos prove:
+- [x] Local fixture repos prove:
   - approved baseline passes;
   - missing baseline plus code change fails;
   - missing baseline plus definition-only change passes;
@@ -792,50 +792,50 @@ validation for active ForgingAlpha repositories.
   - missing Product Evidence plus source-truth/evidence-backfill-only changes
     passes;
   - malformed Product Evidence fails.
-- [ ] Parent workflow lint passes with actionlint.
-- [ ] Git diff whitespace check passes: `git diff --check`
-- [ ] Full-suite phase-close gate passes:
+- [x] Parent workflow lint passes with actionlint.
+- [x] Git diff whitespace check passes: `git diff --check`
+- [x] Full-suite phase-close gate passes:
   `.github` self CI-equivalent plus the new policy action tests.
-- [ ] Push-equivalent proof passes: same as full-suite phase-close gate.
-- [ ] Customer/web suite: `n/a - control-plane CI action only`.
+- [x] Push-equivalent proof passes: same as full-suite phase-close gate.
+- [x] Customer/web suite: `n/a - control-plane CI action only`.
 
 #### Test Durability
 
-- [ ] New tests are durable contract tests for parent CI enforcement.
-- [ ] Assertions include WHAT/WHY/HOW-style failure messages.
-- [ ] No retirement tests are introduced.
+- [x] New tests are durable contract tests for parent CI enforcement.
+- [x] Assertions include WHAT/WHY/HOW-style failure messages.
+- [x] No retirement tests are introduced.
 
 #### Manual Verification
 
-- [ ] Confirm public `.github` action content contains no private repository
+- [x] Confirm public `.github` action content contains no private repository
   secrets, tokens, or non-public operational details.
-- [ ] Confirm the action does not require consuming repos to configure a
+- [x] Confirm the action does not require consuming repos to configure a
   private `alphaapps-docs` checkout token.
-- [ ] Confirm there is no normal Product Evidence opt-out path in the shared
+- [x] Confirm there is no normal Product Evidence opt-out path in the shared
   action contract.
 
 #### Plan Alignment Verification
 
-- [ ] The action remains self-contained.
-- [ ] Product Evidence is required by default for active ForgingAlpha repos.
-- [ ] The action preserves a single caller job status named `CI`.
-- [ ] No language-specific checks are weakened.
+- [x] The action remains self-contained.
+- [x] Product Evidence is required by default for active ForgingAlpha repos.
+- [x] The action preserves a single caller job status named `CI`.
+- [x] No language-specific checks are weakened.
 
 #### Agent Review Gates
 
-- [ ] `reviewer-plan-compliance`
-- [ ] `reviewer-definition-traceability`
-- [ ] `reviewer-product-development-lifecycle`
-- [ ] `reviewer-product-evidence`
-- [ ] `reviewer-reuse-patterns`
-- [ ] `reviewer-test-discipline`
-- [ ] `reviewer-error-handling` - waived unless Elixir code changes; the
+- [x] `reviewer-plan-compliance`
+- [x] `reviewer-definition-traceability`
+- [x] `reviewer-product-development-lifecycle`
+- [x] `reviewer-product-evidence`
+- [x] `reviewer-reuse-patterns`
+- [x] `reviewer-test-discipline`
+- [x] `reviewer-error-handling` - waived unless Elixir code changes; the
   current reviewer is Elixir/CQRS-specific.
-- [ ] `reviewer-code-quality`
-- [ ] `reviewer-performance-efficiency`
-- [ ] `reviewer-test-runtime-isolation`
-- [ ] `reviewer-security-general`
-- [ ] `reviewer-greenfield-scope`
+- [x] `reviewer-code-quality`
+- [x] `reviewer-performance-efficiency`
+- [x] `reviewer-test-runtime-isolation`
+- [x] `reviewer-security-general`
+- [x] `reviewer-greenfield-scope`
 
 #### Reviewer Execution Plan
 
@@ -859,6 +859,67 @@ validation for active ForgingAlpha repositories.
 
 **Implementation Note**: Commit Phase 2 after policy action tests and reviewer
 gates pass.
+
+#### Phase 2 Close Receipt
+
+- **Status**: implementation complete; do not push until lifecycle review
+  evidence is refreshed against the post-receipt commit.
+- **Implemented files**:
+  - `actions/ci-alphaapps-policy/action.yml`
+  - `actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py`
+  - `actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py`
+  - `actions/ci-alphaapps-policy/scripts/validate_product_evidence.py`
+  - `actions/ci-alphaapps-policy/tests/test_validate_product_lifecycle_baseline.py`
+  - `actions/ci-alphaapps-policy/tests/test_validate_durable_evidence_references.py`
+  - `actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py`
+  - `.github/workflows/ci.yml`
+  - `README.md`
+  - `docs/evidence/product-evidence.json`
+  - `docs/evidence/product-evidence-view.md`
+- **Contract decisions applied**: the public action is self-contained; it runs
+  bundled scripts from `$GITHUB_ACTION_PATH/scripts`; `product-lifecycle` and
+  `durable-evidence-references` can be `required` or `off`; there is no normal
+  Product Evidence opt-out input; Product Evidence is required when the action
+  runs; invalid action inputs emit WHAT/WHY/HOW diagnostics.
+- **Validator proof**: lifecycle baseline validation enforces approved
+  `docs/intent.md`, `docs/requirements.md`, and `docs/architecture.md`, allows
+  only missing-file definition/backfill work before approval, rejects malformed
+  or unsupported-status baselines, and mirrors the approved leading-comment and
+  diagnostic-redaction frontmatter behavior. Durable-reference validation scans
+  tracked source files by default and rejects plan, phase, PR, handoff, and
+  audit citations in durable comments, docstrings, tags, and assertion
+  messages. Product Evidence validation requires the manifest for ordinary
+  active-repo work, allows source-truth/evidence creation or repair, rejects
+  deletion of required evidence artifacts, validates the lean manifest schema,
+  and checks generated view freshness.
+- **Automated proof**: the Phase 2 closeout command set passed on 2026-06-30:
+  `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests` (23
+  tests), action YAML parse, `.github` contract validator, parent validator
+  tests, all three policy validators on this repo, action metadata YAML parse
+  sweep, Python bytecode compile, pinned actionlint `v1.7.12` with checksum
+  verification, markdownlint-cli2 `0.22.1` with the approved Alpha Apps config,
+  Product Evidence render `--check`, `git diff --check`, internal `@main`
+  shared-action sweep, Dependabot `/` plus `/actions/*` coverage assertion, and
+  public-disclosure sweep with local `docs/handoffs/` resume context excluded
+  from the intended commit set.
+- **Reviewer proof**: all Phase 2 reviewer gates passed after reruns:
+  `reviewer-plan-compliance`, `reviewer-definition-traceability`,
+  `reviewer-product-development-lifecycle`, `reviewer-product-evidence`,
+  `reviewer-reuse-patterns`, `reviewer-test-discipline`,
+  `reviewer-code-quality`, `reviewer-performance-efficiency`,
+  `reviewer-test-runtime-isolation`, `reviewer-security-general`, and
+  `reviewer-greenfield-scope`. `reviewer-error-handling` is waived because no
+  Elixir code changed.
+- **Reduced-independence note**: opposite-runtime Claude CLI reviewer auth
+  failed with `401 Invalid authentication credentials`; same-runtime reviewers
+  were used as reduced-independence fallback evidence.
+- **Scope note**: `docs/handoffs/2026-06-30 12-13 shared-policy-baseline.md`
+  remains local resume context and is intentionally excluded from the Phase 2
+  commit.
+- **Lifecycle audit handling**: because this receipt changes the active
+  lifecycle plan, refresh
+  `docs/audits/2026-06-30-product-lifecycle-review-shared-policy-baseline.md`
+  against the post-receipt Head SHA before push.
 
 ---
 

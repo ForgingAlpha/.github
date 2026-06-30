@@ -1,0 +1,119 @@
+# Composite action: Alpha Apps policy checks.
+#
+# Enforces repo-local Alpha Apps source-truth, durable-reference, and Product
+# Evidence policy. The action is self-contained so public consumer CI does not
+# need a private docs checkout token.
+#
+# Usage:
+#
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 10
+#       steps:
+#         - uses: actions/checkout@v7
+#           with:
+#             fetch-depth: 0
+#         - uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
+
+name: CI Alpha Apps Policy
+description: "Alpha Apps policy: source truth, durable refs, Product Evidence"
+
+inputs:
+  product-lifecycle:
+    description: "Product lifecycle baseline mode (required|off)"
+    required: false
+    default: "required"
+  durable-evidence-references:
+    description: "Durable evidence reference mode (required|off)"
+    required: false
+    default: "required"
+  base-ref:
+    description: "Base branch/ref for changed-file policy checks, or auto"
+    required: false
+    default: "auto"
+  repo-kind:
+    description: "Repository kind for auto base-ref selection (auto|code|control-plane)"
+    required: false
+    default: "auto"
+
+runs:
+  using: composite
+  steps:
+    - name: Validate Alpha Apps policy inputs
+      env:
+        PRODUCT_LIFECYCLE: ${{ inputs.product-lifecycle }}
+        DURABLE_EVIDENCE_REFERENCES: ${{ inputs.durable-evidence-references }}
+        BASE_REF: ${{ inputs.base-ref }}
+        REPO_KIND: ${{ inputs.repo-kind }}
+      run: |
+        set -euo pipefail
+
+        case "${PRODUCT_LIFECYCLE}" in
+          required|off) ;;
+          *)
+            echo "✗ Invalid product-lifecycle input '${PRODUCT_LIFECYCLE}'."
+            echo "  WHAT: product-lifecycle was '${PRODUCT_LIFECYCLE}', expected required or off."
+            echo "  WHY: ci-alphaapps-policy supports only required or off for lifecycle validation."
+            echo "  HOW: set product-lifecycle to required or off."
+            exit 1
+            ;;
+        esac
+
+        case "${DURABLE_EVIDENCE_REFERENCES}" in
+          required|off) ;;
+          *)
+            echo "✗ Invalid durable-evidence-references input '${DURABLE_EVIDENCE_REFERENCES}'."
+            echo "  WHAT: durable-evidence-references was '${DURABLE_EVIDENCE_REFERENCES}', expected required or off."
+            echo "  WHY: ci-alphaapps-policy supports only required or off for durable-reference validation."
+            echo "  HOW: set durable-evidence-references to required or off."
+            exit 1
+            ;;
+        esac
+
+        case "${REPO_KIND}" in
+          auto|code|control-plane) ;;
+          *)
+            echo "✗ Invalid repo-kind input '${REPO_KIND}'."
+            echo "  WHAT: repo-kind was '${REPO_KIND}', expected auto, code, or control-plane."
+            echo "  WHY: base-ref auto-selection supports only auto, code, or control-plane repositories."
+            echo "  HOW: set repo-kind to auto, code, or control-plane."
+            exit 1
+            ;;
+        esac
+
+        if [ -z "${BASE_REF}" ]; then
+          echo "✗ Invalid base-ref input: empty string."
+          echo "  WHAT: base-ref was empty."
+          echo "  WHY: changed-file policy checks need either auto or a concrete base ref."
+          echo "  HOW: set base-ref to auto, main, dev, or another available ref."
+          exit 1
+        fi
+      shell: bash
+
+    - name: Validate product lifecycle baseline
+      if: ${{ inputs.product-lifecycle == 'required' }}
+      env:
+        ALPHAAPPS_POLICY_BASE_REF: ${{ inputs.base-ref }}
+        ALPHAAPPS_POLICY_REPO_KIND: ${{ inputs.repo-kind }}
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_ACTION_PATH/scripts/validate_product_lifecycle_baseline.py"
+      shell: bash
+
+    - name: Validate durable evidence references
+      if: ${{ inputs.durable-evidence-references == 'required' }}
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_ACTION_PATH/scripts/validate_durable_evidence_references.py"
+      shell: bash
+
+    - name: Validate Product Evidence
+      env:
+        ALPHAAPPS_POLICY_BASE_REF: ${{ inputs.base-ref }}
+        ALPHAAPPS_POLICY_REPO_KIND: ${{ inputs.repo-kind }}
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_ACTION_PATH/scripts/validate_product_evidence.py"
+      shell: bash

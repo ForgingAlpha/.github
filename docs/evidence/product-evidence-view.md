@@ -10,29 +10,7 @@ No promises in this status.
 
 ## None
 
-### REQ-009 - Do not require private alphaapps-docs checkout in consumer CI
-
-- Source: `docs/requirements.md#REQ-009`
-- Type: `security/safety`
-- Status: `none`
-- Planned context: `Phase 2 ci-alphaapps-policy implementation and public action review`
-- Evidence: none
-
-### REQ-018 - Require approved baseline source truth for policy-checked repos
-
-- Source: `docs/requirements.md#REQ-018`
-- Type: `technical/architecture`
-- Status: `none`
-- Planned context: `Phase 2 baseline lifecycle validator implementation`
-- Evidence: none
-
-### REQ-020 - Require Product Evidence for active policy-checked repos
-
-- Source: `docs/requirements.md#REQ-020`
-- Type: `technical/architecture`
-- Status: `none`
-- Planned context: `Phase 2 required Product Evidence validator implementation`
-- Evidence: none
+No promises in this status.
 
 ## Manual-only
 
@@ -62,6 +40,14 @@ No promises in this status.
 
 ## Covered
 
+### REQ-009 - Do not require private alphaapps-docs checkout in consumer CI
+
+- Source: `docs/requirements.md#REQ-009`
+- Type: `security/safety`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py` - Tests that ci-alphaapps-policy has no private docs checkout dependency and no Product Evidence opt-out input.
+
 ### REQ-015 - Self-validate workflow and action contracts before release
 
 - Source: `docs/requirements.md#REQ-015`
@@ -69,3 +55,19 @@ No promises in this status.
 - Status: `covered`
 - Evidence:
   - `auto` `path:tests/test_validate_github_actions.py` - Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery.
+
+### REQ-018 - Require approved baseline source truth for policy-checked repos
+
+- Source: `docs/requirements.md#REQ-018`
+- Type: `technical/architecture`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:actions/ci-alphaapps-policy/tests/test_validate_product_lifecycle_baseline.py` - Tests approved, missing, definition-only, and provisional baseline source-truth behavior for policy-checked repositories.
+
+### REQ-020 - Require Product Evidence for active policy-checked repos
+
+- Source: `docs/requirements.md#REQ-020`
+- Type: `technical/architecture`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py` - Tests required manifest behavior, source-truth/evidence backfill allowance, malformed manifests, orphaned views, and stale generated views.
