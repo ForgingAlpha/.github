@@ -1680,30 +1680,30 @@ safety contract only; repo-specific failure details stay in private evidence.
 
 #### Automated Verification
 
-- [ ] Probe workflow/template YAML parses.
-- [ ] Probe input validator tests pass:
+- [x] Probe workflow/template YAML parses.
+- [x] Probe input validator tests pass:
   `python3 -m unittest discover -s actions/ci-remote-probe-guard/tests` if a
   helper action is added.
-- [ ] Fixture tests prove invalid mode, lane, file path, line, label, and
+- [x] Fixture tests prove invalid mode, lane, file path, line, label, and
   command-like inputs fail before command construction.
-- [ ] Fixture tests prove valid exact/file/lane inputs produce expected command
+- [x] Fixture tests prove valid exact/file/lane inputs produce expected command
   output fields for the consumer workflow to assemble into arrays.
-- [ ] Fixture tests prove the guard action does not accept or emit arbitrary
+- [x] Fixture tests prove the guard action does not accept or emit arbitrary
   shell commands.
-- [ ] Parent actionlint passes.
-- [ ] Parent Markdown lint passes.
-- [ ] Git diff whitespace check passes: `git diff --check`
-- [ ] Full-suite phase-close gate passes:
+- [x] Parent actionlint passes.
+- [x] Parent Markdown lint passes.
+- [x] Git diff whitespace check passes: `git diff --check`
+- [x] Full-suite phase-close gate passes:
   `.github` self CI-equivalent plus new probe helper tests.
-- [ ] Push-equivalent proof passes: same as full-suite phase-close gate.
-- [ ] Customer/web suite: `n/a - control-plane CI template/action only`.
+- [x] Push-equivalent proof passes: same as full-suite phase-close gate.
+- [x] Customer/web suite: `n/a - control-plane CI template/action only`.
 
 #### Test Durability
 
-- [ ] Probe tests encode the security contract, not consumer-specific current
+- [x] Probe tests encode the security contract, not consumer-specific current
   failures.
-- [ ] Assertions include clear failure messages.
-- [ ] No retirement tests are introduced.
+- [x] Assertions include clear failure messages.
+- [x] No retirement tests are introduced.
 
 #### Manual Verification
 
@@ -1715,31 +1715,31 @@ safety contract only; repo-specific failure details stay in private evidence.
 
 #### Plan Alignment Verification
 
-- [ ] Required CI remains the merge gate.
-- [ ] `.github` owns the shared safety contract, not repo-specific runtime
+- [x] Required CI remains the merge gate.
+- [x] `.github` owns the shared safety contract, not repo-specific runtime
   commands.
-- [ ] Probe implementation uses constrained typed inputs only.
-- [ ] Probe implementation uses read-only permissions.
-- [ ] Probe implementation has explicit `timeout-minutes`, `concurrency`, and
+- [x] Probe implementation uses constrained typed inputs only.
+- [x] Probe implementation uses read-only permissions.
+- [x] Probe implementation has explicit `timeout-minutes`, `concurrency`, and
   human-readable `run-name`.
-- [ ] Probe output is captured as diagnostic artifact evidence.
-- [ ] Probe output artifacts use intentionally short retention.
-- [ ] No consumer repo receives arbitrary remote shell execution capability.
+- [x] Probe output is captured as diagnostic artifact evidence.
+- [x] Probe output artifacts use intentionally short retention.
+- [x] No consumer repo receives arbitrary remote shell execution capability.
 
 #### Agent Review Gates
 
-- [ ] `reviewer-plan-compliance`
-- [ ] `reviewer-definition-traceability`
-- [ ] `reviewer-reuse-patterns`
-- [ ] `reviewer-test-discipline`
-- [ ] `reviewer-error-handling` - waived unless Elixir code changes; the
+- [x] `reviewer-plan-compliance`
+- [x] `reviewer-definition-traceability`
+- [x] `reviewer-reuse-patterns`
+- [x] `reviewer-test-discipline`
+- [x] `reviewer-error-handling` - waived unless Elixir code changes; the
   current reviewer is Elixir/CQRS-specific.
-- [ ] `reviewer-code-quality`
-- [ ] `reviewer-performance-efficiency`
-- [ ] `reviewer-test-runtime-isolation`
-- [ ] `reviewer-security-general`
-- [ ] `reviewer-knowledgebase-integrity`
-- [ ] `reviewer-greenfield-scope`
+- [x] `reviewer-code-quality`
+- [x] `reviewer-performance-efficiency`
+- [x] `reviewer-test-runtime-isolation`
+- [x] `reviewer-security-general`
+- [x] `reviewer-knowledgebase-integrity`
+- [x] `reviewer-greenfield-scope`
 
 #### Reviewer Execution Plan
 
@@ -1761,6 +1761,102 @@ safety contract only; repo-specific failure details stay in private evidence.
 **Implementation Note**: Commit Phase 6 only after the diagnostic contract is
 documented and any reusable helper/template tests pass. Do not wire the probe
 as a required check.
+
+### Phase Close Receipt
+
+- **Phase**: Phase 6 - Add Remote Diagnostic Probe Standard.
+- **Commit**: pending.
+- **Definition Sources Loaded**: `docs/intent.md`, `docs/requirements.md`,
+  `docs/architecture.md`, Product Evidence manifest/view, Phase 6 context
+  packet, and the private consumer-probe context waiver summarized in this
+  public plan.
+- **Phase Context Packet Loaded**: Phase 6 context packet and reviewer
+  execution plan.
+- **Automated Verification**: final Phase 6 proof passed on 2026-06-30:
+  `python3 -m unittest discover -s tests` (17 tests),
+  `python3 -m unittest discover -s actions/ci-github-actions/tests` (9),
+  `python3 -m unittest discover -s actions/ci-markdown/tests` (10),
+  `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests` (23),
+  `python3 -m unittest discover -s actions/ci-dependency-review/tests` (4),
+  `python3 -m unittest discover -s actions/ci-dependabot-coverage/tests` (9),
+  `python3 -m unittest discover -s actions/ci-remote-probe-guard/tests` (5),
+  `python3 scripts/validate-github-actions.py`,
+  `python3 actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py`,
+  `python3 actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py`,
+  `python3 actions/ci-alphaapps-policy/scripts/validate_product_evidence.py`,
+  `python3 actions/ci-dependabot-coverage/scripts/check_dependabot_coverage.py`,
+  README/docs Markdown lint with pinned `markdownlint-cli2@0.22.1`, pinned
+  actionlint `v1.7.12` with checksum verification for `.github/workflows/*.yml`
+  and `workflow-templates/ci-probe.yml`, ShellCheck `style` plus `bash -n` for
+  tracked shell scripts, action/template YAML parse checks, Product Evidence
+  JSON parse check, public/private disclosure grep for changed public
+  surfaces, and `git diff --check && git diff --cached --check`.
+- **Full-Suite / Push-Equivalent Proof**: the full-suite command set above is
+  the push-equivalent proof for this control-plane CI action repo; customer/web
+  suite is not applicable.
+- **Reviewer Gates**: passed after fixes and reruns:
+  `reviewer-plan-compliance`, `reviewer-definition-traceability`,
+  `reviewer-product-evidence` (additional evidence-relevant gate),
+  `reviewer-reuse-patterns`, `reviewer-test-discipline`,
+  `reviewer-code-quality`, `reviewer-performance-efficiency`,
+  `reviewer-test-runtime-isolation`, `reviewer-security-general`,
+  `reviewer-knowledgebase-integrity`, and `reviewer-greenfield-scope`.
+  `reviewer-error-handling` is waived because no Elixir code changed.
+- **Reviewer Findings Fixed And Rerun**: definition traceability and plan
+  compliance required `checkout_ref` validation before checkout and durable test
+  rationale that cites requirements instead of the phase; test discipline
+  required exact `workflow_dispatch` trigger coverage and shell-array/case-branch
+  assertions; performance required shallow target checkout by default; code
+  quality required rejecting absolute-looking and dot-segment file roots/paths
+  and actionable WHAT/WHY/HOW output for the unexpected validated mode branch;
+  knowledgebase integrity required README wording to distinguish dispatch
+  `run-name` context from normalized summary values and to name file selector
+  bounds as consumer-adaptable.
+- **Reduced-Independence Fallbacks**: opposite-runtime reviewer transport was
+  unavailable earlier in this session, so Phase 6 reviewer gates used
+  same-runtime reduced-independence fallback reviews. The public plan records
+  only the reduced-independence fact, not exact transport failure details.
+- **Manual Verification**: still awaiting operator confirmation for required
+  check status configuration, pilot consumer runtime parity, and default-branch
+  landing before `gh workflow run`; manual checkboxes remain unchecked.
+- **Plan Checkboxes Updated**: automated verification, test durability, plan
+  alignment, and all Phase 6 reviewer gates are checked. Manual verification
+  remains unchecked.
+- **Upstream Amendments / Backfills**: no intent, requirements, architecture,
+  glossary, design, story, or ADR changes were made. Product Evidence was
+  updated downstream for REQ-011, REQ-012, REQ-014, and REQ-015 to cover the
+  diagnostic probe guard/template contract.
+
+#### Deviations From Plan And Definition Sources
+
+- **Planned**: provide a workflow template or helper action for manual remote
+  diagnostic probes.
+- **Implemented**: provided both
+  `workflow-templates/ci-probe.yml` and
+  `actions/ci-remote-probe-guard`, with guard validation running before target
+  checkout and the template using repo-owned shell-array `case` branches.
+- **Difference**: using both surfaces makes the safety contract executable while
+  keeping consumer runtime commands in consuming repos.
+- **Evidence Used**: REQ-011, REQ-012, `docs/architecture.md` Diagnostic
+  Workflow Model, guard tests, actionlint, security review, plan compliance
+  review, test discipline review, and knowledgebase integrity review.
+- **Classification**: allowed implementation choice.
+- **Resolution**: README, Product Evidence, tests, and template now describe and
+  verify the two-ref diagnostic probe model without adding merge authority.
+
+- **Planned**: validate probe mode, lane, file, line, and output label before
+  checkout-dependent execution.
+- **Implemented**: additionally validates `checkout_ref`, `file_root`, and
+  allowed file suffixes before checkout-dependent execution.
+- **Difference**: the broader guard covers the requirement fit statement for
+  invalid refs and the public template's configurable selector bounds.
+- **Evidence Used**: REQ-012, reviewer-definition-traceability,
+  reviewer-security-general, reviewer-code-quality, and guard invalid-input
+  fixtures.
+- **Classification**: allowed implementation choice.
+- **Resolution**: invalid refs, absolute-looking roots, dot segments,
+  command-like inputs, path traversal, invalid modes, lanes, files, lines, and
+  labels fail before checkout or command construction.
 
 ---
 

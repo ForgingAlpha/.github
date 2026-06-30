@@ -16,6 +16,7 @@ pick up the change on their next CI run.
 | [`ci-github-actions`](actions/ci-github-actions/action.yml) | GitHub Actions | pinned actionlint, workflow permissions, trigger, action ref, and composite metadata safety |
 | [`ci-dependabot-coverage`](actions/ci-dependabot-coverage/action.yml) | Dependabot | detected dependency-surface coverage in `.github/dependabot.yml` |
 | [`ci-dependency-review`](actions/ci-dependency-review/action.yml) | Dependencies | PR dependency vulnerability and license review |
+| [`ci-remote-probe-guard`](actions/ci-remote-probe-guard/action.yml) | Diagnostics | constrained remote probe input validation before repo-owned command assembly |
 | [`ci-rust`](actions/ci-rust/action.yml) | Rust | `cargo fmt --all`, `cargo clippy -D warnings`, dead-code check, `cargo test`, `cargo audit` |
 | [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, optional repo strict checks, `mix credo --strict`, optional pre-test setup, test command |
 | [`ci-astro`](actions/ci-astro/action.yml) | Astro | `prettier`, `eslint`, `astro check`, `npm run build` |
@@ -284,6 +285,49 @@ non-fast-forward updates stay blocked.
 ### Why composite actions (not reusable workflows)
 
 Reusable workflows produce a compound status check name (`CI / CI`) that doesn't match the required `CI` status check used in the org rulesets. Composite actions run inside the caller's job, so the check name stays `CI`. The architecture source is [docs/architecture.md](docs/architecture.md).
+
+## Manual Remote Diagnostic Probes
+
+Remote diagnostic probes are manual evidence collectors for failures that only
+reproduce on GitHub runners or in required CI runtime. They are not merge
+authority and must not be configured as required status checks. Required `CI`
+remains the merge gate.
+
+Consumer repos may copy [`workflow-templates/ci-probe.yml`](workflow-templates/ci-probe.yml)
+and adapt only the repo-owned runner, services, environment, lane allowlist,
+file selector bounds, and case-branch command arrays. The shared
+[`ci-remote-probe-guard`](actions/ci-remote-probe-guard/action.yml) action
+validates selector inputs before any repo-owned command is assembled.
+
+Probe workflows follow this contract:
+
+- `workflow_dispatch` only; no `push`, `pull_request`, or
+  `pull_request_target` trigger.
+- The workflow status is diagnostic-only and non-required.
+- `permissions: contents: read` unless the consumer repo has a reviewed,
+  documented diagnostic need for more.
+- `run-name` includes the selected dispatch mode, lane, and target checkout ref.
+- `timeout-minutes` is bounded and shorter than broad CI while still long
+  enough for the selected diagnostic lane.
+- `concurrency` is explicit so duplicate probes are visible and controlled.
+- Operators run the trusted workflow definition with
+  `gh workflow run --ref <trusted-default-branch>`, while target code is
+  validated and checked out from the separate `checkout_ref` input.
+- Inputs are constrained selectors: `probe_mode` (`exact`, `file`, `lane`),
+  allowlisted `lane`, bounded repo-relative `file`, positive `line` for
+  `exact`, safe `checkout_ref`, and safe `out_label`.
+- The workflow accepts no arbitrary shell command input. Consumer workflows
+  assemble commands with shell arrays and repo-owned `case` branches.
+- Probe output artifacts upload with `if: always()` and short retention.
+- `GITHUB_STEP_SUMMARY` records the exact normalized selector inputs and the
+  artifact path.
+
+Before operators run a probe, the concrete `.github/workflows/ci-probe.yml`
+must already be landed on the trusted default or development branch that owns
+the workflow definition. The probe job should use the same runner and runtime
+setup as the required CI lane it is diagnosing. Repo-specific lane names, target
+test paths, line numbers, invocation examples, and failure evidence belong in
+the consuming repo or private evidence, not this public parent repo.
 
 ## Branch Protection (Org-Wide Rulesets)
 

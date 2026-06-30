@@ -73,3 +73,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s actions/ci-dependabot-coverage/tests
+
+      - name: Test Remote Probe Guard action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-remote-probe-guard/tests

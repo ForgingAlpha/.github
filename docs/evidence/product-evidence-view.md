@@ -61,6 +61,24 @@ No promises in this status.
 - Evidence:
   - `auto` `path:actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py` - Tests that ci-alphaapps-policy has no private docs checkout dependency and no Product Evidence opt-out input.
 
+### REQ-011 - Keep diagnostic workflows out of merge authority
+
+- Source: `docs/requirements.md#REQ-011`
+- Type: `integration/contract`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests the probe template is workflow_dispatch-only, read-only, bounded by timeout/concurrency, and writes diagnostic summary/artifact evidence.
+  - `manual` `path:README.md` - Documents that manual remote diagnostic probes are non-required evidence collectors and that required CI remains merge authority.
+
+### REQ-012 - Constrain diagnostic execution inputs
+
+- Source: `docs/requirements.md#REQ-012`
+- Type: `security/safety`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests valid exact/file/lane selectors, rejects invalid mode/lane/path/ref/line/label and command-like input, and proves the guard emits selectors instead of shell commands.
+  - `manual` `path:actions/ci-remote-probe-guard/action.yml` - Defines the shared guard action inputs and selector outputs, including normalized checkout refs, without command-like inputs or outputs.
+
 ### REQ-014 - Emit actionable failure output
 
 - Source: `docs/requirements.md#REQ-014`
@@ -70,6 +88,7 @@ No promises in this status.
   - `auto` `path:actions/ci-markdown/tests/test_ci_markdown.py` - Tests that missing changed-mode base refs fail with remediation guidance in the diagnostic output.
   - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests that empty allowlist reasons fail and identify the exact exception entry to repair.
   - `auto` `path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py` - Tests that missing Dependabot coverage and malformed unmanaged-surface comments emit actionable findings.
+  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests that invalid remote probe selectors return WHAT/WHY/HOW diagnostics before command construction.
 
 ### REQ-015 - Self-validate workflow and action contracts before release
 
@@ -80,6 +99,7 @@ No promises in this status.
   - `auto` `path:tests/test_validate_github_actions.py` - Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery.
   - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy.
   - `auto` `path:tests/test_shared_ci_contract.py` - Tests parent self-CI dogfood wiring and parseable public workflow examples before release.
+  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests remote probe action metadata and the public probe workflow template parse and preserve the manual diagnostic contract before release.
 
 ### REQ-016 - Define a Dependabot coverage standard
 

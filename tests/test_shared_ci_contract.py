@@ -261,6 +261,7 @@ class SharedCiContractTest(unittest.TestCase):
         workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
         steps = workflow["jobs"]["CI"]["steps"]
         uses = [step.get("uses") for step in steps if isinstance(step, dict) and step.get("uses")]
+        run_blocks = "\n".join(step.get("run", "") for step in steps if isinstance(step, dict))
 
         for expected in (
             "./actions/ci-merge-flow",
@@ -277,6 +278,13 @@ class SharedCiContractTest(unittest.TestCase):
                 "WHY: this repo should validate the in-branch shared actions before release tags move. "
                 f"HOW: add a local uses step for {expected} in .github/workflows/ci.yml.",
             )
+        self.assertIn(
+            "python3 -m unittest discover -s actions/ci-remote-probe-guard/tests",
+            run_blocks,
+            "Parent CI must run the remote probe guard test suite. "
+            "WHY: REQ-015 requires shared action contracts to self-validate before release tags move. "
+            "HOW: keep the Test Remote Probe Guard action step in .github/workflows/ci.yml.",
+        )
 
     def test_readme_yaml_workflow_examples_parse(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
