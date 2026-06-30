@@ -1001,56 +1001,56 @@ duplicating divergent policy.
 
 #### Automated Verification
 
-- [ ] Markdown action tests pass:
+- [x] Markdown action tests pass:
   `python3 -m unittest discover -s actions/ci-markdown/tests`
-- [ ] GitHub Actions safety tests pass:
+- [x] GitHub Actions safety tests pass:
   `python3 -m unittest discover -s actions/ci-github-actions/tests`
-- [ ] Parent Markdown lint passes:
+- [x] Parent Markdown lint passes:
   `npx --yes markdownlint-cli2@0.22.1 --config .markdownlint-cli2.yaml README.md docs/**/*.md`
-- [ ] Parent actionlint passes through the new action.
-- [ ] Existing parent YAML validation still passes.
-- [ ] Fixture tests prove composite `action.yml` `uses:` references are scanned,
+- [x] Parent actionlint passes through the new action.
+- [x] Existing parent YAML validation still passes.
+- [x] Fixture tests prove composite `action.yml` `uses:` references are scanned,
   not only workflow files.
-- [ ] Fixture tests prove allowlist entries require a reason.
-- [ ] Git diff whitespace check passes: `git diff --check`
-- [ ] Full-suite phase-close gate passes:
+- [x] Fixture tests prove allowlist entries require a reason.
+- [x] Git diff whitespace check passes: `git diff --check`
+- [x] Full-suite phase-close gate passes:
   `.github` self CI-equivalent plus new action tests.
-- [ ] Push-equivalent proof passes: same as full-suite phase-close gate.
-- [ ] Customer/web suite: `n/a - control-plane CI action only`.
+- [x] Push-equivalent proof passes: same as full-suite phase-close gate.
+- [x] Customer/web suite: `n/a - control-plane CI action only`.
 
 #### Test Durability
 
-- [ ] New tests are durable contract tests for Markdown and workflow safety
+- [x] New tests are durable contract tests for Markdown and workflow safety
   enforcement.
-- [ ] Assertions include clear failure messages.
-- [ ] No retirement tests are introduced.
+- [x] Assertions include clear failure messages.
+- [x] No retirement tests are introduced.
 
 #### Manual Verification
 
-- [ ] Review allowlists for `pull_request_target`, unpinned refs, and
+- [x] Review allowlists for `pull_request_target`, unpinned refs, and
   permissions exceptions; every exception must have a reason.
-- [ ] Confirm Markdown config does not encode alphaapps-docs-only vault rules
+- [x] Confirm Markdown config does not encode alphaapps-docs-only vault rules
   that would be inappropriate for code repos.
 
 #### Plan Alignment Verification
 
-- [ ] Markdown action is not hidden inside one language action.
-- [ ] GitHub Actions safety action is reusable by all repos.
-- [ ] No broad workflow permissions are introduced.
+- [x] Markdown action is not hidden inside one language action.
+- [x] GitHub Actions safety action is reusable by all repos.
+- [x] No broad workflow permissions are introduced.
 
 #### Agent Review Gates
 
-- [ ] `reviewer-plan-compliance`
-- [ ] `reviewer-definition-traceability`
-- [ ] `reviewer-reuse-patterns`
-- [ ] `reviewer-test-discipline`
-- [ ] `reviewer-error-handling` - waived unless Elixir code changes; the
+- [x] `reviewer-plan-compliance`
+- [x] `reviewer-definition-traceability`
+- [x] `reviewer-reuse-patterns`
+- [x] `reviewer-test-discipline`
+- [x] `reviewer-error-handling` - waived unless Elixir code changes; the
   current reviewer is Elixir/CQRS-specific.
-- [ ] `reviewer-code-quality`
-- [ ] `reviewer-performance-efficiency`
-- [ ] `reviewer-test-runtime-isolation`
-- [ ] `reviewer-security-general`
-- [ ] `reviewer-greenfield-scope`
+- [x] `reviewer-code-quality`
+- [x] `reviewer-performance-efficiency`
+- [x] `reviewer-test-runtime-isolation`
+- [x] `reviewer-security-general`
+- [x] `reviewer-greenfield-scope`
 
 #### Reviewer Execution Plan
 
@@ -1071,6 +1071,65 @@ duplicating divergent policy.
 
 **Implementation Note**: Commit Phase 3 after deterministic checks and reviewer
 gates pass.
+
+#### Phase 3 Close Receipt
+
+- **Status**: implementation complete; do not push until lifecycle review
+  evidence is refreshed against the post-receipt commit.
+- **Implemented files**:
+  - `.markdownlint-cli2.yaml`
+  - `actions/ci-markdown/action.yml`
+  - `actions/ci-markdown/scripts/changed_markdown.sh`
+  - `actions/ci-markdown/tests/test_ci_markdown.py`
+  - `actions/ci-github-actions/action.yml`
+  - `actions/ci-github-actions/scripts/check_workflows.py`
+  - `actions/ci-github-actions/tests/test_check_workflows.py`
+  - `.github/workflows/ci.yml`
+  - `scripts/validate-github-actions.py`
+  - `README.md`
+  - `docs/evidence/product-evidence.json`
+  - `docs/evidence/product-evidence-view.md`
+- **Contract decisions applied**: `ci-markdown` runs pinned
+  `markdownlint-cli2@0.22.1`, defaults to `mode: changed`, supports `mode:
+  all`, requires an explicit Markdown config, uses the existing pinned
+  `actions/setup-node` pattern, and enumerates tracked Markdown files instead
+  of filesystem globs. `ci-github-actions` runs pinned actionlint `v1.7.12`
+  with checksum verification and reuses the Phase 1 validator contract through
+  `actions/ci-github-actions/scripts/check_workflows.py`; the parent
+  `scripts/validate-github-actions.py` remains as a compatibility wrapper.
+- **Manual proof**: the allowlist review found no active
+  `pull_request_target`, unpinned-ref, or broad-permission exceptions in this
+  change. The parent `.markdownlint-cli2.yaml` is repo-generic and explicit;
+  it does not import alphaapps-docs-only Obsidian/vault defaults.
+- **Automated proof**: the Phase 3 closeout command set passed on 2026-06-30:
+  `python3 scripts/validate-github-actions.py`, `python3 -m unittest discover
+  -s tests` (11 tests), `python3 -m unittest discover -s
+  actions/ci-alphaapps-policy/tests` (23 tests), `python3 -m unittest discover
+  -s actions/ci-markdown/tests` (10 tests), `python3 -m unittest discover -s
+  actions/ci-github-actions/tests` (9 tests), all three Alpha Apps policy
+  validators, parent Markdown lint with `markdownlint-cli2@0.22.1`, action
+  metadata YAML parse sweep, Python bytecode compile, pinned actionlint
+  `v1.7.12` with checksum verification, Product Evidence render `--check`,
+  `git diff --check`, internal `@main` shared-action sweep, and public
+  disclosure sweep with local `docs/handoffs/` resume context excluded from the
+  intended commit set.
+- **Reviewer proof**: Phase 3 reviewers passed after reruns:
+  `reviewer-definition-traceability`, `reviewer-reuse-patterns`,
+  `reviewer-test-discipline`, `reviewer-code-quality`,
+  `reviewer-performance-efficiency`, `reviewer-test-runtime-isolation`,
+  `reviewer-security-general`, `reviewer-greenfield-scope`, and
+  `reviewer-plan-compliance`.
+  `reviewer-error-handling` is waived because no Elixir code changed.
+- **Reduced-independence note**: opposite-runtime Claude CLI reviewer auth
+  failed earlier in this plan with `401 Invalid authentication credentials`;
+  same-runtime reviewers were used as reduced-independence fallback evidence.
+- **Scope note**: `docs/handoffs/2026-06-30 12-13 shared-policy-baseline.md`
+  remains local resume context and is intentionally excluded from the Phase 3
+  commit.
+- **Lifecycle audit handling**: because this receipt changes the active
+  lifecycle plan, refresh
+  `docs/audits/2026-06-30-product-lifecycle-review-shared-policy-baseline.md`
+  against the post-receipt Head SHA before push.
 
 ---
 

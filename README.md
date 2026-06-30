@@ -12,6 +12,8 @@ pick up the change on their next CI run.
 | Action | Ecosystem | What it checks |
 | --- | --- | --- |
 | [`ci-alphaapps-policy`](actions/ci-alphaapps-policy/action.yml) | Alpha Apps | approved source truth, durable evidence references, required Product Evidence |
+| [`ci-markdown`](actions/ci-markdown/action.yml) | Markdown | pinned `markdownlint-cli2`, all-file or changed-file docs linting |
+| [`ci-github-actions`](actions/ci-github-actions/action.yml) | GitHub Actions | pinned actionlint, workflow permissions, trigger, action ref, and composite metadata safety |
 | [`ci-rust`](actions/ci-rust/action.yml) | Rust | `cargo fmt --all`, `cargo clippy -D warnings`, dead-code check, `cargo test`, `cargo audit` |
 | [`ci-elixir`](actions/ci-elixir/action.yml) | Elixir | `mix format`, `mix compile --warnings-as-errors`, optional repo strict checks, `mix credo --strict`, optional pre-test setup, test command |
 | [`ci-astro`](actions/ci-astro/action.yml) | Astro | `prettier`, `eslint`, `astro check`, `npm run build` |
@@ -40,6 +42,7 @@ required status check.
 3. Keep the repo on `main` only. Do not add the fast-forward promotion caller.
 
 **Rust:**
+
 ```yaml
 name: CI
 on:
@@ -60,6 +63,7 @@ jobs:
 ```
 
 **Elixir** (requires Postgres service in the caller — composite actions cannot define services):
+
 ```yaml
 name: CI
 on:
@@ -120,7 +124,33 @@ commands instead of forking CI logic:
 lint or audit readiness must be fixed in the consuming repo rather than skipped
 in CI.
 
-**Astro / TypeScript / Shell:** Same pattern — swap the action reference. See each action's `action.yml` header for the usage example and supported inputs.
+**Markdown:** clean repos should run all-file linting with a checked-in
+`.markdownlint-cli2.yaml`:
+
+```yaml
+      - uses: ForgingAlpha/.github/actions/ci-markdown@v1
+        with:
+          mode: all
+```
+
+Legacy repos may start with `mode: changed` and a documented `ignore` list
+while existing docs are cleaned up. The action fails if the configured
+Markdown lint config is missing.
+
+**GitHub Actions safety:** repos with workflows or composite actions should run
+the reusable safety gate:
+
+```yaml
+      - uses: ForgingAlpha/.github/actions/ci-github-actions@v1
+```
+
+Reviewed exceptions for `pull_request_target`, broad root permissions, or
+unpinned third-party action refs live in
+`.github/alphaapps-github-actions-allowlist.yml`; every exception entry must
+carry a non-empty reason.
+
+**Astro / TypeScript / Shell:** Same pattern — swap the action reference. See
+each action's `action.yml` header for the usage example and supported inputs.
 
 ### Modify CI for all repos of a language
 
@@ -177,6 +207,7 @@ Three rulesets enforce rules across all repos in the org:
 `dev` is intentionally excluded from `code-release-branches` so agents can push directly. The `branch-safety` ruleset still protects `dev` from deletion and force-push. `.github` and `alphaapps-docs` are infrastructure/control-plane repos and therefore use `feature → main` PRs under `control-plane-main`, not `dev → main` release promotion.
 
 Bypass:
+
 - `branch-safety`: none
 - `code-release-branches`: Organization Admin + `forgingalpha-release` GitHub App
 - `control-plane-main`: Organization Admin only

@@ -16,6 +16,25 @@
       ]
     },
     {
+      "id": "REQ-003",
+      "source_ref": "docs/requirements.md#REQ-003",
+      "title": "Run strict reproducible shared checks",
+      "type": "operational/quality",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-markdown/tests/test_ci_markdown.py",
+          "kind": "auto",
+          "summary": "Tests the pinned Markdown lint version, changed-file helper behavior, ignore-prefix handling, and missing-base diagnostics."
+        },
+        {
+          "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
+          "kind": "auto",
+          "summary": "Tests reusable GitHub Actions safety policy for composite action refs, allowlist reasons, privileged triggers, root permissions, and data-driven first-party pinning."
+        }
+      ]
+    },
+    {
       "id": "REQ-007",
       "source_ref": "docs/requirements.md#REQ-007",
       "title": "Roll shared automation out through released tags",
@@ -58,6 +77,25 @@
       ]
     },
     {
+      "id": "REQ-014",
+      "source_ref": "docs/requirements.md#REQ-014",
+      "title": "Emit actionable failure output",
+      "type": "operational/quality",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-markdown/tests/test_ci_markdown.py",
+          "kind": "auto",
+          "summary": "Tests that missing changed-mode base refs fail with remediation guidance in the diagnostic output."
+        },
+        {
+          "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
+          "kind": "auto",
+          "summary": "Tests that empty allowlist reasons fail and identify the exact exception entry to repair."
+        }
+      ]
+    },
+    {
       "id": "REQ-015",
       "source_ref": "docs/requirements.md#REQ-015",
       "title": "Self-validate workflow and action contracts before release",
@@ -68,6 +106,11 @@
           "ref": "path:tests/test_validate_github_actions.py",
           "kind": "auto",
           "summary": "Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery."
+        },
+        {
+          "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
+          "kind": "auto",
+          "summary": "Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy."
         }
       ]
     },

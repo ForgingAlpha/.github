@@ -40,6 +40,15 @@ No promises in this status.
 
 ## Covered
 
+### REQ-003 - Run strict reproducible shared checks
+
+- Source: `docs/requirements.md#REQ-003`
+- Type: `operational/quality`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:actions/ci-markdown/tests/test_ci_markdown.py` - Tests the pinned Markdown lint version, changed-file helper behavior, ignore-prefix handling, and missing-base diagnostics.
+  - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests reusable GitHub Actions safety policy for composite action refs, allowlist reasons, privileged triggers, root permissions, and data-driven first-party pinning.
+
 ### REQ-009 - Do not require private alphaapps-docs checkout in consumer CI
 
 - Source: `docs/requirements.md#REQ-009`
@@ -48,6 +57,15 @@ No promises in this status.
 - Evidence:
   - `auto` `path:actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py` - Tests that ci-alphaapps-policy has no private docs checkout dependency and no Product Evidence opt-out input.
 
+### REQ-014 - Emit actionable failure output
+
+- Source: `docs/requirements.md#REQ-014`
+- Type: `operational/quality`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:actions/ci-markdown/tests/test_ci_markdown.py` - Tests that missing changed-mode base refs fail with remediation guidance in the diagnostic output.
+  - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests that empty allowlist reasons fail and identify the exact exception entry to repair.
+
 ### REQ-015 - Self-validate workflow and action contracts before release
 
 - Source: `docs/requirements.md#REQ-015`
@@ -55,6 +73,7 @@ No promises in this status.
 - Status: `covered`
 - Evidence:
   - `auto` `path:tests/test_validate_github_actions.py` - Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery.
+  - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy.
 
 ### REQ-018 - Require approved baseline source truth for policy-checked repos
 

@@ -23,65 +23,30 @@ jobs:
       - name: Enforce merge flow (self)
         uses: ./actions/ci-merge-flow
 
-      - name: Validate GitHub Actions contract
-        run: |
-          set -euo pipefail
-          python3 scripts/validate-github-actions.py
+      - name: Validate GitHub Actions safety
+        uses: ./actions/ci-github-actions
+
+      - name: Validate Markdown
+        uses: ./actions/ci-markdown
+        with:
+          mode: all
 
       - name: Test GitHub Actions contract validator
         run: |
           set -euo pipefail
           python3 -m unittest discover -s tests
 
+      - name: Test GitHub Actions safety action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-github-actions/tests
+
+      - name: Test Markdown action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-markdown/tests
+
       - name: Test Alpha Apps policy action
         run: |
           set -euo pipefail
           python3 -m unittest discover -s actions/ci-alphaapps-policy/tests
-
-      # actionlint: static analysis for GitHub Actions YAML (workflows +
-      # composite actions). Catches shell-injection vectors, bad expressions,
-      # and workflow schema drift.
-      - name: Install actionlint
-        id: get_actionlint
-        shell: bash
-        env:
-          ACTIONLINT_VERSION: "1.7.12"
-          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
-        run: |
-          set -euo pipefail
-          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
-          target_dir="${RUNNER_TEMP:-/tmp}/actionlint-${ACTIONLINT_VERSION}"
-          mkdir -p "${target_dir}"
-
-          if ! curl -fsSLo "${target_dir}/${archive}" "${url}"; then
-            echo "✗ Failed to download actionlint ${ACTIONLINT_VERSION}"
-            echo "  WHY: self CI requires a pinned actionlint release for workflow validation."
-            echo "  HOW: verify ${url} exists or update ACTIONLINT_VERSION to a released tag."
-            exit 1
-          fi
-
-          if ! echo "${ACTIONLINT_SHA256}  ${target_dir}/${archive}" | sha256sum -c -; then
-            echo "✗ actionlint ${ACTIONLINT_VERSION} archive checksum mismatch"
-            echo "  WHY: self CI must verify downloaded binaries before execution."
-            echo "  HOW: confirm the release asset is expected, then update ACTIONLINT_SHA256."
-            exit 1
-          fi
-
-          if ! tar -xzf "${target_dir}/${archive}" -C "${target_dir}" actionlint; then
-            echo "✗ Failed to extract actionlint ${ACTIONLINT_VERSION}"
-            echo "  WHY: self CI cannot validate workflows without the actionlint binary."
-            echo "  HOW: inspect the downloaded archive and release asset name."
-            exit 1
-          fi
-
-          echo "executable=${target_dir}/actionlint" >> "${GITHUB_OUTPUT}"
-
-      # Composite action metadata is validated by scripts/validate-github-actions.py.
-      # actionlint remains scoped to workflow files.
-      - name: Run actionlint
-        shell: bash
-        run: |
-          set -euo pipefail
-          ${{ steps.get_actionlint.outputs.executable }} -color \
-            .github/workflows/*.yml
