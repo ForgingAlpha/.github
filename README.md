@@ -274,6 +274,20 @@ jobs:
           merge_method: merge
 ```
 
+## Dependency Review And Coverage
+
+`ci-dependency-review` wraps GitHub dependency review for pull requests. It
+does not replace language-specific checks: Rust repos still keep `cargo audit`
+inside `ci-rust`, and other ecosystems keep their native audit/test gates when
+available.
+
+`ci-dependabot-coverage` validates that detected dependency surfaces have
+matching `.github/dependabot.yml` update coverage. Standard starting points live
+under [`templates/dependabot`](templates/dependabot/). Dependabot updates
+manifest and GitHub Actions dependencies; hardcoded versions in shell commands,
+workflow run blocks, and custom scripts require separate validation or audit
+coverage when they are part of the public contract.
+
 ## Standards
 
 - [Repo naming convention](docs/repo-naming.md)

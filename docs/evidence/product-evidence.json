@@ -31,6 +31,16 @@
           "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
           "kind": "auto",
           "summary": "Tests reusable GitHub Actions safety policy for composite action refs, allowlist reasons, privileged triggers, root permissions, and data-driven first-party pinning."
+        },
+        {
+          "ref": "path:actions/ci-dependency-review/tests/test_ci_dependency_review.py",
+          "kind": "auto",
+          "summary": "Tests the dependency-review wrapper defaults, pull-request scope, official action wrapper, and license-policy validation."
+        },
+        {
+          "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
+          "kind": "auto",
+          "summary": "Tests deterministic Dependabot coverage validation for detected dependency surfaces and documented unmanaged exceptions."
         }
       ]
     },
@@ -92,6 +102,11 @@
           "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
           "kind": "auto",
           "summary": "Tests that empty allowlist reasons fail and identify the exact exception entry to repair."
+        },
+        {
+          "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
+          "kind": "auto",
+          "summary": "Tests that missing Dependabot coverage and malformed unmanaged-surface comments emit actionable findings."
         }
       ]
     },
@@ -111,6 +126,69 @@
           "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
           "kind": "auto",
           "summary": "Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy."
+        }
+      ]
+    },
+    {
+      "id": "REQ-016",
+      "source_ref": "docs/requirements.md#REQ-016",
+      "title": "Define a Dependabot coverage standard",
+      "type": "operational/quality",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
+          "kind": "auto",
+          "summary": "Tests that public Dependabot templates are valid v2 configs and include GitHub Actions coverage."
+        },
+        {
+          "ref": "path:templates/dependabot/README.md",
+          "kind": "manual",
+          "summary": "Documents template selection, unmanaged-surface comments, and the boundary between Dependabot manifest updates and hardcoded version review."
+        },
+        {
+          "ref": "path:templates/dependabot/github-actions-only.yml",
+          "kind": "manual",
+          "summary": "Provides the GitHub Actions-only Dependabot template for workflows and shared composite action manifests."
+        },
+        {
+          "ref": "path:templates/dependabot/rust-cargo.yml",
+          "kind": "manual",
+          "summary": "Provides the Rust/Cargo plus GitHub Actions Dependabot template."
+        },
+        {
+          "ref": "path:templates/dependabot/npm.yml",
+          "kind": "manual",
+          "summary": "Provides the npm/Astro/TypeScript plus GitHub Actions Dependabot template."
+        },
+        {
+          "ref": "path:templates/dependabot/elixir-mix.yml",
+          "kind": "manual",
+          "summary": "Provides the Elixir/Mix plus GitHub Actions Dependabot template."
+        },
+        {
+          "ref": "path:templates/dependabot/mixed-app.yml",
+          "kind": "manual",
+          "summary": "Provides the mixed app template for repeated nested npm manifest directories."
+        },
+        {
+          "ref": "path:templates/dependabot/python.yml",
+          "kind": "manual",
+          "summary": "Provides the Python plus GitHub Actions Dependabot template."
+        }
+      ]
+    },
+    {
+      "id": "REQ-017",
+      "source_ref": "docs/requirements.md#REQ-017",
+      "title": "Validate missing Dependabot coverage",
+      "type": "technical/architecture",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
+          "kind": "auto",
+          "summary": "Tests missing config failures, nested action-manifest coverage, directory globs, report mode, and documented unmanaged-surface behavior."
         }
       ]
     },

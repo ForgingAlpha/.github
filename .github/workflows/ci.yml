@@ -50,3 +50,16 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s actions/ci-alphaapps-policy/tests
+
+      - name: Test Dependency Review action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-dependency-review/tests
+
+      - name: Validate Dependabot coverage
+        uses: ./actions/ci-dependabot-coverage
+
+      - name: Test Dependabot coverage action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-dependabot-coverage/tests

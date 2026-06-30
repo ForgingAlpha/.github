@@ -1,0 +1,39 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/actions/*"
+      - "/.github/actions/*"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 1
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      actions:
+        patterns:
+          - "*"
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/apps/*"
+      - "/assets/*"
+      - "/frontend/*"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"

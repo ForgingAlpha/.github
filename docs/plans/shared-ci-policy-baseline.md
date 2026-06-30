@@ -1205,62 +1205,62 @@ Phase 1 foundation and are not repeated here.
   `/actions/*` so both workflow files and shared composite action manifests are
   updateable.
 - Document that Dependabot does not update hardcoded versions in shell commands
-  or scripts; those remain covered by version-audit checks and reviewer
-  closeout.
+  or scripts; those require separate validation or audit coverage when part of
+  the public contract.
 
 ### Success Criteria
 
 #### Automated Verification
 
-- [ ] Dependency review wrapper tests pass:
+- [x] Dependency review wrapper tests pass:
   `python3 -m unittest discover -s actions/ci-dependency-review/tests`
-- [ ] Dependabot coverage validator tests pass:
+- [x] Dependabot coverage validator tests pass:
   `python3 -m unittest discover -s actions/ci-dependabot-coverage/tests`
-- [ ] Fixture tests prove missing Dependabot config fails when workflows,
+- [x] Fixture tests prove missing Dependabot config fails when workflows,
   action manifests, Cargo, npm, Mix, or Python manifests are present.
-- [ ] Fixture tests prove nested composite action manifests require matching
+- [x] Fixture tests prove nested composite action manifests require matching
   GitHub Actions directory coverage.
-- [ ] Fixture tests prove intentionally unmanaged dependency surfaces require a
+- [x] Fixture tests prove intentionally unmanaged dependency surfaces require a
   documented reason.
-- [ ] Parent actionlint passes.
-- [ ] Git diff whitespace check passes: `git diff --check`
-- [ ] Full-suite phase-close gate passes:
+- [x] Parent actionlint passes.
+- [x] Git diff whitespace check passes: `git diff --check`
+- [x] Full-suite phase-close gate passes:
   `.github` self CI-equivalent plus new/updated action tests.
-- [ ] Push-equivalent proof passes: same as full-suite phase-close gate.
-- [ ] Customer/web suite: `n/a - control-plane CI action only`.
+- [x] Push-equivalent proof passes: same as full-suite phase-close gate.
+- [x] Customer/web suite: `n/a - control-plane CI action only`.
 
 #### Test Durability
 
-- [ ] New tests are durable contract tests for dependency review and Dependabot
+- [x] New tests are durable contract tests for dependency review and Dependabot
   coverage behavior.
-- [ ] Assertions include clear messages.
-- [ ] No retirement tests are introduced.
+- [x] Assertions include clear messages.
+- [x] No retirement tests are introduced.
 
 #### Manual Verification
 
-- [ ] Confirm dependency-review severity aligns with the org security posture.
-- [ ] Confirm the Dependabot templates cover the known ForgingAlpha repo
+- [x] Confirm dependency-review severity aligns with the org security posture.
+- [x] Confirm the Dependabot templates cover the known ForgingAlpha repo
   classes without forcing ecosystems that are not present.
 
 #### Plan Alignment Verification
 
-- [ ] Dependency review does not replace language-specific checks.
-- [ ] Dependabot validation reports missing update coverage; it does not
+- [x] Dependency review does not replace language-specific checks.
+- [x] Dependabot validation reports missing update coverage; it does not
   replace dependency review or language-specific audit tools.
 
 #### Agent Review Gates
 
-- [ ] `reviewer-plan-compliance`
-- [ ] `reviewer-definition-traceability`
-- [ ] `reviewer-reuse-patterns`
-- [ ] `reviewer-test-discipline`
-- [ ] `reviewer-error-handling` - waived unless Elixir code changes; the
+- [x] `reviewer-plan-compliance`
+- [x] `reviewer-definition-traceability`
+- [x] `reviewer-reuse-patterns`
+- [x] `reviewer-test-discipline`
+- [x] `reviewer-error-handling` - waived unless Elixir code changes; the
   current reviewer is Elixir/CQRS-specific.
-- [ ] `reviewer-code-quality`
-- [ ] `reviewer-performance-efficiency`
-- [ ] `reviewer-test-runtime-isolation`
-- [ ] `reviewer-security-general`
-- [ ] `reviewer-greenfield-scope`
+- [x] `reviewer-code-quality`
+- [x] `reviewer-performance-efficiency`
+- [x] `reviewer-test-runtime-isolation`
+- [x] `reviewer-security-general`
+- [x] `reviewer-greenfield-scope`
 
 #### Reviewer Execution Plan
 
@@ -1282,6 +1282,87 @@ Phase 1 foundation and are not repeated here.
 
 **Implementation Note**: Commit Phase 4 after deterministic checks and reviewer
 gates pass.
+
+#### Phase 4 Close Receipt
+
+- **Status**: implementation complete. Do not push until lifecycle review
+  evidence is refreshed against the post-receipt commit.
+- **Implemented files**:
+  - `actions/ci-dependency-review/action.yml`
+  - `actions/ci-dependency-review/tests/test_ci_dependency_review.py`
+  - `actions/ci-dependabot-coverage/action.yml`
+  - `actions/ci-dependabot-coverage/scripts/check_dependabot_coverage.py`
+  - `actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py`
+  - `templates/dependabot/README.md`
+  - `templates/dependabot/*.yml`
+  - `.github/workflows/ci.yml`
+  - `README.md`
+  - `docs/evidence/product-evidence.json`
+  - `docs/evidence/product-evidence-view.md`
+  - `docs/plans/shared-ci-policy-baseline.md`
+- **Definition sources loaded**: `docs/intent.md`, `docs/requirements.md`,
+  `docs/architecture.md`, Product Evidence view, and the Phase 4 context
+  packet in this plan.
+- **Contract decisions applied**: `ci-dependency-review` wraps GitHub's
+  official `actions/dependency-review-action@v5` only on pull requests, keeps
+  `fail-on-severity: low`, extends scopes to
+  `runtime,development,unknown`, leaves deprecated `deny-licenses` empty by
+  default, and documents that Rust/Cargo audit remains additive. The official
+  action defaults and deprecation note were checked during Phase 4 before
+  choosing these defaults. `ci-dependabot-coverage` detects the planned
+  workflow, composite-action, Cargo, npm, Mix, and Python surfaces, accepts
+  `fail` or `report`, and restricts `config-path` to canonical
+  `.github/dependabot.yml` or `.github/dependabot.yaml` so the check cannot
+  pass against a non-Dependabot file.
+- **Template proof**: the public templates cover GitHub Actions-only, Rust,
+  npm/Astro/TypeScript, Elixir/Mix, mixed nested npm, and Python repo shapes
+  without forcing absent ecosystems; consumers delete blocks for surfaces that
+  do not exist. Hardcoded versions in shell commands or scripts are documented
+  as requiring separate validation or audit coverage when part of the public
+  contract.
+- **Manual proof**: dependency-review severity `low` is the strictest
+  supported severity threshold and matches the approved strict-by-default
+  security posture. The template set covers the known ForgingAlpha repo
+  classes without requiring unavailable ecosystems.
+- **Automated proof**: the Phase 4 closeout command set passed on
+  2026-06-30: `python3 scripts/validate-github-actions.py`,
+  `python3 -m unittest discover -s tests` (11 tests),
+  `python3 -m unittest discover -s actions/ci-alphaapps-policy/tests` (23
+  tests), `python3 -m unittest discover -s actions/ci-markdown/tests` (10
+  tests), `python3 -m unittest discover -s actions/ci-github-actions/tests`
+  (9 tests), `python3 -m unittest discover -s
+  actions/ci-dependency-review/tests` (4 tests), `python3 -m unittest
+  discover -s actions/ci-dependabot-coverage/tests` (9 tests), Dependabot
+  coverage validation, durable evidence reference validation, Product Evidence
+  validation, Product Evidence render `--check`, parent Markdown lint with
+  `markdownlint-cli2@0.22.1`, action/template/workflow YAML parse sweep,
+  Python bytecode compile, pinned actionlint `v1.7.12` with checksum
+  verification, `git diff --check`, internal `@main` shared-action sweep on
+  runtime/public surfaces, and targeted public-disclosure sweep.
+- **Reviewer proof**: Phase 4 reviewers passed after fixes and reruns:
+  `reviewer-plan-compliance`, `reviewer-definition-traceability`,
+  `reviewer-reuse-patterns`, `reviewer-test-discipline`,
+  `reviewer-code-quality`, `reviewer-performance-efficiency`,
+  `reviewer-test-runtime-isolation`, `reviewer-security-general`, and
+  `reviewer-greenfield-scope`. `reviewer-error-handling` is waived because no
+  Elixir code changed.
+- **Reviewer findings fixed**: dependency-review test rationale no longer cites
+  Phase 4 as durable authority; README/template hardcoded-version wording no
+  longer relies on reviewer closeout; Dependabot fallback discovery prunes
+  generated dependency trees; unmanaged-surface comments reject whitespace-only
+  reasons; CI dogfoods `./actions/ci-dependabot-coverage`; coverage action
+  inputs emit WHAT/WHY/HOW diagnostics before Python; `config-path` is
+  restricted to canonical Dependabot config paths.
+- **Reduced-independence note**: opposite-runtime Claude CLI reviewer auth
+  failed earlier in this plan with `401 Invalid authentication credentials`;
+  same-runtime reviewers were used as reduced-independence fallback evidence.
+- **Scope note**: `docs/handoffs/2026-06-30 12-13
+  shared-policy-baseline.md` remains local resume context and is intentionally
+  excluded from the Phase 4 commit.
+- **Lifecycle audit handling**: because this receipt changes the active
+  lifecycle plan, refresh
+  `docs/audits/2026-06-30-product-lifecycle-review-shared-policy-baseline.md`
+  against the post-receipt Head SHA before push.
 
 ---
 
