@@ -1613,7 +1613,7 @@ safety contract only; repo-specific failure details stay in private evidence.
 - Add a "Manual Remote Diagnostic Probes" section.
 - State the probe contract:
   - `workflow_dispatch` only;
-  - non-required status;
+  - not configured as a required branch-protection or ruleset status;
   - `permissions: contents: read`;
   - descriptive `run-name` including mode, lane, and checkout ref;
   - bounded `timeout-minutes`;
@@ -1707,7 +1707,9 @@ safety contract only; repo-specific failure details stay in private evidence.
 
 #### Manual Verification
 
-- [ ] Confirm the probe workflow is not listed as a required status check.
+- [ ] Confirm the consumer probe workflow is available as a manual
+  `workflow_dispatch` diagnostic tool and is not configured as a required
+  branch-protection or ruleset status.
 - [ ] Confirm the pilot consumer repo uses the same runtime setup as required
   CI.
 - [ ] Confirm the workflow lands on the default branch before operators attempt
@@ -1816,9 +1818,10 @@ as a required check.
   unavailable earlier in this session, so Phase 6 reviewer gates used
   same-runtime reduced-independence fallback reviews. The public plan records
   only the reduced-independence fact, not exact transport failure details.
-- **Manual Verification**: still awaiting operator confirmation for required
-  check status configuration, pilot consumer runtime parity, and default-branch
-  landing before `gh workflow run`; manual checkboxes remain unchecked.
+- **Manual Verification**: still awaiting operator confirmation for manual
+  probe availability without branch-protection or ruleset merge authority,
+  pilot consumer runtime parity, and default-branch landing before
+  `gh workflow run`; manual checkboxes remain unchecked.
 - **Plan Checkboxes Updated**: automated verification, test durability, plan
   alignment, and all Phase 6 reviewer gates are checked. Manual verification
   remains unchecked.
@@ -1897,7 +1900,8 @@ as a required check.
 3. Confirm ShellCheck `style` severity is accepted as the org default.
 4. Confirm baseline enforcement freezing non-backfilled repos is intentional
    before release.
-5. Confirm remote probe workflows remain diagnostic and non-required.
+5. Confirm remote probe workflows remain diagnostic and are not required
+   branch-protection or ruleset status checks.
 
 ## Migration Notes
 
