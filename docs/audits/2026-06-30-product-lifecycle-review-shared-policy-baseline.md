@@ -6,9 +6,9 @@ Status: pass
 
 Base Ref: main
 Base SHA: 88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4
-Head SHA: 9bda304cb4e29f33ae347f11de6e737481066371
+Head SHA: 71bd2fb11a41ccb1fd8f8ad053e71a8ae9f0335e
 Reviewer: reviewer-product-development-lifecycle
-Review Date: 2026-06-30
+Review Date: 2026-07-01
 
 ## Changed Lifecycle Files
 
@@ -60,8 +60,8 @@ Changed lifecycle files:
 
 ## Verification Evidence
 
-- Confirmed `git rev-parse HEAD` for the reviewed implementation commit equals
-  `9bda304cb4e29f33ae347f11de6e737481066371`.
+- Confirmed `git rev-parse HEAD` for the reviewed lifecycle-content commit
+  equals `71bd2fb11a41ccb1fd8f8ad053e71a8ae9f0335e`.
 - Confirmed `git merge-base origin/main HEAD` equals
   `88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4`.
 - Confirmed the changed lifecycle files since base are `docs/intent.md`,
@@ -73,11 +73,15 @@ Changed lifecycle files:
   Sources, glossary/ADR/design/story waivers, bounded phase context packets,
   operator rollout decisions, Phase 5 and Phase 6 close receipts,
   deterministic proof, manual verification, and reviewer gates.
+- Confirmed the July 1 plan wording amendment is a clarification, not new
+  product scope: Phase 6 already defined the probe as a manual diagnostic
+  workflow and not a merge gate, and now states that probe workflows must not
+  be configured as required branch-protection or ruleset status checks.
 - Confirmed `README.md` and `docs/evidence/product-evidence-view.md` keep
   Product Evidence downstream of source truth, describe language-composite
   GitHub Actions safety as conditional on changed workflow/action files or
   `github-actions-mode: all`, and document manual remote diagnostic probes as
-  evidence-only, non-required workflows.
+  evidence-only workflows that must not be required status checks.
 - Confirmed `actions/ci-alphaapps-policy/action.yml` is self-contained, runs
   Product Evidence validation for active policy-checked repos, and exposes no
   normal Product Evidence opt-out input.
@@ -92,6 +96,8 @@ Changed lifecycle files:
 - Confirmed Phase 6 adds a constrained `ci-remote-probe-guard` action and
   copyable `workflow-templates/ci-probe.yml` without moving merge authority away
   from required `CI`.
+- Confirmed Phase 6 manual verification now distinguishes probe availability as
+  a diagnostic tool from branch-protection or ruleset merge authority.
 - Confirmed Phase 6 validates `checkout_ref`, probe mode, lane, file root, file
   path, line, output label, and file suffixes before target checkout or command
   construction.
@@ -176,6 +182,12 @@ diagnostic probe contracts without creating new product scope; and the plan
 receipt records deterministic verification, manual verification status,
 reviewer gates, and same-runtime reduced-independence fallback.
 
+The July 1 amendment clarifies an already-approved Phase 6 decision: remote
+diagnostic probes may be made available as manual `workflow_dispatch`
+diagnostic tools, but they must not be configured as required
+branch-protection or ruleset status checks. Required `CI` remains the sole
+merge authority described by the plan.
+
 Phase 5 implements the planned public CI wiring without a source-truth
 amendment. Parent CI dogfoods local shared actions, while published language
 composites enforce the shared baseline before language-specific checks.
@@ -187,10 +199,10 @@ dependency review only on consumer pull requests.
 
 Phase 6 implements the planned manual remote diagnostic probe standard without
 a source-truth amendment. Required `CI` remains merge authority; probes are
-manual, read-only, non-required evidence workflows. The guard validates
-constrained selectors before target checkout or command construction, and the
-template keeps repo-specific runtime command mapping in consumer-owned shell
-array `case` branches.
+manual, read-only evidence workflows that are not required status checks. The
+guard validates constrained selectors before target checkout or command
+construction, and the template keeps repo-specific runtime command mapping in
+consumer-owned shell array `case` branches.
 
 ## Residual Risk
 
