@@ -6,7 +6,7 @@ Status: pass
 
 Base Ref: main
 Base SHA: 88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4
-Head SHA: 71bd2fb11a41ccb1fd8f8ad053e71a8ae9f0335e
+Head SHA: f46c22a3bb4dc448832bc33d4fa40b70104f5381
 Reviewer: reviewer-product-development-lifecycle
 Review Date: 2026-07-01
 
@@ -61,7 +61,7 @@ Changed lifecycle files:
 ## Verification Evidence
 
 - Confirmed `git rev-parse HEAD` for the reviewed lifecycle-content commit
-  equals `71bd2fb11a41ccb1fd8f8ad053e71a8ae9f0335e`.
+  equals `f46c22a3bb4dc448832bc33d4fa40b70104f5381`.
 - Confirmed `git merge-base origin/main HEAD` equals
   `88e829133b37d08a6daf5a61bed3c0a5e5b8c6b4`.
 - Confirmed the changed lifecycle files since base are `docs/intent.md`,
@@ -85,11 +85,15 @@ Changed lifecycle files:
 - Confirmed `actions/ci-alphaapps-policy/action.yml` is self-contained, runs
   Product Evidence validation for active policy-checked repos, and exposes no
   normal Product Evidence opt-out input.
-- Confirmed Phase 5 parent CI dogfoods local shared actions rather than remote
-  `@v1` refs, preserving branch-local self validation.
+- Confirmed Phase 5 parent CI dogfoods bootstrap-safe local shared actions and
+  direct ShellCheck `style` plus `bash -n` shell validation rather than remote
+  `@v1` refs, preserving branch-local self validation before `v1` moves.
 - Confirmed Phase 5 language composites add shared policy, Markdown,
   pathspec-limited conditional GitHub Actions safety, Dependabot coverage, and
   PR-only dependency review before language-specific checks.
+- Confirmed the post-PR CI correction keeps consumer-facing `ci-shell`
+  unchanged while parent self-CI avoids local `./actions/ci-shell` until the
+  new cross-cutting action paths exist at `v1`.
 - Confirmed public plan and audit surfaces retain only the same-runtime
   reduced-independence fallback fact and do not record exact reviewer transport
   failure details.
@@ -172,6 +176,35 @@ Changed lifecycle files:
   - `reviewer-security-general`
   - `reviewer-knowledgebase-integrity`
   - `reviewer-greenfield-scope`
+- Reviewed the post-PR CI correction deterministic command set:
+  - failing-test-first proof for
+    `tests.test_shared_ci_contract.SharedCiContractTest.test_parent_ci_dogfoods_local_shared_policy_actions`
+  - `python3 -m unittest discover -s tests` (17 tests)
+  - all action test suites:
+    `ci-github-actions`, `ci-markdown`, `ci-alphaapps-policy`,
+    `ci-dependency-review`, `ci-dependabot-coverage`, and
+    `ci-remote-probe-guard`
+  - `python3 scripts/validate-github-actions.py`
+  - `python3 actions/ci-alphaapps-policy/scripts/validate_product_evidence.py`
+  - Product Evidence render `--check`
+  - `python3 actions/ci-dependabot-coverage/scripts/check_dependabot_coverage.py`
+  - `python3 actions/ci-alphaapps-policy/scripts/validate_durable_evidence_references.py`
+  - direct ShellCheck `style` plus `bash -n` for tracked shell files
+  - README/docs Markdown lint with pinned `markdownlint-cli2@0.22.1`
+  - action/workflow/template YAML parse sweep
+  - pinned actionlint `v1.7.12` with checksum verification
+  - public/private disclosure grep for changed public surfaces
+  - `python3 -m compileall -q actions scripts tests`
+  - `git diff --check` and `git diff --cached --check`
+- Reviewed post-PR CI correction reviewer passes:
+  - `reviewer-definition-traceability`
+  - `reviewer-product-evidence`
+  - `reviewer-security-general`
+  - `reviewer-test-discipline` after the focused assertion-scope fix
+  - `reviewer-code-quality` after the focused assertion-scope fix
+  - `reviewer-plan-compliance` found no plan-decision violation and required
+    only this lifecycle audit refresh
+  - `reviewer-product-development-lifecycle`
 
 ## Lifecycle Verdict
 
@@ -189,7 +222,8 @@ branch-protection or ruleset status checks. Required `CI` remains the sole
 merge authority described by the plan.
 
 Phase 5 implements the planned public CI wiring without a source-truth
-amendment. Parent CI dogfoods local shared actions, while published language
+amendment. Parent CI dogfoods bootstrap-safe local shared actions and direct
+shell validation during the pre-`v1` bootstrap window, while published language
 composites enforce the shared baseline before language-specific checks.
 `github-actions-mode: changed|all` is an allowed implementation input for the
 approved "changed workflow/action files or explicitly enabled" plan behavior.
