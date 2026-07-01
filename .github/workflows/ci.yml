@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [dev]
+    branches: [main]
   pull_request:
-    branches: [main, staging]
+    branches: [main]
 
 permissions:
   contents: read
@@ -14,49 +14,101 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
 
       # Dogfood: exercise the merge-flow guard against this PR itself.
       # Uses a local path so the PR validates the in-branch version of the
-      # action (rather than `@main`, which does not yet contain ci-merge-flow
-      # until this PR merges). Since `.github` has no `dev` branch, the guard
-      # should skip with "merge flow policy does not apply".
+      # action. Since `.github` has no `dev` branch, the guard should skip with
+      # "merge flow policy does not apply".
       - name: Enforce merge flow (self)
         uses: ./actions/ci-merge-flow
 
-      - name: Validate YAML
-        run: |
-          set -euo pipefail
-          find actions -name "action.yml" -print -exec python3 -c "
-          import yaml, sys
-          try:
-              yaml.safe_load(open(sys.argv[1]))
-              print(\"  OK\")
-          except yaml.YAMLError as e:
-              print(f\"  FAIL: {e}\", file=sys.stderr)
-              sys.exit(1)
-          " {} \;
+      - name: Validate Alpha Apps policy
+        uses: ./actions/ci-alphaapps-policy
 
-      # actionlint: static analysis for GitHub Actions YAML (workflows +
-      # composite actions). Catches the class of bug that wedged every
-      # Rust repo on 2026-04-20 (broken `dtolnay/rust-toolchain@stable`
-      # SHA resolution) plus shell-injection vectors, bad `uses:` refs,
-      # and schema drift. Download-and-run keeps the image small and the
-      # version transparent.
-      - name: Install actionlint
-        id: get_actionlint
-        shell: bash
-        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+      - name: Validate Markdown
+        uses: ./actions/ci-markdown
+        with:
+          mode: all
 
-      # actionlint's schema validation is scoped to workflow files
-      # (`.github/workflows/*.yml`). Composite `action.yml` files have a
-      # different schema (inputs/runs/composite) that actionlint parses as
-      # malformed workflows. The earlier YAML validation step covers
-      # action.yml syntax; `uses:` / schema issues in composite actions
-      # surface at consumer CI time.
-      - name: Run actionlint
+      - name: Validate GitHub Actions safety
+        uses: ./actions/ci-github-actions
+
+      - name: Validate Dependabot coverage
+        uses: ./actions/ci-dependabot-coverage
+
+      - name: Validate Shell
         shell: bash
         run: |
           set -euo pipefail
-          ${{ steps.get_actionlint.outputs.executable }} -color \
-            .github/workflows/*.yml
+
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            echo "✗ ShellCheck is not installed on PATH."
+            echo "  WHAT: parent CI cannot run shell validation because shellcheck is unavailable."
+            echo "  WHY: shared shell validation requires ShellCheck at style severity before release."
+            echo "  HOW: use a runner image with shellcheck installed or install it before this step."
+            exit 1
+          fi
+
+          shellcheck --version
+
+          mapfile -d '' shell_files < <(git ls-files -z -- '*.sh' '*.bash')
+          if [ "${#shell_files[@]}" -eq 0 ]; then
+            echo "✓ No tracked .sh or .bash files found."
+            exit 0
+          fi
+
+          fail=0
+          for file in "${shell_files[@]}"; do
+            if ! shellcheck -S style "$file"; then
+              echo "✗ ShellCheck failed for ${file}"
+              echo "  WHY: parent self-CI must preserve the same style-severity shell policy published by ci-shell."
+              echo "  HOW: fix the finding above or document a narrow inline ShellCheck directive."
+              fail=1
+            fi
+
+            if ! bash -n "$file"; then
+              echo "✗ Bash syntax validation failed for ${file}"
+              echo "  WHY: parent self-CI requires every tracked .sh/.bash file to parse before merge."
+              echo "  HOW: run 'bash -n ${file}' locally and fix the reported syntax error."
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+      - name: Test GitHub Actions contract validator
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests
+
+      - name: Test GitHub Actions safety action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-github-actions/tests
+
+      - name: Test Markdown action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-markdown/tests
+
+      - name: Test Alpha Apps policy action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-alphaapps-policy/tests
+
+      - name: Test Dependency Review action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-dependency-review/tests
+
+      - name: Test Dependabot coverage action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-dependabot-coverage/tests
+
+      - name: Test Remote Probe Guard action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-remote-probe-guard/tests

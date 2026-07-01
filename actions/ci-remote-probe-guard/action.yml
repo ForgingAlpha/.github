@@ -1,0 +1,93 @@
+# Composite action: remote diagnostic probe input guard.
+#
+# Validates and normalizes constrained workflow_dispatch inputs before a
+# consumer workflow assembles repo-owned probe commands.
+
+name: CI Remote Probe Guard
+description: "Remote diagnostic probe guard: validate constrained selector inputs"
+
+inputs:
+  probe-mode:
+    description: "Probe mode (exact|file|lane)"
+    required: true
+  lane:
+    description: "Repo-defined probe lane selected from allowed-lanes"
+    required: true
+  allowed-lanes:
+    description: "Comma or newline separated allowlist of repo-owned lane names"
+    required: true
+  file:
+    description: "Repo-relative test file for exact/file modes"
+    required: false
+    default: ""
+  line:
+    description: "Positive integer line number for exact mode"
+    required: false
+    default: ""
+  out-label:
+    description: "Safe artifact label with no path separators"
+    required: false
+    default: "probe"
+  checkout-ref:
+    description: "Target code ref to validate before checkout"
+    required: true
+  file-root:
+    description: "Allowed repo-relative root for file selectors"
+    required: false
+    default: "test"
+  file-suffixes:
+    description: "Comma or newline separated allowed test file suffixes"
+    required: false
+    default: ".exs"
+
+outputs:
+  probe_mode:
+    description: "Normalized probe mode"
+    value: ${{ steps.validate.outputs.probe_mode }}
+  lane:
+    description: "Normalized allowlisted lane"
+    value: ${{ steps.validate.outputs.lane }}
+  file:
+    description: "Normalized repo-relative file selector, or empty"
+    value: ${{ steps.validate.outputs.file }}
+  line:
+    description: "Normalized positive line selector, or empty"
+    value: ${{ steps.validate.outputs.line }}
+  out_label:
+    description: "Normalized artifact label"
+    value: ${{ steps.validate.outputs.out_label }}
+  artifact_path:
+    description: "Repo-relative diagnostic artifact directory"
+    value: ${{ steps.validate.outputs.artifact_path }}
+  checkout_ref:
+    description: "Normalized target checkout ref"
+    value: ${{ steps.validate.outputs.checkout_ref }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate remote probe selector
+      id: validate
+      shell: bash
+      env:
+        PROBE_MODE: ${{ inputs.probe-mode }}
+        PROBE_LANE: ${{ inputs.lane }}
+        PROBE_ALLOWED_LANES: ${{ inputs.allowed-lanes }}
+        PROBE_FILE: ${{ inputs.file }}
+        PROBE_LINE: ${{ inputs.line }}
+        PROBE_OUT_LABEL: ${{ inputs.out-label }}
+        PROBE_CHECKOUT_REF: ${{ inputs.checkout-ref }}
+        PROBE_FILE_ROOT: ${{ inputs.file-root }}
+        PROBE_FILE_SUFFIXES: ${{ inputs.file-suffixes }}
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_ACTION_PATH/scripts/validate_probe_inputs.py" \
+          --probe-mode "${PROBE_MODE}" \
+          --lane "${PROBE_LANE}" \
+          --allowed-lanes "${PROBE_ALLOWED_LANES}" \
+          --file "${PROBE_FILE}" \
+          --line "${PROBE_LINE}" \
+          --out-label "${PROBE_OUT_LABEL}" \
+          --checkout-ref "${PROBE_CHECKOUT_REF}" \
+          --file-root "${PROBE_FILE_ROOT}" \
+          --file-suffixes "${PROBE_FILE_SUFFIXES}"

@@ -1,0 +1,73 @@
+# Composite action: Dependabot coverage validation.
+#
+# Checks that detected dependency surfaces have matching `.github/dependabot.yml`
+# update coverage, or a documented unmanaged-surface reason.
+#
+# Usage:
+#
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 10
+#       steps:
+#         - uses: actions/checkout@v7
+#         - uses: ForgingAlpha/.github/actions/ci-dependabot-coverage@v1
+
+name: CI Dependabot Coverage
+description: "Dependabot coverage: deterministic manifest/update-block validation"
+
+inputs:
+  mode:
+    description: "Validation mode (fail|report)"
+    required: false
+    default: "fail"
+  config-path:
+    description: "Canonical Dependabot config path (.github/dependabot.yml or .github/dependabot.yaml)"
+    required: false
+    default: ".github/dependabot.yml"
+
+runs:
+  using: composite
+  steps:
+    - name: Validate Dependabot coverage
+      shell: bash
+      env:
+        DEPENDABOT_COVERAGE_MODE: ${{ inputs.mode }}
+        DEPENDABOT_CONFIG_PATH: ${{ inputs.config-path }}
+      run: |
+        set -euo pipefail
+
+        case "${DEPENDABOT_COVERAGE_MODE}" in
+          fail|report) ;;
+          *)
+            echo "✗ Invalid mode input '${DEPENDABOT_COVERAGE_MODE}'."
+            echo "  WHAT: mode was '${DEPENDABOT_COVERAGE_MODE}', expected fail or report."
+            echo "  WHY: ci-dependabot-coverage supports only fail or report validation modes."
+            echo "  HOW: set mode to fail for blocking CI or report for non-blocking rollout visibility."
+            exit 1
+            ;;
+        esac
+
+        if [ -z "${DEPENDABOT_CONFIG_PATH}" ]; then
+          echo "✗ Invalid config-path input: empty string."
+          echo "  WHAT: config-path did not name a Dependabot config file."
+          echo "  WHY: the coverage checker needs a concrete path to validate or report as absent."
+          echo "  HOW: set config-path to .github/dependabot.yml or .github/dependabot.yaml."
+          exit 1
+        fi
+
+        case "${DEPENDABOT_CONFIG_PATH}" in
+          .github/dependabot.yml|.github/dependabot.yaml) ;;
+          *)
+            echo "✗ Invalid config-path input '${DEPENDABOT_CONFIG_PATH}'."
+            echo "  WHAT: config-path did not point at the canonical Dependabot config."
+            echo "  WHY: dependency coverage must validate the config Dependabot actually reads, not an arbitrary file."
+            echo "  HOW: set config-path to .github/dependabot.yml or .github/dependabot.yaml."
+            exit 1
+            ;;
+        esac
+
+        python3 "$GITHUB_ACTION_PATH/scripts/check_dependabot_coverage.py" \
+          --mode "${DEPENDABOT_COVERAGE_MODE}" \
+          --config "${DEPENDABOT_CONFIG_PATH}"

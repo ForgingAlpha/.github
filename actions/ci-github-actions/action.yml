@@ -1,0 +1,85 @@
+# Composite action: GitHub Actions safety checks.
+#
+# Runs actionlint and the shared workflow/composite-action policy checker.
+#
+# Usage:
+#
+#   jobs:
+#     CI:
+#       name: CI
+#       runs-on: ubuntu-latest
+#       timeout-minutes: 10
+#       steps:
+#         - uses: actions/checkout@v7
+#         - uses: ForgingAlpha/.github/actions/ci-github-actions@v1
+
+name: CI GitHub Actions
+description: "GitHub Actions CI: actionlint + shared workflow safety policy"
+
+inputs:
+  allowlist-path:
+    description: "Optional allowlist YAML for reviewed workflow exceptions"
+    required: false
+    default: ".github/alphaapps-github-actions-allowlist.yml"
+
+runs:
+  using: composite
+  steps:
+    - name: Install actionlint
+      id: get_actionlint
+      shell: bash
+      env:
+        ACTIONLINT_VERSION: "1.7.12"
+        ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+      run: |
+        set -euo pipefail
+        archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+        target_dir="${RUNNER_TEMP:-/tmp}/actionlint-${ACTIONLINT_VERSION}"
+        mkdir -p "${target_dir}"
+
+        if ! curl -fsSLo "${target_dir}/${archive}" "${url}"; then
+          echo "✗ Failed to download actionlint ${ACTIONLINT_VERSION}."
+          echo "  WHAT: curl could not download ${url}."
+          echo "  WHY: ci-github-actions requires a pinned actionlint release for workflow validation."
+          echo "  HOW: verify the release asset exists or update ACTIONLINT_VERSION and ACTIONLINT_SHA256 together."
+          exit 1
+        fi
+
+        if ! echo "${ACTIONLINT_SHA256}  ${target_dir}/${archive}" | sha256sum -c -; then
+          echo "✗ actionlint ${ACTIONLINT_VERSION} archive checksum mismatch."
+          echo "  WHAT: downloaded archive did not match ACTIONLINT_SHA256."
+          echo "  WHY: downloaded binaries must be verified before execution in shared CI."
+          echo "  HOW: confirm the release asset is expected, then update ACTIONLINT_SHA256."
+          exit 1
+        fi
+
+        if ! tar -xzf "${target_dir}/${archive}" -C "${target_dir}" actionlint; then
+          echo "✗ Failed to extract actionlint ${ACTIONLINT_VERSION}."
+          echo "  WHAT: tar could not extract the actionlint binary from ${archive}."
+          echo "  WHY: ci-github-actions cannot validate workflows without actionlint."
+          echo "  HOW: inspect the downloaded archive and release asset name."
+          exit 1
+        fi
+
+        echo "executable=${target_dir}/actionlint" >> "${GITHUB_OUTPUT}"
+
+    - name: Run actionlint
+      shell: bash
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        workflow_files=(.github/workflows/*.yml .github/workflows/*.yaml)
+        if [ "${#workflow_files[@]}" -eq 0 ]; then
+          echo "✓ No GitHub workflow files found for actionlint."
+          exit 0
+        fi
+        "${{ steps.get_actionlint.outputs.executable }}" -color "${workflow_files[@]}"
+
+    - name: Validate GitHub Actions safety policy
+      shell: bash
+      env:
+        ALLOWLIST_PATH: ${{ inputs.allowlist-path }}
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_ACTION_PATH/scripts/check_workflows.py" --allowlist-path "${ALLOWLIST_PATH}"

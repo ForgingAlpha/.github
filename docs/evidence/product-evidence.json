@@ -1,0 +1,287 @@
+{
+  "schema_version": 1,
+  "promises": [
+    {
+      "id": "REQ-001",
+      "source_ref": "docs/requirements.md#REQ-001",
+      "title": "Preserve one required CI status",
+      "type": "integration/contract",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:tests/test_shared_ci_contract.py",
+          "kind": "auto",
+          "summary": "Tests that parent CI dogfoods bootstrap-safe local shared actions, preserves direct shell validation, and language composites preserve the shared CI contract inside one caller job."
+        },
+        {
+          "ref": "path:README.md",
+          "kind": "manual",
+          "summary": "Documents the uppercase CI job contract and composite-action usage that preserves the required status."
+        }
+      ]
+    },
+    {
+      "id": "REQ-003",
+      "source_ref": "docs/requirements.md#REQ-003",
+      "title": "Run strict reproducible shared checks",
+      "type": "operational/quality",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-markdown/tests/test_ci_markdown.py",
+          "kind": "auto",
+          "summary": "Tests the pinned Markdown lint version, changed-file helper behavior, ignore-prefix handling, and missing-base diagnostics."
+        },
+        {
+          "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
+          "kind": "auto",
+          "summary": "Tests reusable GitHub Actions safety policy for composite action refs, allowlist reasons, privileged triggers, root permissions, and data-driven first-party pinning."
+        },
+        {
+          "ref": "path:actions/ci-dependency-review/tests/test_ci_dependency_review.py",
+          "kind": "auto",
+          "summary": "Tests the dependency-review wrapper defaults, pull-request scope, official action wrapper, and license-policy validation."
+        },
+        {
+          "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
+          "kind": "auto",
+          "summary": "Tests deterministic Dependabot coverage validation for detected dependency surfaces and documented unmanaged exceptions."
+        },
+        {
+          "ref": "path:tests/test_shared_ci_contract.py",
+          "kind": "auto",
+          "summary": "Tests that published language composites run shared policy, Markdown, conditional GitHub Actions safety, and Dependabot coverage before language-specific checks."
+        }
+      ]
+    },
+    {
+      "id": "REQ-007",
+      "source_ref": "docs/requirements.md#REQ-007",
+      "title": "Roll shared automation out through released tags",
+      "type": "operational/quality",
+      "status": "manual-only",
+      "evidence": [
+        {
+          "ref": "path:README.md",
+          "kind": "manual",
+          "summary": "Documents that merging to main does not roll out shared action changes until a released major tag such as v1 moves."
+        }
+      ]
+    },
+    {
+      "id": "REQ-008",
+      "source_ref": "docs/requirements.md#REQ-008",
+      "title": "Keep public repository content safe to expose",
+      "type": "security/safety",
+      "status": "manual-only",
+      "evidence": [
+        {
+          "ref": "manual:public-disclosure-sweep",
+          "kind": "manual",
+          "summary": "A public-disclosure sweep checks changed public files for local paths, private-key markers, and credential-like strings."
+        }
+      ]
+    },
+    {
+      "id": "REQ-009",
+      "source_ref": "docs/requirements.md#REQ-009",
+      "title": "Do not require private alphaapps-docs checkout in consumer CI",
+      "type": "security/safety",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py",
+          "kind": "auto",
+          "summary": "Tests that ci-alphaapps-policy has no private docs checkout dependency and no Product Evidence opt-out input."
+        }
+      ]
+    },
+    {
+      "id": "REQ-011",
+      "source_ref": "docs/requirements.md#REQ-011",
+      "title": "Keep diagnostic workflows out of merge authority",
+      "type": "integration/contract",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py",
+          "kind": "auto",
+          "summary": "Tests the probe template is workflow_dispatch-only, read-only, bounded by timeout/concurrency, and writes diagnostic summary/artifact evidence."
+        },
+        {
+          "ref": "path:README.md",
+          "kind": "manual",
+          "summary": "Documents that manual remote diagnostic probes are non-required evidence collectors and that required CI remains merge authority."
+        }
+      ]
+    },
+    {
+      "id": "REQ-012",
+      "source_ref": "docs/requirements.md#REQ-012",
+      "title": "Constrain diagnostic execution inputs",
+      "type": "security/safety",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py",
+          "kind": "auto",
+          "summary": "Tests valid exact/file/lane selectors, rejects invalid mode/lane/path/ref/line/label and command-like input, and proves the guard emits selectors instead of shell commands."
+        },
+        {
+          "ref": "path:actions/ci-remote-probe-guard/action.yml",
+          "kind": "manual",
+          "summary": "Defines the shared guard action inputs and selector outputs, including normalized checkout refs, without command-like inputs or outputs."
+        }
+      ]
+    },
+    {
+      "id": "REQ-014",
+      "source_ref": "docs/requirements.md#REQ-014",
+      "title": "Emit actionable failure output",
+      "type": "operational/quality",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-markdown/tests/test_ci_markdown.py",
+          "kind": "auto",
+          "summary": "Tests that missing changed-mode base refs fail with remediation guidance in the diagnostic output."
+        },
+        {
+          "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
+          "kind": "auto",
+          "summary": "Tests that empty allowlist reasons fail and identify the exact exception entry to repair."
+        },
+        {
+          "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
+          "kind": "auto",
+          "summary": "Tests that missing Dependabot coverage and malformed unmanaged-surface comments emit actionable findings."
+        },
+        {
+          "ref": "path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py",
+          "kind": "auto",
+          "summary": "Tests that invalid remote probe selectors return WHAT/WHY/HOW diagnostics before command construction."
+        }
+      ]
+    },
+    {
+      "id": "REQ-015",
+      "source_ref": "docs/requirements.md#REQ-015",
+      "title": "Self-validate workflow and action contracts before release",
+      "type": "technical/architecture",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:tests/test_validate_github_actions.py",
+          "kind": "auto",
+          "summary": "Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery."
+        },
+        {
+          "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
+          "kind": "auto",
+          "summary": "Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy."
+        },
+        {
+          "ref": "path:tests/test_shared_ci_contract.py",
+          "kind": "auto",
+          "summary": "Tests parent self-CI dogfood/bootstrap wiring, direct shell validation, and parseable public workflow examples before release."
+        },
+        {
+          "ref": "path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py",
+          "kind": "auto",
+          "summary": "Tests remote probe action metadata and the public probe workflow template parse and preserve the manual diagnostic contract before release."
+        }
+      ]
+    },
+    {
+      "id": "REQ-016",
+      "source_ref": "docs/requirements.md#REQ-016",
+      "title": "Define a Dependabot coverage standard",
+      "type": "operational/quality",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
+          "kind": "auto",
+          "summary": "Tests that public Dependabot templates are valid v2 configs and include GitHub Actions coverage."
+        },
+        {
+          "ref": "path:templates/dependabot/README.md",
+          "kind": "manual",
+          "summary": "Documents template selection, unmanaged-surface comments, and the boundary between Dependabot manifest updates and hardcoded version review."
+        },
+        {
+          "ref": "path:templates/dependabot/github-actions-only.yml",
+          "kind": "manual",
+          "summary": "Provides the GitHub Actions-only Dependabot template for workflows and shared composite action manifests."
+        },
+        {
+          "ref": "path:templates/dependabot/rust-cargo.yml",
+          "kind": "manual",
+          "summary": "Provides the Rust/Cargo plus GitHub Actions Dependabot template."
+        },
+        {
+          "ref": "path:templates/dependabot/npm.yml",
+          "kind": "manual",
+          "summary": "Provides the npm/Astro/TypeScript plus GitHub Actions Dependabot template."
+        },
+        {
+          "ref": "path:templates/dependabot/elixir-mix.yml",
+          "kind": "manual",
+          "summary": "Provides the Elixir/Mix plus GitHub Actions Dependabot template."
+        },
+        {
+          "ref": "path:templates/dependabot/mixed-app.yml",
+          "kind": "manual",
+          "summary": "Provides the mixed app template for repeated nested npm manifest directories."
+        },
+        {
+          "ref": "path:templates/dependabot/python.yml",
+          "kind": "manual",
+          "summary": "Provides the Python plus GitHub Actions Dependabot template."
+        }
+      ]
+    },
+    {
+      "id": "REQ-017",
+      "source_ref": "docs/requirements.md#REQ-017",
+      "title": "Validate missing Dependabot coverage",
+      "type": "technical/architecture",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-dependabot-coverage/tests/test_check_dependabot_coverage.py",
+          "kind": "auto",
+          "summary": "Tests missing config failures, nested action-manifest coverage, directory globs, report mode, and documented unmanaged-surface behavior."
+        }
+      ]
+    },
+    {
+      "id": "REQ-018",
+      "source_ref": "docs/requirements.md#REQ-018",
+      "title": "Require approved baseline source truth for policy-checked repos",
+      "type": "technical/architecture",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-alphaapps-policy/tests/test_validate_product_lifecycle_baseline.py",
+          "kind": "auto",
+          "summary": "Tests approved, missing, definition-only, and provisional baseline source-truth behavior for policy-checked repositories."
+        }
+      ]
+    },
+    {
+      "id": "REQ-020",
+      "source_ref": "docs/requirements.md#REQ-020",
+      "title": "Require Product Evidence for active policy-checked repos",
+      "type": "technical/architecture",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:actions/ci-alphaapps-policy/tests/test_validate_product_evidence.py",
+          "kind": "auto",
+          "summary": "Tests required manifest behavior, source-truth/evidence backfill allowance, malformed manifests, orphaned views, and stale generated views."
+        }
+      ]
+    }
+  ]
+}

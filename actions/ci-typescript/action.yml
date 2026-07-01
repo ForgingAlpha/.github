@@ -1,7 +1,7 @@
 # Composite action: TypeScript CI checks (non-Astro).
 #
-# Mirrors the steps in openclaw-prompt-guard and openclaw-email-manager.
-# Supports repos where TypeScript lives in a subdirectory (e.g. plugin/).
+# Runs the standard TypeScript CI gate for non-Astro repos. Supports repos
+# where TypeScript lives at the root or in a subdirectory.
 #
 # Usage:
 #
@@ -12,7 +12,9 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 20
 #       steps:
-#         - uses: actions/checkout@v6
+#         - uses: actions/checkout@v7
+#           with:
+#             fetch-depth: 0
 #         - uses: ForgingAlpha/.github/actions/ci-typescript@v1
 #           with:
 #             working-directory: plugin
@@ -24,7 +26,9 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 20
 #       steps:
-#         - uses: actions/checkout@v6
+#         - uses: actions/checkout@v7
+#           with:
+#             fetch-depth: 0
 #         - uses: ForgingAlpha/.github/actions/ci-typescript@v1
 
 name: CI TypeScript
@@ -34,32 +38,154 @@ inputs:
   node-version:
     description: "Node.js version"
     required: false
-    default: "22"
+    default: "24"
   working-directory:
     description: "Subdirectory containing package.json"
     required: false
     default: "."
-  run-format-check:
-    description: "Run npx prettier --check . (true/false)"
+  markdown-mode:
+    description: "Markdown lint mode for ci-markdown (changed|all)"
     required: false
-    default: "true"
-  run-lint:
-    description: "Run npx eslint --max-warnings 0 . (true/false)"
+    default: "changed"
+  github-actions-mode:
+    description: "GitHub Actions safety mode (changed|all)"
     required: false
-    default: "true"
-  run-tests:
-    description: "Run npm test (true/false)"
-    required: false
-    default: "true"
-
+    default: "changed"
 runs:
   using: composite
   steps:
     - name: Enforce merge flow
-      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
+      if: ${{ github.repository != 'ForgingAlpha/.github' }}
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
+
+    - name: Validate Alpha Apps policy
+      if: ${{ github.repository != 'ForgingAlpha/.github' }}
+      uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
+
+    - name: Validate Markdown
+      if: ${{ github.repository != 'ForgingAlpha/.github' }}
+      uses: ForgingAlpha/.github/actions/ci-markdown@v1
+      with:
+        mode: ${{ inputs.markdown-mode }}
+
+    - name: Plan GitHub Actions safety gate
+      id: github_actions_safety
+      shell: bash
+      env:
+        BASE_REF: ${{ github.base_ref }}
+        EVENT_BEFORE: ${{ github.event.before }}
+        EVENT_NAME: ${{ github.event_name }}
+        GITHUB_ACTIONS_MODE: ${{ inputs.github-actions-mode }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+
+        emit_run() {
+          echo "run=$1" >> "${GITHUB_OUTPUT}"
+        }
+
+        if [ "${REPOSITORY}" = "ForgingAlpha/.github" ]; then
+          echo "✓ Skipping remote GitHub Actions safety gate for central repo self-CI."
+          emit_run false
+          exit 0
+        fi
+
+        case "${GITHUB_ACTIONS_MODE}" in
+          changed|all)
+            ;;
+          *)
+            echo "✗ Unsupported github-actions-mode '${GITHUB_ACTIONS_MODE}'."
+            echo "  WHY: language composites support only changed or all for GitHub Actions safety."
+            echo "  HOW: set github-actions-mode to changed or all."
+            exit 1
+            ;;
+        esac
+
+        if [ "${GITHUB_ACTIONS_MODE}" = "all" ]; then
+          echo "✓ GitHub Actions safety gate enabled by github-actions-mode=all."
+          emit_run true
+          exit 0
+        fi
+
+        if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          echo "✗ GitHub Actions changed-file detection requires a Git checkout."
+          echo "  WHY: github-actions-mode=changed must compare workflow/action files before resolving ci-github-actions."
+          echo "  HOW: run actions/checkout with fetch-depth: 0 before this shared CI composite."
+          exit 1
+        fi
+
+        range=""
+        if [ "${EVENT_NAME}" = "pull_request" ] && [ -n "${BASE_REF}" ]; then
+          if ! git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null; then
+            echo "✗ Cannot find origin/${BASE_REF} for GitHub Actions changed-file detection."
+            echo "  WHY: github-actions-mode=changed compares the pull request with its base branch."
+            echo "  HOW: set actions/checkout fetch-depth: 0 before this shared CI composite."
+            exit 1
+          fi
+          range="origin/${BASE_REF}...HEAD"
+        elif [ -n "${EVENT_BEFORE}" ] && [ "${EVENT_BEFORE}" != "0000000000000000000000000000000000000000" ]; then
+          if ! git rev-parse --verify --quiet "${EVENT_BEFORE}^{commit}" >/dev/null; then
+            echo "✗ Cannot find before SHA ${EVENT_BEFORE} for GitHub Actions changed-file detection."
+            echo "  WHY: github-actions-mode=changed compares push changes before resolving ci-github-actions."
+            echo "  HOW: set actions/checkout fetch-depth: 0 before this shared CI composite."
+            exit 1
+          fi
+          range="${EVENT_BEFORE}..HEAD"
+        elif git rev-parse --verify --quiet "HEAD^" >/dev/null; then
+          range="HEAD^..HEAD"
+        else
+          echo "✓ Single-commit checkout without a comparison base; running GitHub Actions safety gate."
+          emit_run true
+          exit 0
+        fi
+
+        workflow_action_paths=(
+          ".github/workflows/*.yml"
+          ".github/workflows/*.yaml"
+          "action.yml"
+          "action.yaml"
+          "actions/*/action.yml"
+          "actions/*/action.yaml"
+          ".github/actions/*/action.yml"
+          ".github/actions/*/action.yaml"
+        )
+        if ! changed_paths="$(git diff --name-only --diff-filter=ACMR "${range}" -- "${workflow_action_paths[@]}")"; then
+          echo "✗ Failed to compute changed workflow/action files."
+          echo "  WHAT: git diff failed for comparison range ${range}."
+          echo "  WHY: github-actions-mode=changed must fail closed before deciding whether to run ci-github-actions."
+          echo "  HOW: verify the comparison ref is fetched and rerun with actions/checkout fetch-depth: 0."
+          exit 1
+        fi
+
+        changed=false
+        while IFS= read -r path; do
+          [ -n "${path}" ] || continue
+          changed=true
+          break
+        done <<<"${changed_paths}"
+
+        if [ "${changed}" = true ]; then
+          echo "✓ GitHub workflow or action files changed; running GitHub Actions safety gate."
+          emit_run true
+        else
+          echo "✓ No changed GitHub workflow or action files."
+          emit_run false
+        fi
+
+    - name: Validate GitHub Actions safety
+      if: ${{ steps.github_actions_safety.outputs.run == 'true' }}
+      uses: ForgingAlpha/.github/actions/ci-github-actions@v1
+
+    - name: Validate Dependabot coverage
+      if: ${{ github.repository != 'ForgingAlpha/.github' }}
+      uses: ForgingAlpha/.github/actions/ci-dependabot-coverage@v1
+
+    - name: Review dependency changes
+      if: ${{ github.repository != 'ForgingAlpha/.github' && github.event_name == 'pull_request' }}
+      uses: ForgingAlpha/.github/actions/ci-dependency-review@v1
 
     - name: Setup Node.js (${{ inputs.node-version }})
-      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       with:
         node-version: ${{ inputs.node-version }}
         cache: "npm"
@@ -71,13 +197,11 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: Check formatting (Prettier)
-      if: ${{ inputs.run-format-check == 'true' }}
       run: npx prettier --check .
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Lint (ESLint)
-      if: ${{ inputs.run-lint == 'true' }}
       run: npx eslint --max-warnings 0 .
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -88,7 +212,6 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: Run tests
-      if: ${{ inputs.run-tests == 'true' }}
       run: npm test
       shell: bash
       working-directory: ${{ inputs.working-directory }}

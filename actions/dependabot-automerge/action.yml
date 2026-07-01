@@ -25,7 +25,7 @@ runs:
   steps:
     - name: Fetch Dependabot metadata
       id: metadata
-      uses: dependabot/fetch-metadata@v3
+      uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
       with:
         github-token: ${{ inputs.github_token }}
 
@@ -72,7 +72,9 @@ runs:
           merge|squash|rebase)
             ;;
           *)
-            echo "Unsupported merge_method '${MERGE_METHOD}'. Use merge, squash, or rebase." >&2
+            echo "✗ Unsupported merge_method '${MERGE_METHOD}'" >&2
+            echo "  WHY: Dependabot auto-merge only supports GitHub merge, squash, or rebase." >&2
+            echo "  HOW: set merge_method to 'merge', 'squash', or 'rebase'." >&2
             exit 1
             ;;
         esac

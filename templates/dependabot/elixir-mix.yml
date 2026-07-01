@@ -4,16 +4,12 @@ updates:
     directories:
       - "/"
       - "/actions/*"
-    # Shared CI changes can affect every consuming repo after the v1 rollout.
-    # Batch them early in the week so review happens deliberately and during
-    # normal working hours.
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
       day: "tuesday"
       time: "09:00"
       timezone: "America/New_York"
-    # Keep one grouped PR open at a time to avoid dependency-noise queues in the
-    # public control-plane repo.
     open-pull-requests-limit: 1
     labels:
       - "dependencies"
@@ -24,3 +20,16 @@ updates:
       actions:
         patterns:
           - "*"
+  - package-ecosystem: "mix"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 1
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"

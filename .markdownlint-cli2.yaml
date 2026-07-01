@@ -1,0 +1,12 @@
+config:
+  default: true
+  MD013: false # Plans and generated evidence include long command/proof lines.
+  MD024:
+    siblings_only: true
+  MD033: false # Product Evidence views use generated HTML comment markers.
+  MD041: false # Repo-local lifecycle docs use YAML frontmatter before headings.
+ignores:
+  - ".git/**"
+  - ".obsidian/**"
+  - ".claude/**"
+  - "docs/handoffs/**"
