@@ -38,7 +38,7 @@ No promises in this status.
 - Type: `integration/contract`
 - Status: `covered`
 - Evidence:
-  - `auto` `path:tests/test_shared_ci_contract.py` - Tests that parent CI dogfoods local shared actions and language composites preserve the shared CI contract inside one caller job.
+  - `auto` `path:tests/test_shared_ci_contract.py` - Tests that parent CI dogfoods bootstrap-safe local shared actions, preserves direct shell validation, and language composites preserve the shared CI contract inside one caller job.
   - `manual` `path:README.md` - Documents the uppercase CI job contract and composite-action usage that preserves the required status.
 
 ### REQ-003 - Run strict reproducible shared checks
@@ -98,7 +98,7 @@ No promises in this status.
 - Evidence:
   - `auto` `path:tests/test_validate_github_actions.py` - Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery.
   - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy.
-  - `auto` `path:tests/test_shared_ci_contract.py` - Tests parent self-CI dogfood wiring and parseable public workflow examples before release.
+  - `auto` `path:tests/test_shared_ci_contract.py` - Tests parent self-CI dogfood/bootstrap wiring, direct shell validation, and parseable public workflow examples before release.
   - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests remote probe action metadata and the public probe workflow template parse and preserve the manual diagnostic contract before release.
 
 ### REQ-016 - Define a Dependabot coverage standard

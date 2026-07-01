@@ -11,7 +11,7 @@
         {
           "ref": "path:tests/test_shared_ci_contract.py",
           "kind": "auto",
-          "summary": "Tests that parent CI dogfoods local shared actions and language composites preserve the shared CI contract inside one caller job."
+          "summary": "Tests that parent CI dogfoods bootstrap-safe local shared actions, preserves direct shell validation, and language composites preserve the shared CI contract inside one caller job."
         },
         {
           "ref": "path:README.md",
@@ -183,7 +183,7 @@
         {
           "ref": "path:tests/test_shared_ci_contract.py",
           "kind": "auto",
-          "summary": "Tests parent self-CI dogfood wiring and parseable public workflow examples before release."
+          "summary": "Tests parent self-CI dogfood/bootstrap wiring, direct shell validation, and parseable public workflow examples before release."
         },
         {
           "ref": "path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py",

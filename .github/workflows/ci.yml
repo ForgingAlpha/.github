@@ -40,9 +40,43 @@ jobs:
         uses: ./actions/ci-dependabot-coverage
 
       - name: Validate Shell
-        uses: ./actions/ci-shell
-        with:
-          markdown-mode: all
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            echo "✗ ShellCheck is not installed on PATH."
+            echo "  WHAT: parent CI cannot run shell validation because shellcheck is unavailable."
+            echo "  WHY: shared shell validation requires ShellCheck at style severity before release."
+            echo "  HOW: use a runner image with shellcheck installed or install it before this step."
+            exit 1
+          fi
+
+          shellcheck --version
+
+          mapfile -d '' shell_files < <(git ls-files -z -- '*.sh' '*.bash')
+          if [ "${#shell_files[@]}" -eq 0 ]; then
+            echo "✓ No tracked .sh or .bash files found."
+            exit 0
+          fi
+
+          fail=0
+          for file in "${shell_files[@]}"; do
+            if ! shellcheck -S style "$file"; then
+              echo "✗ ShellCheck failed for ${file}"
+              echo "  WHY: parent self-CI must preserve the same style-severity shell policy published by ci-shell."
+              echo "  HOW: fix the finding above or document a narrow inline ShellCheck directive."
+              fail=1
+            fi
+
+            if ! bash -n "$file"; then
+              echo "✗ Bash syntax validation failed for ${file}"
+              echo "  WHY: parent self-CI requires every tracked .sh/.bash file to parse before merge."
+              echo "  HOW: run 'bash -n ${file}' locally and fix the reported syntax error."
+              fail=1
+            fi
+          done
+          exit "$fail"
 
       - name: Test GitHub Actions contract validator
         run: |

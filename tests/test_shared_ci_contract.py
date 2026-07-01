@@ -262,6 +262,17 @@ class SharedCiContractTest(unittest.TestCase):
         steps = workflow["jobs"]["CI"]["steps"]
         uses = [step.get("uses") for step in steps if isinstance(step, dict) and step.get("uses")]
         run_blocks = "\n".join(step.get("run", "") for step in steps if isinstance(step, dict))
+        validate_shell_step = next(
+            (step for step in steps if isinstance(step, dict) and step.get("name") == "Validate Shell"),
+            None,
+        )
+        self.assertIsNotNone(
+            validate_shell_step,
+            "Parent CI must keep a Validate Shell step. "
+            "WHY: the parent repo still needs shell validation while avoiding local ./actions/ci-shell bootstrap resolution. "
+            "HOW: restore a Validate Shell run step in .github/workflows/ci.yml.",
+        )
+        validate_shell_run = validate_shell_step.get("run", "")
 
         for expected in (
             "./actions/ci-merge-flow",
@@ -269,7 +280,6 @@ class SharedCiContractTest(unittest.TestCase):
             "./actions/ci-markdown",
             "./actions/ci-github-actions",
             "./actions/ci-dependabot-coverage",
-            "./actions/ci-shell",
         ):
             self.assertIn(
                 expected,
@@ -278,6 +288,27 @@ class SharedCiContractTest(unittest.TestCase):
                 "WHY: this repo should validate the in-branch shared actions before release tags move. "
                 f"HOW: add a local uses step for {expected} in .github/workflows/ci.yml.",
             )
+        self.assertNotIn(
+            "./actions/ci-shell",
+            uses,
+            "Parent CI must not call local ./actions/ci-shell before v1 moves. "
+            "WHY: GitHub resolves composite uses steps before step-level if guards, so ci-shell would try to download unreleased @v1 shared actions during self-CI. "
+            "HOW: run shellcheck and bash -n directly in .github/workflows/ci.yml until ci-shell's remote dependencies exist at v1.",
+        )
+        self.assertIn(
+            "shellcheck -S style",
+            validate_shell_run,
+            "Parent CI must still run ShellCheck directly. "
+            "WHY: skipping ./actions/ci-shell is only a bootstrap guard, not a relaxation of shell validation. "
+            "HOW: keep shellcheck -S style in the direct Validate Shell step.",
+        )
+        self.assertIn(
+            'if ! bash -n "$file"; then',
+            validate_shell_run,
+            "Parent CI must still run Bash syntax validation directly. "
+            "WHY: skipping ./actions/ci-shell is only a bootstrap guard, not a relaxation of shell validation. "
+            "HOW: keep the executable bash -n \"$file\" branch in the direct Validate Shell step.",
+        )
         self.assertIn(
             "python3 -m unittest discover -s actions/ci-remote-probe-guard/tests",
             run_blocks,

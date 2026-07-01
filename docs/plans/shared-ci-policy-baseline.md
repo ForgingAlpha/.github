@@ -1389,7 +1389,11 @@ truth; this phase wires only the new reusable actions that earlier phases add.
   - `./actions/ci-markdown`
   - `./actions/ci-alphaapps-policy`
   - `./actions/ci-dependabot-coverage`
-  - `./actions/ci-shell` if shell scripts are present
+- Run direct ShellCheck `style` plus `bash -n` for tracked shell scripts during
+  parent self-CI. Do not call local `./actions/ci-shell` in this PR before `v1`
+  contains the new cross-cutting actions, because GitHub resolves nested
+  composite `uses:` actions before step-level `if:` guards can skip unreleased
+  remote `@v1` dependencies.
 - Preserve local `./actions/ci-merge-flow` dogfood.
 - Avoid remote `@v1` calls for branch-local self validation.
 
@@ -1442,7 +1446,8 @@ truth; this phase wires only the new reusable actions that earlier phases add.
 #### Automated Verification
 
 - [x] Parent CI-equivalent command passes locally.
-- [x] New local actions run successfully from `.github/workflows/ci.yml`.
+- [x] New bootstrap-safe local actions run successfully from
+  `.github/workflows/ci.yml`.
 - [x] Parent Dependabot coverage validation passes for workflow files and
   nested shared composite action manifests.
 - [x] `.github/workflows/ci.yml` uses the control-plane trigger shape:
@@ -1473,7 +1478,8 @@ truth; this phase wires only the new reusable actions that earlier phases add.
 #### Plan Alignment Verification
 
 - [x] README accurately describes what CI enforces.
-- [x] `.github` dogfoods the same checks it publishes.
+- [x] `.github` dogfoods the same check outcomes it publishes, with direct
+  shell validation used only for the pre-`v1` self-CI bootstrap window.
 - [x] No extra org-wide standards outside this plan were added.
 
 #### Agent Review Gates
@@ -1587,6 +1593,25 @@ gates pass. Do not tag/release `v1` without explicit operator approval.
 - **Classification**: allowed implementation choice.
 - **Resolution**: contract tests and README/Product Evidence now describe the
   conditional behavior precisely.
+
+- **Planned**: parent CI calls local `./actions/ci-shell` when shell scripts are
+  present.
+- **Implemented**: parent CI runs ShellCheck at `style` severity plus `bash -n`
+  directly in `.github/workflows/ci.yml` during the pre-`v1` bootstrap window.
+- **Difference**: local `./actions/ci-shell` contains remote `@v1`
+  cross-cutting action references for consumers. GitHub resolves nested
+  composite `uses:` actions before honoring step-level `if:` guards, so parent
+  self-CI cannot call the local composite until those new action paths exist at
+  `v1`.
+- **Evidence Used**: failed PR `CI / CI (pull_request)` run
+  `28534763505`, `tests/test_shared_ci_contract.py`, and the direct shell
+  validation block in `.github/workflows/ci.yml`.
+- **Classification**: allowed implementation correction preserving the
+  approved shell-validation outcome and release-tag rollout boundary.
+- **Resolution**: parent self-CI avoids unreleased nested remote action
+  resolution while continuing to run direct ShellCheck `style` and `bash -n`;
+  consumer-facing `ci-shell` remains unchanged and still publishes the shared
+  cross-cutting baseline through `@v1`.
 
 ---
 
