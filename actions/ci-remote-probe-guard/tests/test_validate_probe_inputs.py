@@ -189,13 +189,11 @@ class RemoteProbeGuardTest(unittest.TestCase):
             f"HOW: remove command-like outputs from action.yml; outputs={output_names!r}",
         )
 
-    def test_probe_template_is_manual_read_only_and_diagnostic_only(self):
+    def test_probe_template_is_thin_manual_wrapper(self):
         workflow = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
         triggers = workflow.get("on", workflow.get(True, {}))
         jobs = workflow.get("jobs", {})
-        steps = jobs["probe"]["steps"]
-        run_blocks = "\n".join(step.get("run", "") for step in steps if isinstance(step, dict))
-        step_names = [step.get("name", "") for step in steps if isinstance(step, dict)]
+        probe = jobs["probe"]
 
         self.assertIn(
             "workflow_dispatch",
@@ -226,96 +224,112 @@ class RemoteProbeGuardTest(unittest.TestCase):
                 "WHY: manual diagnostic runs need visible mode/lane/ref context. "
                 f"HOW: update run-name; run_name={workflow.get('run-name')!r}",
             )
-        self.assertLess(
-            step_names.index("Validate probe selector"),
-            step_names.index("Checkout target ref"),
-            f"Probe template must validate selectors before target checkout. "
-            "WHY: REQ-012 requires invalid refs and selectors to fail before checkout-dependent execution. "
-            f"HOW: move the guard step before actions/checkout; step_names={step_names!r}",
-        )
-        checkout_steps = [
-            step
-            for step in steps
-            if isinstance(step, dict) and str(step.get("uses", "")).startswith("actions/checkout@")
-        ]
         self.assertEqual(
-            checkout_steps[0].get("with", {}).get("ref"),
-            "${{ steps.guard.outputs.checkout_ref }}",
-            f"Probe template must checkout the normalized guard ref. "
-            "WHY: raw workflow_dispatch refs should be validated before checkout. "
-            f"HOW: set checkout ref to steps.guard.outputs.checkout_ref; checkout_steps={checkout_steps!r}",
-        )
-        self.assertIn(
-            "concurrency",
-            workflow,
-            f"Probe template must define explicit concurrency. "
-            "WHY: duplicate diagnostic runs should be visible and controlled. "
-            "HOW: add a top-level concurrency group.",
-        )
-        self.assertIsInstance(
-            jobs["probe"].get("timeout-minutes"),
-            int,
-            f"Probe job must define a bounded timeout. "
-            "WHY: diagnostics should not run indefinitely. "
-            f"HOW: set jobs.probe.timeout-minutes; job={jobs['probe']!r}",
+            probe.get("uses"),
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
+            f"Probe template must call the centralized reusable probe workflow on @main. "
+            "WHY: manual probes intentionally use the latest internal diagnostic platform. "
+            f"HOW: keep the template as a thin reusable-workflow caller; probe={probe!r}",
         )
         self.assertNotIn(
-            "eval ",
-            run_blocks,
-            f"Probe template must not use eval. "
-            "WHY: repo-owned command arrays avoid arbitrary remote shell execution. "
-            "HOW: build shell arrays with case branches instead.",
-        )
-        for expected in (
-            'case "${PROBE_LANE}" in',
-            "cmd=(./replace-with-repo-owned-probe-command",
-            "cmd+=(--mode exact",
-            "cmd+=(--mode file",
-            "cmd+=(--mode lane)",
-            '"${cmd[@]}"',
-        ):
-            self.assertIn(
-                expected,
-                run_blocks,
-                f"Probe template must keep shell-array command construction. "
-                "WHY: REQ-012 allows constrained selectors but forbids arbitrary shell command input. "
-                f"HOW: keep the repo-owned case branch and cmd array pattern; missing={expected!r}",
-            )
-        self.assertIn(
-            "GITHUB_STEP_SUMMARY",
-            run_blocks,
-            f"Probe template must write normalized inputs to the step summary. "
-            "WHY: diagnostic evidence needs exact selector and artifact context. "
-            "HOW: append a summary after guard validation.",
+            "steps",
+            probe,
+            f"Probe template must not copy command execution steps. "
+            "WHY: reusable workflows own shared scaffolding and consumer repos own bin/ci-probe adapters. "
+            f"HOW: remove copied steps from workflow-templates/ci-probe.yml; probe={probe!r}",
         )
 
-        upload_steps = [
-            step
-            for step in steps
-            if isinstance(step, dict) and str(step.get("uses", "")).startswith("actions/upload-artifact@")
-        ]
-        self.assertEqual(
-            len(upload_steps),
-            1,
-            f"Probe template must upload one diagnostic artifact packet. "
-            "WHY: failed probes are evidence and must be retained briefly. "
-            f"HOW: add one upload-artifact step; upload_steps={upload_steps!r}",
+    def test_reusable_probe_workflows_are_diagnostic_only(self):
+        workflow_paths = sorted((ROOT / ".github" / "workflows").glob("ci-probe-*.yml"))
+        self.assertTrue(
+            workflow_paths,
+            "Remote probe platform must define reusable probe workflows. "
+            "WHY: consumers should call centralized @main workflows instead of copying command YAML. "
+            "HOW: add .github/workflows/ci-probe-*.yml.",
         )
-        upload = upload_steps[0]
-        self.assertEqual(
-            upload.get("if"),
-            "${{ always() }}",
-            f"Probe artifacts must upload on success and failure. "
-            "WHY: failing probes carry the useful CI-only evidence. "
-            f"HOW: set if: ${{{{ always() }}}}; upload={upload!r}",
-        )
-        self.assertLessEqual(
-            int(upload.get("with", {}).get("retention-days", 0)),
-            7,
-            f"Probe artifacts must use short retention. "
-            "WHY: probe packets are diagnostics, not permanent public evidence. "
-            f"HOW: set retention-days to a low value; upload={upload!r}",
-        )
+
+        for path in workflow_paths:
+            with self.subTest(path=path.relative_to(ROOT).as_posix()):
+                workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+                triggers = workflow.get("on", workflow.get(True, {}))
+                jobs = workflow.get("jobs", {})
+                steps = jobs["probe"]["steps"]
+                run_blocks = "\n".join(
+                    step.get("run", "") for step in steps if isinstance(step, dict)
+                )
+                step_names = [step.get("name", "") for step in steps if isinstance(step, dict)]
+
+                self.assertEqual(
+                    set(triggers),
+                    {"workflow_call"},
+                    f"Reusable probe workflow must be called by repo wrappers only. "
+                    "WHY: consumer default-branch wrappers own manual workflow_dispatch entrypoints. "
+                    f"HOW: keep on.workflow_call only; triggers={triggers!r}",
+                )
+                self.assertEqual(
+                    workflow.get("permissions"),
+                    {"contents": "read"},
+                    f"Reusable probe workflow must use read-only root permissions. "
+                    "WHY: diagnostics should not need write permissions. "
+                    f"HOW: set permissions.contents to read; permissions={workflow.get('permissions')!r}",
+                )
+                self.assertLess(
+                    step_names.index("Validate probe selector"),
+                    step_names.index("Checkout target ref"),
+                    f"Reusable probe workflow must validate selectors before target checkout. "
+                    "WHY: invalid refs and selectors must fail before checkout-dependent execution. "
+                    f"HOW: move the guard step before actions/checkout; step_names={step_names!r}",
+                )
+                self.assertIn(
+                    "ForgingAlpha/.github/actions/ci-remote-probe-guard@main",
+                    [step.get("uses") for step in steps if isinstance(step, dict)],
+                    f"Reusable probe workflow must use the shared guard at @main. "
+                    "WHY: manual probes follow the latest-on-main internal diagnostic platform. "
+                    "HOW: restore the guard uses ref.",
+                )
+                self.assertIn(
+                    "./bin/ci-probe",
+                    run_blocks,
+                    f"Reusable probe workflow must delegate command mapping to the consumer adapter. "
+                    "WHY: this public repo must not own private repo-specific probe commands. "
+                    "HOW: invoke ./bin/ci-probe with normalized selector arguments.",
+                )
+                self.assertNotIn(
+                    "eval ",
+                    run_blocks,
+                    f"Reusable probe workflow must not use eval. "
+                    "WHY: probe inputs are selectors, not shell code. "
+                    "HOW: keep command execution in repo-owned adapters without eval.",
+                )
+                self.assertIn(
+                    "GITHUB_STEP_SUMMARY",
+                    run_blocks,
+                    f"Reusable probe workflow must write normalized inputs to the step summary. "
+                    "WHY: diagnostic evidence needs exact selector and artifact context. "
+                    "HOW: append a summary after guard validation.",
+                )
+
+                upload_steps = [
+                    step
+                    for step in steps
+                    if isinstance(step, dict)
+                    and str(step.get("uses", "")).startswith("actions/upload-artifact@")
+                ]
+                self.assertEqual(
+                    len(upload_steps),
+                    1,
+                    f"Reusable probe workflow must upload one diagnostic artifact packet. "
+                    "WHY: failed probes are evidence and must be retained briefly. "
+                    f"HOW: add one upload-artifact step; upload_steps={upload_steps!r}",
+                )
+                upload = upload_steps[0]
+                self.assertEqual(
+                    upload.get("if"),
+                    "${{ always() }}",
+                    f"Probe artifacts must upload on success and failure. "
+                    "WHY: failing probes carry the useful CI-only evidence. "
+                    f"HOW: set if: ${{{{ always() }}}}; upload={upload!r}",
+                )
 
 
 if __name__ == "__main__":

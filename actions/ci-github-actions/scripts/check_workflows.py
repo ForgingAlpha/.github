@@ -86,6 +86,18 @@ def action_owner(target: str) -> str:
     return target.split("/", 1)[0]
 
 
+def is_forgingalpha_shared_automation(target: str) -> bool:
+    return target.startswith("ForgingAlpha/.github/actions/") or target.startswith(
+        "ForgingAlpha/.github/.github/workflows/"
+    )
+
+
+def is_forgingalpha_probe_automation(target: str) -> bool:
+    return target == "ForgingAlpha/.github/actions/ci-remote-probe-guard" or bool(
+        re.fullmatch(r"ForgingAlpha/\.github/\.github/workflows/ci-probe-[A-Za-z0-9_-]+\.yml", target)
+    )
+
+
 def require_reason_map(
     allowlist_path: Path,
     key: str,
@@ -193,6 +205,27 @@ def validate_uses_ref(
         return
 
     target, ref = uses.rsplit("@", 1)
+    if is_forgingalpha_probe_automation(target):
+        if ref != "main":
+            errors.append(
+                f"{path}: probe diagnostic automation '{uses}' must use @main. "
+                "WHAT: the probe diagnostic ref is outside the approved latest-on-main policy. "
+                "WHY: manual non-required probes intentionally run the latest reviewed diagnostic platform. "
+                "HOW: use @main for ForgingAlpha ci-probe reusable workflows and the ci-remote-probe-guard action."
+            )
+        return
+
+    if is_forgingalpha_shared_automation(target):
+        if not re.fullmatch(r"v\d+", ref):
+            errors.append(
+                f"{path}: internal shared automation '{uses}' must use a vN major tag. "
+                "WHAT: the internal shared automation ref is not a released major tag. "
+                "WHY: required shared CI rollout remains deliberate through released major tags; "
+                "only manual probe diagnostics use @main. "
+                "HOW: replace the ref with @v1 unless this is a ci-probe reusable workflow or ci-remote-probe-guard."
+            )
+        return
+
     if ref in FORBIDDEN_REFS or ref.startswith("refs/heads/"):
         errors.append(
             f"{path}: action reference '{uses}' uses branch ref '{ref}'. "
@@ -200,16 +233,6 @@ def validate_uses_ref(
             "WHY: branch refs can change without a reviewed release boundary. "
             "HOW: use a released tag such as @v1 or a full commit SHA."
         )
-        return
-
-    if target.startswith("ForgingAlpha/.github/actions/"):
-        if not re.fullmatch(r"v\d+", ref):
-            errors.append(
-                f"{path}: internal shared action '{uses}' must use a major tag. "
-                "WHAT: the internal shared action ref is not a vN major tag. "
-                "WHY: vN is the consumer rollout boundary for shared actions. "
-                "HOW: replace the ref with @v1 unless a newer major is intended."
-            )
         return
 
     if action_owner(target) in FIRST_PARTY_ACTION_OWNERS:

@@ -76,21 +76,21 @@ and main-only control-plane repositories are exempt.
 
 ### Release And Consumer Contract
 
-#### REQ-006 - Released Tag Consumption
+#### REQ-006 - Required CI Released Tag Consumption
 
-Consumer-facing examples SHALL reference released shared-action tags such as
-`@v1`, not ordinary branch refs such as `@main`.
+Required CI examples SHALL reference released shared-action tags such as `@v1`,
+not ordinary branch refs such as `@main`.
 
-**Fit:** Repository examples and templates for normal consumers use released
-tags for shared actions.
+**Fit:** Repository examples for required merge-authority CI use released tags
+for shared actions.
 
-#### REQ-007 - Deliberate Shared Rollout
+#### REQ-007 - Required CI Deliberate Shared Rollout
 
-Moving a consumer-facing release tag SHALL be a deliberate release action after
+Moving a required-CI release tag SHALL be a deliberate release action after
 review.
 
 **Fit:** Merging to `main` updates this repo but does not by itself move the
-consumer-facing `v1` rollout boundary.
+required-CI `v1` rollout boundary.
 
 ### Public Safety
 
@@ -135,6 +135,25 @@ SHALL NOT accept arbitrary shell commands.
 
 **Fit:** Invalid probe modes, paths, labels, refs, and command-like inputs are
 rejected before command construction.
+
+#### REQ-012A - Latest Diagnostic Standard
+
+WHEN Diagnostic Workflows are provided for internal Alpha Apps agent debugging,
+they SHALL use the latest approved reusable diagnostic workflow on this repo's
+`main` branch.
+
+**Fit:** A Consumer Repository's manual `ci-probe.yml` calls a centralized
+`ForgingAlpha/.github/.github/workflows/ci-probe-*.yml@main` workflow, and the
+workflow remains diagnostic-only and non-required.
+
+#### REQ-012B - Repo-Owned Probe Adapter
+
+WHEN Diagnostic Workflows execute repo behavior, the Consumer Repository SHALL
+own the adapter that maps validated selectors to concrete commands.
+
+**Fit:** The shared reusable workflow validates inputs and invokes
+`./bin/ci-probe`; it does not accept arbitrary command strings or embed
+private repo-specific diagnostics in this public control-plane repo.
 
 ### Deterministic Enforcement
 

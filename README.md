@@ -5,9 +5,11 @@ Org-wide CI, security configuration, and standards for all ForgingAlpha reposito
 ## Composite Actions (CI Library)
 
 CI logic is centralized in `actions/`. Each repo's `.github/workflows/ci.yml`
-is a thin wrapper that calls the right action. Edit an action here, merge the
-PR, then move a released major tag such as `v1`; consumers pinned to that tag
-pick up the change on their next CI run.
+is a thin wrapper that calls the right action. Required CI uses released refs
+such as `@v1`, so moving the released major tag remains the rollout boundary for
+merge authority. Manual diagnostic probes are intentionally different: they use
+central reusable workflows on `.github@main` so every repo runs the latest
+approved probe platform on the next manual probe.
 
 | Action | Ecosystem | What it checks |
 | --- | --- | --- |
@@ -255,6 +257,19 @@ code/package composites run dependency review on pull requests.
 No per-repo PRs needed unless a repository must pass new inputs or different
 commands. One released change here = org-wide rollout.
 
+### Modify diagnostic probes for all repos
+
+1. Edit the reusable probe workflow under `.github/workflows/ci-probe-*.yml` or
+   the shared guard under `actions/ci-remote-probe-guard/`.
+2. Open a PR to this repo's `main` branch.
+3. After merge, every consumer workflow that calls
+   `ForgingAlpha/.github/.github/workflows/ci-probe-*.yml@main` uses the new
+   probe behavior on its next manual run.
+
+No tag movement is required for probes. Probe workflows are diagnostic-only and
+non-required, so `.github@main` keeps the internal agent-debugging surface
+standardized without changing merge authority.
+
 ## Reusable Workflows
 
 ### Fast-forward branch promotion
@@ -293,11 +308,23 @@ reproduce on GitHub runners or in required CI runtime. They are not merge
 authority and must not be configured as required status checks. Required `CI`
 remains the merge gate.
 
-Consumer repos may copy [`workflow-templates/ci-probe.yml`](workflow-templates/ci-probe.yml)
-and adapt only the repo-owned runner, services, environment, lane allowlist,
-file selector bounds, and case-branch command arrays. The shared
-[`ci-remote-probe-guard`](actions/ci-remote-probe-guard/action.yml) action
-validates selector inputs before any repo-owned command is assembled.
+Consumer repos install a thin `.github/workflows/ci-probe.yml` on their default
+branch. That wrapper calls one of this repo's centralized reusable workflows on
+`@main`, passes repo-owned allowlists and version pins, and forwards manual
+selector inputs. The consuming repo owns an executable `bin/ci-probe` adapter
+that maps validated selectors to reviewed local commands.
+
+The shared reusable workflows are:
+
+- `.github/workflows/ci-probe-elixir-postgres.yml`
+- `.github/workflows/ci-probe-rust.yml`
+- `.github/workflows/ci-probe-docs.yml`
+
+The shared [`ci-remote-probe-guard`](actions/ci-remote-probe-guard/action.yml)
+action validates selector inputs before any target ref is checked out or
+repo-owned command adapter runs. Probe wrappers and the shared guard use
+`ForgingAlpha/.github@main` by design; manual probes are the latest-on-main
+internal diagnostic surface, not a semver compatibility line.
 
 Probe workflows follow this contract:
 
@@ -309,25 +336,28 @@ Probe workflows follow this contract:
 - `run-name` includes the selected dispatch mode, lane, and target checkout ref.
 - `timeout-minutes` is bounded and shorter than broad CI while still long
   enough for the selected diagnostic lane.
-- `concurrency` is explicit so duplicate probes are visible and controlled.
+- `concurrency` is explicit in the reusable workflow so duplicate probes are
+  visible and controlled.
 - Operators run the trusted workflow definition with
   `gh workflow run --ref <trusted-default-branch>`, while target code is
   validated and checked out from the separate `checkout_ref` input.
 - Inputs are constrained selectors: `probe_mode` (`exact`, `file`, `lane`),
   allowlisted `lane`, bounded repo-relative `file`, positive `line` for
   `exact`, safe `checkout_ref`, and safe `out_label`.
-- The workflow accepts no arbitrary shell command input. Consumer workflows
-  assemble commands with shell arrays and repo-owned `case` branches.
+- The workflow accepts no arbitrary shell command input. Consumer repos expose
+  an executable `bin/ci-probe` adapter that maps validated selectors to reviewed
+  commands.
 - Probe output artifacts upload with `if: always()` and short retention.
 - `GITHUB_STEP_SUMMARY` records the exact normalized selector inputs and the
   artifact path.
 
 Before operators run a probe, the concrete `.github/workflows/ci-probe.yml`
 must already be landed on the trusted default or development branch that owns
-the workflow definition. The probe job should use the same runner and runtime
-setup as the required CI lane it is diagnosing. Repo-specific lane names, target
-test paths, line numbers, invocation examples, and failure evidence belong in
-the consuming repo or private evidence, not this public parent repo.
+the workflow definition. The probe job should use the centralized reusable
+workflow that matches the required CI runtime it is diagnosing. Repo-specific
+lane names, target test paths, line numbers, invocation examples, and failure
+evidence belong in the consuming repo or private evidence, not this public
+parent repo.
 
 ## Branch Protection (Org-Wide Rulesets)
 

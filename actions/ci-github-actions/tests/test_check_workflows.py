@@ -321,6 +321,76 @@ class CheckWorkflowsTest(unittest.TestCase):
             f"WHY: agents need a concrete ref to pin. stderr={stderr.getvalue()!r}",
         )
 
+    def test_probe_guard_main_ref_is_allowed(self):
+        errors = []
+
+        checker.validate_uses_ref(
+            Path(".github/workflows/probe.yml"),
+            "ForgingAlpha/.github/actions/ci-remote-probe-guard@main",
+            errors,
+            checker.Allowlists.empty(),
+        )
+
+        self.assertEqual(
+            errors,
+            [],
+            "validate_uses_ref must allow the ForgingAlpha probe guard on @main. "
+            "WHY: manual non-required probes follow the latest-on-main internal platform model. "
+            f"HOW: inspect is_forgingalpha_probe_automation handling; errors={errors!r}",
+        )
+
+    def test_probe_reusable_workflow_main_ref_is_allowed(self):
+        errors = []
+
+        checker.validate_uses_ref(
+            Path(".github/workflows/probe.yml"),
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
+            errors,
+            checker.Allowlists.empty(),
+        )
+
+        self.assertEqual(
+            errors,
+            [],
+            "validate_uses_ref must allow ForgingAlpha reusable probe workflows on @main. "
+            "WHY: consumer repos should call the current centralized diagnostic workflow. "
+            f"HOW: inspect internal reusable workflow ref handling; errors={errors!r}",
+        )
+
+    def test_probe_automation_rejects_non_main_ref(self):
+        errors = []
+
+        checker.validate_uses_ref(
+            Path(".github/workflows/probe.yml"),
+            "ForgingAlpha/.github/actions/ci-remote-probe-guard@latest",
+            errors,
+            checker.Allowlists.empty(),
+        )
+
+        self.assertTrue(
+            any("probe diagnostic automation" in error for error in errors),
+            "validate_uses_ref must reject probe automation refs outside @main. "
+            "WHY: latest-on-main is deliberate; arbitrary moving names should not become a second policy. "
+            f"HOW: inspect internal shared automation ref validation; errors={errors!r}",
+        )
+
+    def test_non_probe_internal_shared_action_main_ref_is_rejected(self):
+        errors = []
+
+        checker.validate_uses_ref(
+            Path(".github/workflows/ci.yml"),
+            "ForgingAlpha/.github/actions/ci-github-actions@main",
+            errors,
+            checker.Allowlists.empty(),
+        )
+
+        self.assertTrue(
+            any("must use a vN major tag" in error for error in errors),
+            "validate_uses_ref must reject @main for non-probe shared CI actions. "
+            "WHY: required CI keeps deliberate release-tag rollout even though manual probes use @main. "
+            f"HOW: inspect ForgingAlpha shared automation ref validation; errors={errors!r}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

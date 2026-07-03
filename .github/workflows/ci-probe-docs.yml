@@ -1,0 +1,142 @@
+name: CI Probe Docs
+
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Target code ref to inspect with this trusted reusable workflow
+        required: true
+        type: string
+      probe_mode:
+        description: Diagnostic selector mode
+        required: true
+        type: string
+      lane:
+        description: Repo-owned diagnostic lane
+        required: true
+        type: string
+      allowed_lanes:
+        description: Comma or newline separated repo-owned lane allowlist
+        required: true
+        type: string
+      file:
+        description: Repo-relative file for file or exact mode
+        required: false
+        type: string
+        default: ""
+      line:
+        description: Positive line for exact mode
+        required: false
+        type: string
+        default: ""
+      out_label:
+        description: Safe artifact label
+        required: false
+        type: string
+        default: probe
+      file_root:
+        description: Allowed repo-relative root for file selectors
+        required: false
+        type: string
+        default: .
+      file_suffixes:
+        description: Comma or newline separated allowed file suffixes
+        required: false
+        type: string
+        default: ".md,.py,.sh,.yml,.yaml"
+      artifact_retention_days:
+        description: Diagnostic artifact retention in days
+        required: false
+        type: number
+        default: 3
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-probe-${{ github.repository }}-${{ inputs.checkout_ref }}-${{ inputs.probe_mode }}-${{ inputs.lane }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Diagnostic probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Validate probe selector
+        id: guard
+        uses: ForgingAlpha/.github/actions/ci-remote-probe-guard@main
+        with:
+          probe-mode: ${{ inputs.probe_mode }}
+          lane: ${{ inputs.lane }}
+          allowed-lanes: ${{ inputs.allowed_lanes }}
+          file: ${{ inputs.file }}
+          line: ${{ inputs.line }}
+          out-label: ${{ inputs.out_label }}
+          checkout-ref: ${{ inputs.checkout_ref }}
+          file-root: ${{ inputs.file_root }}
+          file-suffixes: ${{ inputs.file_suffixes }}
+
+      - name: Checkout target ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.guard.outputs.checkout_ref }}
+          fetch-depth: 0
+
+      - name: Install Python dependencies
+        shell: bash
+        run: python3 -m pip install --disable-pip-version-check PyYAML
+
+      - name: Run repo probe adapter
+        shell: bash
+        env:
+          PROBE_MODE: ${{ steps.guard.outputs.probe_mode }}
+          PROBE_LANE: ${{ steps.guard.outputs.lane }}
+          PROBE_FILE: ${{ steps.guard.outputs.file }}
+          PROBE_LINE: ${{ steps.guard.outputs.line }}
+          CHECKOUT_REF: ${{ steps.guard.outputs.checkout_ref }}
+          OUT_LABEL: ${{ steps.guard.outputs.out_label }}
+          ARTIFACT_PATH: ${{ steps.guard.outputs.artifact_path }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${ARTIFACT_PATH}"
+          {
+            echo "## CI Probe"
+            echo ""
+            echo "- repository: \`${GITHUB_REPOSITORY}\`"
+            echo "- mode: \`${PROBE_MODE}\`"
+            echo "- lane: \`${PROBE_LANE}\`"
+            echo "- checkout ref: \`${CHECKOUT_REF}\`"
+            echo "- file: \`${PROBE_FILE:-n/a}\`"
+            echo "- line: \`${PROBE_LINE:-n/a}\`"
+            echo "- artifact path: \`${ARTIFACT_PATH}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ ! -x ./bin/ci-probe ]; then
+            {
+              echo "✗ Missing executable ./bin/ci-probe."
+              echo "  WHAT: the reusable probe workflow could not find the repo-owned probe adapter."
+              echo "  WHY: shared diagnostics validate inputs centrally, but each repo owns safe command mapping."
+              echo "  HOW: add executable bin/ci-probe that handles --mode, --lane, --file, --line, and --out."
+            } | tee "${ARTIFACT_PATH}/probe.log"
+            exit 1
+          fi
+
+          ./bin/ci-probe \
+            --mode "${PROBE_MODE}" \
+            --lane "${PROBE_LANE}" \
+            --file "${PROBE_FILE}" \
+            --line "${PROBE_LINE}" \
+            --out "${ARTIFACT_PATH}" \
+            2>&1 | tee "${ARTIFACT_PATH}/probe.log"
+
+      - name: Upload diagnostic packet
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-probe-${{ steps.guard.outputs.out_label }}
+          path: ${{ steps.guard.outputs.artifact_path }}
+          if-no-files-found: warn
+          retention-days: ${{ inputs.artifact_retention_days }}

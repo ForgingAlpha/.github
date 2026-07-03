@@ -119,6 +119,30 @@ class ValidateGitHubActionsTest(unittest.TestCase):
             f"WHY: reusable workflow refs can drift like action refs. HOW: inspect iter_workflow_job_uses; errors={errors!r}",
         )
 
+    def test_internal_probe_reusable_workflow_main_ref_passes(self):
+        errors = []
+        workflow = {
+            "name": "Probe",
+            "on": "workflow_dispatch",
+            "permissions": {"contents": "read"},
+            "jobs": {
+                "probe": {
+                    "uses": "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
+                }
+            },
+        }
+        path = self.write_yaml(".github/workflows/probe.yml", workflow)
+
+        validator.validate_workflow(path, errors)
+
+        self.assertEqual(
+            errors,
+            [],
+            "validate_workflow must allow ForgingAlpha reusable probe workflows on @main. "
+            "WHY: manual non-required probes intentionally consume the latest internal diagnostic platform. "
+            f"HOW: inspect ForgingAlpha shared automation ref handling; errors={errors!r}",
+        )
+
     def test_pull_request_target_requires_allowlist_reason(self):
         errors = []
         workflow = {

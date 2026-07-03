@@ -124,14 +124,21 @@ contract.
 ## Release And Rollout Model
 
 `main` is the authoring branch. Merging to `main` does not roll shared-action
-changes out to consumers.
+changes out to required CI consumers.
 
 Semver tags record reviewed releases. Mutable major tags such as `v1` are the
-consumer rollout boundary.
+required-CI consumer rollout boundary.
 
 Consumer examples and published shared-action dependencies use released refs
-such as `@v1`. Branch refs such as `@main` are not the consumer contract. Self
-CI may use local `./actions/...` paths to validate branch-local changes.
+such as `@v1` for required CI. Branch refs such as `@main` are not the required
+CI consumer contract. Self CI may use local `./actions/...` paths to validate
+branch-local changes.
+
+Manual diagnostic probes are the exception. Probe wrappers in Consumer
+Repositories call centralized reusable workflows on `ForgingAlpha/.github@main`
+so internal agent diagnostics always use the latest approved probe platform.
+This latest-on-main model is allowed because probes are non-required,
+manual-only, read-only, and not merge authority.
 
 ## Public And Private Boundary
 
@@ -152,13 +159,20 @@ Diagnostic workflows, when provided, collect CI-only evidence; they do not
 replace required `CI` and do not grant merge permission.
 
 Diagnostic entrypoints must use constrained inputs, never arbitrary shell
-commands. The consuming repository owns the command mapping from constrained
-inputs to runtime probes.
+commands. This repo owns reusable diagnostic workflow scaffolding and the
+shared input guard. The consuming repository owns the executable
+`bin/ci-probe` command adapter that maps constrained inputs to runtime probes.
 
 When a diagnostic workflow needs to test branch code, the workflow definition
 must remain trusted while the target checkout ref is treated as input.
 
 Diagnostic runs should upload artifacts or summaries even on failure.
+
+Reusable diagnostic workflows live under `.github/workflows/ci-probe-*.yml`.
+Consumer wrappers call those workflows at `@main` and pass only reviewed static
+configuration plus manual selector inputs. The reusable workflow validates
+selectors before checkout, checks out the target ref only after validation, and
+then invokes the repo-owned adapter.
 
 ## Durable State
 

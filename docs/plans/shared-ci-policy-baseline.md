@@ -10,9 +10,12 @@ baseline through the existing single `CI` status.
 The plan adds cross-cutting CI actions for Alpha Apps source-truth policy,
 Markdown linting, GitHub Actions safety, dependency review, and Dependabot
 coverage validation; tightens shell linting to the strictest useful ShellCheck
-severity; removes `@main` drift from internal shared-action calls; and documents
-a manual, non-required remote diagnostic probe workflow pattern for CI-only
-failures that agents cannot reproduce locally.
+severity; removes `@main` drift from required-CI internal shared-action calls;
+and documents a manual, non-required remote diagnostic probe workflow pattern
+for CI-only failures that agents cannot reproduce locally. Manual probes are
+the explicit latest-on-main exception: they use centralized reusable workflows
+on `ForgingAlpha/.github@main` because they are diagnostic-only and should stay
+standardized across repos.
 
 ## Definition Sources
 
@@ -121,8 +124,10 @@ receiving:
 - Existing language actions are strict, but cross-cutting policy is missing.
 - Phase 1 makes `ci-shell` stricter by defaulting ShellCheck severity to
   `style` and running the local `shellcheck` binary directly.
-- Phase 1 moves internal shared-action calls to `@v1`, not `@main`, to match
-  the release process in `README.md`.
+- Phase 1 moves required-CI internal shared-action calls to `@v1`, not `@main`,
+  to match the release process in `README.md`. Manual remote probes now use
+  `.github@main` by design so every repo receives the latest non-required
+  diagnostic platform on the next probe run.
 - `ci-alphaapps-policy` must be self-contained because `.github` is public and
   `alphaapps-docs` is private.
 - GitHub's official guidance supports minimum `GITHUB_TOKEN` permissions;
@@ -185,9 +190,10 @@ First-principles conclusion:
   array-based.
 - The workflow definition should come from a trusted default branch. The target
   code under test should be a separate checkout ref.
-- The parent `.github` repo should provide a reusable guard/template and
-  documentation. Each consumer repo should own the runtime-specific command,
-  lane allowlist, environment variables, and artifact paths.
+- The parent `.github` repo should provide reusable diagnostic workflows,
+  a shared input guard, a thin wrapper template, and documentation. Each
+  consumer repo should own an executable `bin/ci-probe` adapter plus its lane
+  allowlist, runtime-specific commands, and public-safe invocation docs.
 - Failed probes are usually the most valuable probes; artifact upload must run
   with `if: always()`.
 - Public `.github` plans and docs must not include local absolute paths,
@@ -202,7 +208,8 @@ First-principles conclusion:
 - Current dependency and action version review already refreshed existing
   action refs in the Phase 1 foundation. Newly introduced actions in later
   phases must still use current releases and full SHAs where this repo's
-  security policy requires SHA pinning.
+  security policy requires SHA pinning. Internal probe workflows/actions may
+  use `ForgingAlpha/.github@main` only for manual, non-required diagnostics.
 
 ## What We're NOT Doing
 
@@ -222,6 +229,8 @@ First-principles conclusion:
 - Not making remote diagnostic probes a required merge check.
 - Not accepting arbitrary shell commands as probe inputs.
 - Not adding `pull_request_target` or privileged automatic probe triggers.
+- Not creating semver compatibility lines for manual probes; probe consumers
+  intentionally call the current `.github@main` platform.
 - Not committing local absolute worktree paths or private diagnostic details to
   the public `.github` repository.
 
@@ -379,7 +388,7 @@ Plan deviations requiring operator approval:
 - Changing the single required status away from `CI`.
 - Introducing reusable workflows for ordinary CI checks.
 - Turning off or softening existing language checks.
-- Keeping any internal `@main` shared-action dependency.
+- Keeping any internal `@main` shared-action dependency in required CI.
 - Adding org-wide OIDC/deployment/merge-queue/Scorecard gates in this plan.
 - Making remote diagnostic probes required for merge.
 - Allowing arbitrary remote command execution through workflow inputs.
@@ -388,10 +397,14 @@ Plan deviations requiring operator approval:
 
 ## Evidence And Rollout Planning
 
-The rollout control is the `v1` tag. Implementation may add and dogfood local
-actions in the `.github` PR without immediately changing all consumers. The
-blast-radius moment is the semver release that moves `v1`, especially after
-language composites call the new policy actions.
+The rollout control for required CI is the `v1` tag. Implementation may add and
+dogfood local actions in the `.github` PR without immediately changing all
+required CI consumers. The required-CI blast-radius moment is the semver
+release that moves `v1`, especially after language composites call the new
+policy actions. Manual probes are a separate latest-on-main diagnostic surface:
+merging a probe change to `.github/main` updates every consumer wrapper that
+calls `ForgingAlpha/.github/.github/workflows/ci-probe-*.yml@main` on its next
+manual run.
 
 Phase closeout evidence must include:
 
@@ -561,8 +574,8 @@ for the work already present in this branch.
 - [x] Git diff whitespace check passes: `git diff --check`
 - [x] Public disclosure sweep passes:
   `mapfile -t changed < <({ git diff --name-only --diff-filter=ACMR HEAD -- README.md docs actions .github; git ls-files --others --exclude-standard -- README.md docs actions .github; } | sort -u); ((${#changed[@]} == 0)) || ! rg '[/]home/[^ ]+|~[/]wt|[D]OPPLER|[P]RIVATE KEY|[G]ITHUB_FORGINGALPHA|[B]EGIN [A-Z ]*[P]RIVATE KEY' "${changed[@]}"`
-- [x] No internal `@main` shared-action refs remain:
-  `! rg 'ForgingAlpha/.github/actions/.+@main' actions .github README.md`
+- [x] No internal `@main` shared-action refs remain in required CI:
+  `! rg 'ForgingAlpha/.github/actions/.+@main' actions .github/workflows/ci.yml`
 - [x] Dependabot config parses and covers `/` plus `/actions/*`.
 - [x] `.github` source truth and Product Evidence wording matches the approved
   alphaapps-docs required-baseline policy.
@@ -1455,8 +1468,8 @@ truth; this phase wires only the new reusable actions that earlier phases add.
 - [x] README examples parse as valid YAML snippets where practical.
 - [x] Parent Markdown lint passes.
 - [x] Parent actionlint passes.
-- [x] No internal `@main` shared-action refs remain after adding the new
-  cross-cutting action calls.
+- [x] No internal `@main` shared-action refs remain in required CI after adding
+  the new cross-cutting action calls.
 - [x] Git diff whitespace check passes: `git diff --check`
 - [x] Full-suite phase-close gate passes: all available `.github` tests and
   self CI-equivalent checks.
@@ -1653,12 +1666,15 @@ safety contract only; repo-specific failure details stay in private evidence.
 - Document that probes are for diagnostics and evidence collection, not merge
   permission.
 
-#### 2. Shared probe template or helper
+#### 2. Shared reusable probe workflows and guard
 
 **Files**:
 
-- `workflow-templates/ci-probe.yml` or
-  `actions/ci-remote-probe-guard/action.yml`
+- `.github/workflows/ci-probe-elixir-postgres.yml`
+- `.github/workflows/ci-probe-rust.yml`
+- `.github/workflows/ci-probe-docs.yml`
+- `workflow-templates/ci-probe.yml`
+- `actions/ci-remote-probe-guard/action.yml`
 - `actions/ci-remote-probe-guard/scripts/validate_probe_inputs.py` if a helper
   action is used
 - `actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` if a
@@ -1666,9 +1682,13 @@ safety contract only; repo-specific failure details stay in private evidence.
 
 **Changes**:
 
-- Provide a reusable reference implementation that consumer repos can copy, plus
-  a small guard action if useful. The guard action validates and normalizes
-  probe inputs; it does not own repo-specific test execution.
+- Provide centralized reusable workflows that consumer repos call at
+  `ForgingAlpha/.github/.github/workflows/ci-probe-*.yml@main`.
+- Keep `workflow-templates/ci-probe.yml` as a thin wrapper example, not as the
+  copied command-execution implementation.
+- Keep a small guard action that validates and normalizes probe inputs. The
+  guard action and reusable workflows own safety scaffolding; they do not own
+  repo-specific test execution.
 - Validate probe inputs before checkout-dependent execution:
   - `probe_mode`: choice-style allowlist such as `exact`, `file`, `lane`;
   - `lane`: repo-defined allowlist;
@@ -1676,7 +1696,10 @@ safety contract only; repo-specific failure details stay in private evidence.
     `.exs` for Elixir repos;
   - `line`: positive integer when required by `exact`;
   - `out_label`: safe artifact label with no path separators.
-- Build commands in the consumer workflow with shell arrays and repo-owned
+- Check out the target ref only after guard validation.
+- Invoke an executable repo-owned `./bin/ci-probe` adapter with normalized
+  `--mode`, `--lane`, `--file`, `--line`, and `--out` arguments.
+- Build commands inside the repo adapter with shell arrays and repo-owned
   `case` branches. Do not use `eval`.
 - Upload probe output artifacts on success and failure.
 - Set a repo-appropriate timeout. The default should be shorter than full CI
@@ -1732,13 +1755,13 @@ safety contract only; repo-specific failure details stay in private evidence.
 
 #### Manual Verification
 
-- [ ] Confirm the consumer probe workflow is available as a manual
-  `workflow_dispatch` diagnostic tool and is not configured as a required
-  branch-protection or ruleset status.
-- [ ] Confirm the pilot consumer repo uses the same runtime setup as required
-  CI.
-- [ ] Confirm the workflow lands on the default branch before operators attempt
-  `gh workflow run`.
+- [ ] Confirm consumer probe wrappers are available as manual
+  `workflow_dispatch` diagnostic tools and are not configured as required
+  branch-protection or ruleset statuses.
+- [ ] Confirm consumer repos provide executable `bin/ci-probe` adapters that
+  map validated selectors to reviewed local commands.
+- [ ] Confirm each wrapper lands on the repo default branch before operators
+  attempt `gh workflow run`.
 
 #### Plan Alignment Verification
 
