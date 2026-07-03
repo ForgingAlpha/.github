@@ -57,14 +57,14 @@
     {
       "id": "REQ-007",
       "source_ref": "docs/requirements.md#REQ-007",
-      "title": "Roll shared automation out through released tags",
+      "title": "Roll required CI automation out through released tags",
       "type": "operational/quality",
       "status": "manual-only",
       "evidence": [
         {
           "ref": "path:README.md",
           "kind": "manual",
-          "summary": "Documents that merging to main does not roll out shared action changes until a released major tag such as v1 moves."
+          "summary": "Documents that required CI uses released refs such as v1, while manual probes are the latest-on-main exception."
         }
       ]
     },
@@ -106,7 +106,7 @@
         {
           "ref": "path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py",
           "kind": "auto",
-          "summary": "Tests the probe template is workflow_dispatch-only, read-only, bounded by timeout/concurrency, and writes diagnostic summary/artifact evidence."
+          "summary": "Tests the probe template is a manual read-only wrapper and reusable probe workflows stay workflow_call-only, read-only, and diagnostic-only."
         },
         {
           "ref": "path:README.md",
@@ -131,6 +131,54 @@
           "ref": "path:actions/ci-remote-probe-guard/action.yml",
           "kind": "manual",
           "summary": "Defines the shared guard action inputs and selector outputs, including normalized checkout refs, without command-like inputs or outputs."
+        }
+      ]
+    },
+    {
+      "id": "REQ-012A",
+      "source_ref": "docs/requirements.md#REQ-012A",
+      "title": "Use the latest approved diagnostic workflow on main",
+      "type": "integration/contract",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:tests/test_shared_ci_contract.py",
+          "kind": "auto",
+          "summary": "Tests the reusable probe workflows use ci-remote-probe-guard at @main and the public template calls a centralized @main reusable workflow."
+        },
+        {
+          "ref": "path:actions/ci-github-actions/tests/test_check_workflows.py",
+          "kind": "auto",
+          "summary": "Tests the GitHub Actions safety checker allows ForgingAlpha shared diagnostic actions and reusable workflows on @main while preserving ref validation."
+        },
+        {
+          "ref": "path:README.md",
+          "kind": "manual",
+          "summary": "Documents that manual probes intentionally use ForgingAlpha/.github@main so all repos run the latest approved diagnostic platform."
+        }
+      ]
+    },
+    {
+      "id": "REQ-012B",
+      "source_ref": "docs/requirements.md#REQ-012B",
+      "title": "Keep probe command mapping repo-owned",
+      "type": "security/safety",
+      "status": "covered",
+      "evidence": [
+        {
+          "ref": "path:tests/test_shared_ci_contract.py",
+          "kind": "auto",
+          "summary": "Tests reusable probe workflows invoke executable ./bin/ci-probe adapters and do not use eval for shared command execution."
+        },
+        {
+          "ref": "path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py",
+          "kind": "auto",
+          "summary": "Tests the wrapper stays thin while reusable workflows delegate repo-specific command mapping to ./bin/ci-probe."
+        },
+        {
+          "ref": "path:README.md",
+          "kind": "manual",
+          "summary": "Documents that consumer repositories own executable bin/ci-probe adapters that map validated selectors to reviewed local commands."
         }
       ]
     },
@@ -188,7 +236,7 @@
         {
           "ref": "path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py",
           "kind": "auto",
-          "summary": "Tests remote probe action metadata and the public probe workflow template parse and preserve the manual diagnostic contract before release."
+          "summary": "Tests remote probe action metadata, the thin public wrapper template, and reusable probe workflows preserve the manual diagnostic contract before release."
         }
       ]
     },

@@ -19,6 +19,17 @@ CODE_ACTIONS = [
     ROOT / "actions" / "ci-astro" / "action.yml",
     ROOT / "actions" / "ci-typescript" / "action.yml",
 ]
+PROBE_WORKFLOWS = [
+    ROOT / ".github" / "workflows" / "ci-probe-elixir-postgres.yml",
+    ROOT / ".github" / "workflows" / "ci-probe-rust.yml",
+    ROOT / ".github" / "workflows" / "ci-probe-docs.yml",
+]
+CONSUMER_SPECIFIC_PROBE_MARKERS = (
+    "TURNKEY",
+    "OUTLIERS",
+    "turnkeyleads",
+    "LANE_TEST",
+)
 CROSS_CUTTING_ORDER = [
     "ForgingAlpha/.github/actions/ci-merge-flow@v1",
     "ForgingAlpha/.github/actions/ci-alphaapps-policy@v1",
@@ -33,6 +44,9 @@ CROSS_CUTTING_HELPER_STEP_NAMES = {
 
 class SharedCiContractTest(unittest.TestCase):
     def load_action(self, path):
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    def load_workflow(self, path):
         return yaml.safe_load(path.read_text(encoding="utf-8"))
 
     def uses_sequence(self, path):
@@ -361,6 +375,112 @@ class SharedCiContractTest(unittest.TestCase):
                     "WHY: the required status check is the job name, not only the YAML key. "
                     f"HOW: set jobs.CI.name to CI; job={jobs['CI']!r}",
                 )
+
+    def test_reusable_probe_workflows_validate_before_checkout(self):
+        for path in PROBE_WORKFLOWS:
+            with self.subTest(path=path.relative_to(ROOT).as_posix()):
+                text = path.read_text(encoding="utf-8")
+                workflow = self.load_workflow(path)
+                triggers = workflow.get("on", workflow.get(True, {}))
+                self.assertIn(
+                    "workflow_call",
+                    triggers,
+                    f"{path} must be a reusable workflow. "
+                    "WHY: consumer repos should call the central latest-on-main probe platform instead of copying command YAML. "
+                    "HOW: keep on.workflow_call in the probe workflow.",
+                )
+                self.assertEqual(
+                    workflow.get("permissions"),
+                    {"contents": "read"},
+                    f"{path} must keep read-only root permissions. "
+                    "WHY: remote probes are diagnostic-only and must not mutate repositories. "
+                    f"HOW: restore permissions.contents=read; permissions={workflow.get('permissions')!r}",
+                )
+                for marker in CONSUMER_SPECIFIC_PROBE_MARKERS:
+                    self.assertNotIn(
+                        marker,
+                        text,
+                        f"{path} must not embed consumer-specific probe marker {marker!r}. "
+                        "WHY: shared reusable probes own safety scaffolding; runtime-specific names stay in consumer wrappers or bin/ci-probe. "
+                        "HOW: move repo-specific env, lane, and database names out of the shared workflow.",
+                    )
+
+                steps = workflow["jobs"]["probe"]["steps"]
+                guard_index = next(
+                    (
+                        index
+                        for index, step in enumerate(steps)
+                        if step.get("uses") == "ForgingAlpha/.github/actions/ci-remote-probe-guard@main"
+                    ),
+                    None,
+                )
+                checkout_index = next(
+                    (
+                        index
+                        for index, step in enumerate(steps)
+                        if step.get("uses") == "actions/checkout@v7"
+                    ),
+                    None,
+                )
+
+                self.assertIsNotNone(
+                    guard_index,
+                    f"{path} must use the shared probe guard at @main. "
+                    "WHY: manual probes follow the latest-on-main internal diagnostic model. "
+                    "HOW: restore ForgingAlpha/.github/actions/ci-remote-probe-guard@main.",
+                )
+                self.assertIsNotNone(
+                    checkout_index,
+                    f"{path} must checkout the target ref after validation. "
+                    "WHY: target code is untrusted input until the guard normalizes checkout_ref. "
+                    "HOW: restore actions/checkout after the guard step.",
+                )
+                self.assertLess(
+                    guard_index,
+                    checkout_index,
+                    f"{path} must run the probe guard before checkout. "
+                    "WHY: checkout_ref is a dispatch input and must be validated before use. "
+                    f"HOW: reorder probe steps; guard_index={guard_index}, checkout_index={checkout_index}.",
+                )
+
+                run_blocks = "\n".join(
+                    step.get("run", "") for step in steps if isinstance(step, dict)
+                )
+                self.assertIn(
+                    "./bin/ci-probe",
+                    run_blocks,
+                    f"{path} must delegate repo-specific execution to ./bin/ci-probe. "
+                    "WHY: the public shared workflow owns safety scaffolding; consumer repos own command mapping. "
+                    "HOW: restore the repo-owned adapter invocation.",
+                )
+                self.assertNotIn(
+                    "eval ",
+                    run_blocks,
+                    f"{path} must not use eval for diagnostic command execution. "
+                    "WHY: probe inputs are selectors, not shell code. "
+                    "HOW: keep execution in the repo-owned adapter without eval.",
+                )
+
+    def test_probe_template_is_thin_latest_on_main_wrapper(self):
+        template_path = ROOT / "workflow-templates" / "ci-probe.yml"
+        workflow = yaml.safe_load(template_path.read_text(encoding="utf-8"))
+        jobs = workflow.get("jobs", {})
+        probe = jobs.get("probe", {})
+
+        self.assertEqual(
+            probe.get("uses"),
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
+            "ci-probe template must call the centralized reusable workflow at @main. "
+            "WHY: templates should install thin wrappers, not drift-prone copied command bodies. "
+            f"HOW: restore the reusable workflow call; probe={probe!r}",
+        )
+        self.assertNotIn(
+            "steps",
+            probe,
+            "ci-probe template job must stay thin and not define command steps. "
+            "WHY: repo-specific commands belong in bin/ci-probe and shared scaffolding belongs in the reusable workflow. "
+            f"HOW: remove copied steps from the template; probe={probe!r}",
+        )
 
 
 if __name__ == "__main__":

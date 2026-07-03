@@ -14,13 +14,13 @@ No promises in this status.
 
 ## Manual-only
 
-### REQ-007 - Roll shared automation out through released tags
+### REQ-007 - Roll required CI automation out through released tags
 
 - Source: `docs/requirements.md#REQ-007`
 - Type: `operational/quality`
 - Status: `manual-only`
 - Evidence:
-  - `manual` `path:README.md` - Documents that merging to main does not roll out shared action changes until a released major tag such as v1 moves.
+  - `manual` `path:README.md` - Documents that required CI uses released refs such as v1, while manual probes are the latest-on-main exception.
 
 ### REQ-008 - Keep public repository content safe to expose
 
@@ -67,7 +67,7 @@ No promises in this status.
 - Type: `integration/contract`
 - Status: `covered`
 - Evidence:
-  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests the probe template is workflow_dispatch-only, read-only, bounded by timeout/concurrency, and writes diagnostic summary/artifact evidence.
+  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests the probe template is a manual read-only wrapper and reusable probe workflows stay workflow_call-only, read-only, and diagnostic-only.
   - `manual` `path:README.md` - Documents that manual remote diagnostic probes are non-required evidence collectors and that required CI remains merge authority.
 
 ### REQ-012 - Constrain diagnostic execution inputs
@@ -78,6 +78,26 @@ No promises in this status.
 - Evidence:
   - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests valid exact/file/lane selectors, rejects invalid mode/lane/path/ref/line/label and command-like input, and proves the guard emits selectors instead of shell commands.
   - `manual` `path:actions/ci-remote-probe-guard/action.yml` - Defines the shared guard action inputs and selector outputs, including normalized checkout refs, without command-like inputs or outputs.
+
+### REQ-012A - Use the latest approved diagnostic workflow on main
+
+- Source: `docs/requirements.md#REQ-012A`
+- Type: `integration/contract`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:tests/test_shared_ci_contract.py` - Tests the reusable probe workflows use ci-remote-probe-guard at @main and the public template calls a centralized @main reusable workflow.
+  - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests the GitHub Actions safety checker allows ForgingAlpha shared diagnostic actions and reusable workflows on @main while preserving ref validation.
+  - `manual` `path:README.md` - Documents that manual probes intentionally use ForgingAlpha/.github@main so all repos run the latest approved diagnostic platform.
+
+### REQ-012B - Keep probe command mapping repo-owned
+
+- Source: `docs/requirements.md#REQ-012B`
+- Type: `security/safety`
+- Status: `covered`
+- Evidence:
+  - `auto` `path:tests/test_shared_ci_contract.py` - Tests reusable probe workflows invoke executable ./bin/ci-probe adapters and do not use eval for shared command execution.
+  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests the wrapper stays thin while reusable workflows delegate repo-specific command mapping to ./bin/ci-probe.
+  - `manual` `path:README.md` - Documents that consumer repositories own executable bin/ci-probe adapters that map validated selectors to reviewed local commands.
 
 ### REQ-014 - Emit actionable failure output
 
@@ -99,7 +119,7 @@ No promises in this status.
   - `auto` `path:tests/test_validate_github_actions.py` - Tests the deterministic GitHub Actions contract validator for action refs, permissions, pull_request_target, and nested action discovery.
   - `auto` `path:actions/ci-github-actions/tests/test_check_workflows.py` - Tests the reusable safety checker that scans workflow files and composite action.yml dependencies through the same policy.
   - `auto` `path:tests/test_shared_ci_contract.py` - Tests parent self-CI dogfood/bootstrap wiring, direct shell validation, and parseable public workflow examples before release.
-  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests remote probe action metadata and the public probe workflow template parse and preserve the manual diagnostic contract before release.
+  - `auto` `path:actions/ci-remote-probe-guard/tests/test_validate_probe_inputs.py` - Tests remote probe action metadata, the thin public wrapper template, and reusable probe workflows preserve the manual diagnostic contract before release.
 
 ### REQ-016 - Define a Dependabot coverage standard
 

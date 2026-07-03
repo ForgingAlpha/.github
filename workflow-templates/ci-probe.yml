@@ -22,13 +22,13 @@ on:
         required: true
         type: string
       file:
-        description: Repo-relative test file for file or exact mode
+        description: Repo-relative file for file or exact mode
         required: false
         type: string
       line:
-        description: Positive test line for exact mode
+        description: Positive line for exact mode
         required: false
-        type: number
+        type: string
       out_label:
         description: Safe artifact label
         required: false
@@ -38,107 +38,19 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-probe-${{ github.workflow }}-${{ inputs.checkout_ref }}-${{ inputs.probe_mode }}-${{ inputs.lane }}
-  cancel-in-progress: false
-
 jobs:
   probe:
-    name: Diagnostic probe
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Validate probe selector
-        id: guard
-        uses: ForgingAlpha/.github/actions/ci-remote-probe-guard@v1
-        with:
-          probe-mode: ${{ inputs.probe_mode }}
-          lane: ${{ inputs.lane }}
-          allowed-lanes: replace-with-repo-lane
-          file: ${{ inputs.file }}
-          line: ${{ inputs.line }}
-          out-label: ${{ inputs.out_label }}
-          checkout-ref: ${{ inputs.checkout_ref }}
-          file-root: test
-          file-suffixes: .exs
-
-      - name: Checkout target ref
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ steps.guard.outputs.checkout_ref }}
-          fetch-depth: 1
-
-      - name: Run repo-owned diagnostic probe
-        shell: bash
-        env:
-          PROBE_MODE: ${{ steps.guard.outputs.probe_mode }}
-          PROBE_LANE: ${{ steps.guard.outputs.lane }}
-          PROBE_FILE: ${{ steps.guard.outputs.file }}
-          PROBE_LINE: ${{ steps.guard.outputs.line }}
-          CHECKOUT_REF: ${{ steps.guard.outputs.checkout_ref }}
-          OUT_LABEL: ${{ steps.guard.outputs.out_label }}
-          ARTIFACT_PATH: ${{ steps.guard.outputs.artifact_path }}
-        run: |
-          set -euo pipefail
-
-          mkdir -p "${ARTIFACT_PATH}"
-          {
-            echo "## CI Probe"
-            echo ""
-            echo "- mode: \`${PROBE_MODE}\`"
-            echo "- lane: \`${PROBE_LANE}\`"
-            echo "- checkout ref: \`${CHECKOUT_REF}\`"
-            echo "- file: \`${PROBE_FILE:-n/a}\`"
-            echo "- line: \`${PROBE_LINE:-n/a}\`"
-            echo "- artifact path: \`${ARTIFACT_PATH}\`"
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-          case "${PROBE_LANE}" in
-            replace-with-repo-lane)
-              cmd=(./replace-with-repo-owned-probe-command --lane "${PROBE_LANE}")
-              ;;
-            *)
-              {
-                echo "✗ Unsupported probe lane '${PROBE_LANE}'."
-                echo "  WHAT: no workflow case branch matched the validated lane."
-                echo "  WHY: each lane must map to a reviewed repo-owned command array."
-                echo "  HOW: add a case branch for this lane or remove it from allowed-lanes."
-              } | tee "${ARTIFACT_PATH}/probe.log"
-              exit 1
-              ;;
-          esac
-
-          case "${PROBE_MODE}" in
-            exact)
-              cmd+=(--mode exact --file "${PROBE_FILE}" --line "${PROBE_LINE}")
-              ;;
-            file)
-              cmd+=(--mode file --file "${PROBE_FILE}")
-              ;;
-            lane)
-              cmd+=(--mode lane)
-              ;;
-            *)
-              {
-                echo "✗ Unexpected validated probe mode '${PROBE_MODE}'."
-                echo "  WHAT: guard validation returned a mode outside the workflow case branches."
-                echo "  WHY: the workflow should execute only reviewed exact, file, or lane selector modes."
-                echo "  HOW: inspect ci-remote-probe-guard outputs and update the workflow case branches together."
-              } | tee "${ARTIFACT_PATH}/probe.log"
-              exit 1
-              ;;
-          esac
-
-          printf 'Running repo-owned diagnostic selector: mode=%s lane=%s\n' \
-            "${PROBE_MODE}" "${PROBE_LANE}" | tee "${ARTIFACT_PATH}/probe.log"
-          "${cmd[@]}" 2>&1 | tee -a "${ARTIFACT_PATH}/probe.log"
-
-      - name: Upload diagnostic packet
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-probe-${{ steps.guard.outputs.out_label }}
-          path: ${{ steps.guard.outputs.artifact_path }}
-          if-no-files-found: warn
-          retention-days: 3
+    uses: ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main
+    with:
+      checkout_ref: ${{ inputs.checkout_ref }}
+      probe_mode: ${{ inputs.probe_mode }}
+      lane: ${{ inputs.lane }}
+      file: ${{ inputs.file }}
+      line: ${{ inputs.line }}
+      out_label: ${{ inputs.out_label }}
+      allowed_lanes: replace-with-repo-lane
+      file_root: test
+      file_suffixes: .exs
+      elixir_version: replace-with-elixir-version
+      otp_version: replace-with-otp-version
+      postgres_image: postgres:16

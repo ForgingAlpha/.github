@@ -1,0 +1,197 @@
+name: CI Probe Elixir Postgres
+
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Target code ref to inspect with this trusted reusable workflow
+        required: true
+        type: string
+      probe_mode:
+        description: Diagnostic selector mode
+        required: true
+        type: string
+      lane:
+        description: Repo-owned diagnostic lane
+        required: true
+        type: string
+      allowed_lanes:
+        description: Comma or newline separated repo-owned lane allowlist
+        required: true
+        type: string
+      file:
+        description: Repo-relative test file for file or exact mode
+        required: false
+        type: string
+        default: ""
+      line:
+        description: Positive test line for exact mode
+        required: false
+        type: string
+        default: ""
+      out_label:
+        description: Safe artifact label
+        required: false
+        type: string
+        default: probe
+      file_root:
+        description: Allowed repo-relative root for file selectors
+        required: false
+        type: string
+        default: test
+      file_suffixes:
+        description: Comma or newline separated allowed file suffixes
+        required: false
+        type: string
+        default: .exs
+      elixir_version:
+        description: Elixir version
+        required: false
+        type: string
+        default: "1.20"
+      otp_version:
+        description: Erlang/OTP version
+        required: false
+        type: string
+        default: "29"
+      postgres_image:
+        description: Reviewed Postgres service image chosen by the caller workflow
+        required: false
+        type: string
+        default: postgres:16
+      artifact_retention_days:
+        description: Diagnostic artifact retention in days
+        required: false
+        type: number
+        default: 3
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-probe-${{ github.repository }}-${{ inputs.checkout_ref }}-${{ inputs.probe_mode }}-${{ inputs.lane }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Diagnostic probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: ${{ inputs.postgres_image }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      MIX_ENV: test
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+
+    steps:
+      - name: Validate probe selector
+        id: guard
+        uses: ForgingAlpha/.github/actions/ci-remote-probe-guard@main
+        with:
+          probe-mode: ${{ inputs.probe_mode }}
+          lane: ${{ inputs.lane }}
+          allowed-lanes: ${{ inputs.allowed_lanes }}
+          file: ${{ inputs.file }}
+          line: ${{ inputs.line }}
+          out-label: ${{ inputs.out_label }}
+          checkout-ref: ${{ inputs.checkout_ref }}
+          file-root: ${{ inputs.file_root }}
+          file-suffixes: ${{ inputs.file_suffixes }}
+
+      - name: Checkout target ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.guard.outputs.checkout_ref }}
+          fetch-depth: 1
+
+      - name: Setup Elixir / OTP
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: ${{ inputs.elixir_version }}
+          otp-version: ${{ inputs.otp_version }}
+
+      - name: Cache deps and build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-probe-mix-${{ inputs.elixir_version }}-${{ inputs.otp_version }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-probe-mix-${{ inputs.elixir_version }}-${{ inputs.otp_version }}-
+            ${{ runner.os }}-probe-mix-
+
+      - name: Install dependencies
+        shell: bash
+        run: mix deps.get
+
+      - name: Run repo probe adapter
+        shell: bash
+        env:
+          PROBE_MODE: ${{ steps.guard.outputs.probe_mode }}
+          PROBE_LANE: ${{ steps.guard.outputs.lane }}
+          PROBE_FILE: ${{ steps.guard.outputs.file }}
+          PROBE_LINE: ${{ steps.guard.outputs.line }}
+          CHECKOUT_REF: ${{ steps.guard.outputs.checkout_ref }}
+          OUT_LABEL: ${{ steps.guard.outputs.out_label }}
+          ARTIFACT_PATH: ${{ steps.guard.outputs.artifact_path }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${ARTIFACT_PATH}"
+          {
+            echo "## CI Probe"
+            echo ""
+            echo "- repository: \`${GITHUB_REPOSITORY}\`"
+            echo "- mode: \`${PROBE_MODE}\`"
+            echo "- lane: \`${PROBE_LANE}\`"
+            echo "- checkout ref: \`${CHECKOUT_REF}\`"
+            echo "- file: \`${PROBE_FILE:-n/a}\`"
+            echo "- line: \`${PROBE_LINE:-n/a}\`"
+            echo "- artifact path: \`${ARTIFACT_PATH}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ ! -x ./bin/ci-probe ]; then
+            {
+              echo "✗ Missing executable ./bin/ci-probe."
+              echo "  WHAT: the reusable probe workflow could not find the repo-owned probe adapter."
+              echo "  WHY: shared diagnostics validate inputs centrally, but each repo owns safe command mapping."
+              echo "  HOW: add executable bin/ci-probe that handles --mode, --lane, --file, --line, and --out."
+            } | tee "${ARTIFACT_PATH}/probe.log"
+            exit 1
+          fi
+
+          ./bin/ci-probe \
+            --mode "${PROBE_MODE}" \
+            --lane "${PROBE_LANE}" \
+            --file "${PROBE_FILE}" \
+            --line "${PROBE_LINE}" \
+            --out "${ARTIFACT_PATH}" \
+            2>&1 | tee "${ARTIFACT_PATH}/probe.log"
+
+      - name: Upload diagnostic packet
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-probe-${{ steps.guard.outputs.out_label }}
+          path: ${{ steps.guard.outputs.artifact_path }}
+          if-no-files-found: warn
+          retention-days: ${{ inputs.artifact_retention_days }}
