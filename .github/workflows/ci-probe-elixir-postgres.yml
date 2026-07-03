@@ -95,16 +95,11 @@ jobs:
 
     env:
       MIX_ENV: test
-      APP_ENV: test
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
       PGPASSWORD: postgres
-      POSTGRES_URL_EVENTSTORE_OWNER: postgres://eventstore_owner:eventstore-owner-password@localhost:5432/turnkeyleads_eventstore_test
-      POSTGRES_URL_READSTORE_OWNER: postgres://readstore_owner:readstore-owner-password@localhost:5432/turnkeyleads_readstore_test
-      POSTGRES_URL_READSTORE_READER: postgres://readstore_reader:readstore-reader-password@localhost:5432/turnkeyleads_readstore_test
-      TURNKEY_TEST_ENV_SOURCE: provided
-      TURNKEY_DEV_COMPOSE_PROJECT: turnkeyleads_ci
-      TURNKEY_DEV_DB_PORT: "5432"
-      LANE_TEST_MAX_CASES: "16"
-      OUTLIERS_DB_PORT: "5432"
+      PGDATABASE: postgres
 
     steps:
       - name: Validate probe selector

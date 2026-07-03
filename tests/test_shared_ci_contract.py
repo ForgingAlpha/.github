@@ -24,6 +24,12 @@ PROBE_WORKFLOWS = [
     ROOT / ".github" / "workflows" / "ci-probe-rust.yml",
     ROOT / ".github" / "workflows" / "ci-probe-docs.yml",
 ]
+CONSUMER_SPECIFIC_PROBE_MARKERS = (
+    "TURNKEY",
+    "OUTLIERS",
+    "turnkeyleads",
+    "LANE_TEST",
+)
 CROSS_CUTTING_ORDER = [
     "ForgingAlpha/.github/actions/ci-merge-flow@v1",
     "ForgingAlpha/.github/actions/ci-alphaapps-policy@v1",
@@ -373,6 +379,7 @@ class SharedCiContractTest(unittest.TestCase):
     def test_reusable_probe_workflows_validate_before_checkout(self):
         for path in PROBE_WORKFLOWS:
             with self.subTest(path=path.relative_to(ROOT).as_posix()):
+                text = path.read_text(encoding="utf-8")
                 workflow = self.load_workflow(path)
                 triggers = workflow.get("on", workflow.get(True, {}))
                 self.assertIn(
@@ -389,6 +396,14 @@ class SharedCiContractTest(unittest.TestCase):
                     "WHY: remote probes are diagnostic-only and must not mutate repositories. "
                     f"HOW: restore permissions.contents=read; permissions={workflow.get('permissions')!r}",
                 )
+                for marker in CONSUMER_SPECIFIC_PROBE_MARKERS:
+                    self.assertNotIn(
+                        marker,
+                        text,
+                        f"{path} must not embed consumer-specific probe marker {marker!r}. "
+                        "WHY: shared reusable probes own safety scaffolding; runtime-specific names stay in consumer wrappers or bin/ci-probe. "
+                        "HOW: move repo-specific env, lane, and database names out of the shared workflow.",
+                    )
 
                 steps = workflow["jobs"]["probe"]["steps"]
                 guard_index = next(
