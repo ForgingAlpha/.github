@@ -24,9 +24,7 @@ SPEC.loader.exec_module(checker)
 
 Allowlists = checker.Allowlists
 load_yaml = checker.load_yaml
-ref_is_versioned = checker.ref_is_versioned
 is_sha_ref = checker.is_sha_ref
-action_owner = checker.action_owner
 allowlist_reason = checker.allowlist_reason
 validate_run_block = checker.validate_run_block
 iter_workflow_steps = checker.iter_workflow_steps

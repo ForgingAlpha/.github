@@ -286,11 +286,7 @@ class CheckWorkflowsTest(unittest.TestCase):
             f"WHY: workflow root permissions apply to every job by default. HOW: inspect validate_permissions; errors={errors!r}",
         )
 
-    def test_first_party_sha_policy_is_data_driven(self):
-        self.write_yaml(
-            ".github/alphaapps-github-actions-allowlist.yml",
-            {"first_party_action_refs": "sha"},
-        )
+    def test_first_party_sha_policy_is_mandatory(self):
         self.write_yaml(
             "actions/example/action.yml",
             {
@@ -310,23 +306,23 @@ class CheckWorkflowsTest(unittest.TestCase):
         self.assertEqual(
             result,
             1,
-            "check_workflows must support data-driven SHA-only first-party policy. "
-            "WHY: stricter pinning should not require checker rewrites. "
+            "check_workflows must require SHA-only first-party policy. "
+            "WHY: every external Action must resolve to immutable reviewed code. "
             f"HOW: inspect first_party_action_refs handling; stderr={stderr.getvalue()!r}",
         )
         self.assertIn(
-            "first-party action reference",
+            "external action reference",
             stderr.getvalue(),
-            "SHA-only first-party policy failure must name the first-party action. "
+            "SHA-only policy failure must name the external action. "
             f"WHY: agents need a concrete ref to pin. stderr={stderr.getvalue()!r}",
         )
 
-    def test_probe_guard_main_ref_is_allowed(self):
+    def test_probe_guard_v1_ref_is_allowed(self):
         errors = []
 
         checker.validate_uses_ref(
             Path(".github/workflows/probe.yml"),
-            "ForgingAlpha/.github/actions/ci-remote-probe-guard@main",
+            "ForgingAlpha/.github/actions/ci-remote-probe-guard@v1",
             errors,
             checker.Allowlists.empty(),
         )
@@ -334,17 +330,17 @@ class CheckWorkflowsTest(unittest.TestCase):
         self.assertEqual(
             errors,
             [],
-            "validate_uses_ref must allow the ForgingAlpha probe guard on @main. "
-            "WHY: manual non-required probes follow the latest-on-main internal platform model. "
+            "validate_uses_ref must allow the ForgingAlpha probe guard on @v1. "
+            "WHY: diagnostics follow the latest-green internal platform model. "
             f"HOW: inspect is_forgingalpha_probe_automation handling; errors={errors!r}",
         )
 
-    def test_probe_reusable_workflow_main_ref_is_allowed(self):
+    def test_probe_reusable_workflow_v1_ref_is_allowed(self):
         errors = []
 
         checker.validate_uses_ref(
             Path(".github/workflows/probe.yml"),
-            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@v1",
             errors,
             checker.Allowlists.empty(),
         )
@@ -352,12 +348,12 @@ class CheckWorkflowsTest(unittest.TestCase):
         self.assertEqual(
             errors,
             [],
-            "validate_uses_ref must allow ForgingAlpha reusable probe workflows on @main. "
+            "validate_uses_ref must allow ForgingAlpha reusable probe workflows on @v1. "
             "WHY: consumer repos should call the current centralized diagnostic workflow. "
             f"HOW: inspect internal reusable workflow ref handling; errors={errors!r}",
         )
 
-    def test_probe_automation_rejects_non_main_ref(self):
+    def test_probe_automation_rejects_non_v1_ref(self):
         errors = []
 
         checker.validate_uses_ref(
@@ -368,9 +364,9 @@ class CheckWorkflowsTest(unittest.TestCase):
         )
 
         self.assertTrue(
-            any("probe diagnostic automation" in error for error in errors),
-            "validate_uses_ref must reject probe automation refs outside @main. "
-            "WHY: latest-on-main is deliberate; arbitrary moving names should not become a second policy. "
+            any("must use a vN major tag" in error for error in errors),
+            "validate_uses_ref must reject probe automation refs outside @v1. "
+            "WHY: diagnostics and required CI share one approved current channel. "
             f"HOW: inspect internal shared automation ref validation; errors={errors!r}",
         )
 
@@ -387,7 +383,7 @@ class CheckWorkflowsTest(unittest.TestCase):
         self.assertTrue(
             any("must use a vN major tag" in error for error in errors),
             "validate_uses_ref must reject @main for non-probe shared CI actions. "
-            "WHY: required CI keeps deliberate release-tag rollout even though manual probes use @main. "
+            "WHY: all shared automation uses the latest-green v1 release channel. "
             f"HOW: inspect ForgingAlpha shared automation ref validation; errors={errors!r}",
         )
 

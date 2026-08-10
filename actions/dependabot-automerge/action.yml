@@ -1,5 +1,5 @@
 name: Dependabot Auto-merge
-description: Enable auto-merge for allowed Dependabot semantic-version updates.
+description: Atomically auto-merge cooled patches and officially classified security updates.
 inputs:
   github_token:
     description: Token with permission to read Dependabot metadata and enable PR auto-merge.
@@ -11,11 +11,15 @@ inputs:
   allow_minor:
     description: Enable auto-merge for Dependabot semver minor updates.
     required: false
-    default: "true"
+    default: "false"
   allow_major:
     description: Enable auto-merge for Dependabot semver major updates.
     required: false
     default: "false"
+  allow_security:
+    description: Enable auto-merge for officially associated open security alerts regardless of semver class.
+    required: false
+    default: "true"
   merge_method:
     description: Pull request merge method.
     required: false
@@ -28,6 +32,7 @@ runs:
       uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
       with:
         github-token: ${{ inputs.github_token }}
+        alert-lookup: true
 
     - name: Decide auto-merge eligibility
       id: eligibility
@@ -37,28 +42,135 @@ runs:
         ALLOW_PATCH: ${{ inputs.allow_patch }}
         ALLOW_MINOR: ${{ inputs.allow_minor }}
         ALLOW_MAJOR: ${{ inputs.allow_major }}
+        ALLOW_SECURITY: ${{ inputs.allow_security }}
+        ALERT_STATE: ${{ steps.metadata.outputs.alert-state }}
+        GHSA_ID: ${{ steps.metadata.outputs.ghsa-id }}
+        MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
+        METADATA_TARGET_BRANCH: ${{ steps.metadata.outputs.target-branch }}
       run: |
         set -euo pipefail
 
-        allowed=false
-        case "${UPDATE_TYPE}" in
-          version-update:semver-patch)
-            allowed="${ALLOW_PATCH}"
-            ;;
-          version-update:semver-minor)
-            allowed="${ALLOW_MINOR}"
-            ;;
-          version-update:semver-major)
-            allowed="${ALLOW_MAJOR}"
-            ;;
-          *)
-            allowed=false
-            ;;
-        esac
+        if [ "${MAINTAINER_CHANGES}" = "true" ]; then
+          echo "✗ Dependabot reports maintainer changes; refusing privileged auto-merge."
+          exit 1
+        fi
+
+        security=false
+        if [ "${ALERT_STATE}" = "OPEN" ] && [ -n "${GHSA_ID}" ]; then
+          security=true
+        fi
+
+        if [ "${security}" = "true" ]; then
+          allowed="${ALLOW_SECURITY}"
+        else
+          allowed=false
+          case "${UPDATE_TYPE}" in
+            version-update:semver-patch) allowed="${ALLOW_PATCH}" ;;
+            version-update:semver-minor) allowed="${ALLOW_MINOR}" ;;
+            version-update:semver-major) allowed="${ALLOW_MAJOR}" ;;
+          esac
+        fi
 
         echo "update_type=${UPDATE_TYPE}"
+        echo "security=${security}"
         echo "allowed=${allowed}"
         echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"
+        echo "security=${security}" >> "${GITHUB_OUTPUT}"
+        echo "metadata_target_branch=${METADATA_TARGET_BRANCH}" >> "${GITHUB_OUTPUT}"
+
+    - name: Validate identity, head, base, files, and security association
+      if: ${{ steps.eligibility.outputs.allowed == 'true' }}
+      id: validate
+      shell: bash
+      env:
+        ALERT_STATE: ${{ steps.metadata.outputs.alert-state }}
+        EVENT_BASE: ${{ github.event.pull_request.base.ref }}
+        EVENT_ACTOR: ${{ github.actor }}
+        EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        EVENT_LOGIN: ${{ github.event.pull_request.user.login }}
+        GHSA_ID: ${{ steps.metadata.outputs.ghsa-id }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        METADATA_TARGET_BRANCH: ${{ steps.eligibility.outputs.metadata_target_branch }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        SECURITY: ${{ steps.eligibility.outputs.security }}
+      run: |
+        set -euo pipefail
+
+        [ "${EVENT_LOGIN}" = "dependabot[bot]" ] || {
+          echo "✗ Only dependabot[bot] pull requests are eligible."
+          exit 1
+        }
+        [ "${EVENT_ACTOR}" = "dependabot[bot]" ] || {
+          echo "✗ Only a Dependabot-authored event may arm privileged auto-merge."
+          exit 1
+        }
+        [[ "${EVENT_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
+          echo "✗ Pull request head is not a full commit SHA."
+          exit 1
+        }
+        [ "${EVENT_BASE}" = "${METADATA_TARGET_BRANCH}" ] || {
+          echo "✗ Event base and Dependabot target branch disagree."
+          exit 1
+        }
+
+        files_json="${RUNNER_TEMP:-/tmp}/dependabot-files.json"
+        if ! gh api --paginate --slurp \
+          "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" > "${files_json}"; then
+          echo "✗ Could not read the complete pull-request file list."
+          exit 1
+        fi
+        file_count="$(jq '[.[][]] | length' "${files_json}")"
+        [ "${file_count}" -gt 0 ] || {
+          echo "✗ Pull-request file list is empty; refusing privileged auto-merge."
+          exit 1
+        }
+
+        while IFS= read -r path; do
+          case "${path}" in
+            .github/dependabot.yml|.github/workflows/*.yml|.github/workflows/*.yaml|\
+            action.yml|action.yaml|actions/*/action.yml|actions/*/action.yaml|\
+            .github/actions/*/action.yml|.github/actions/*/action.yaml|\
+            mix.exs|mix.lock|package.json|package-lock.json|npm-shrinkwrap.json|\
+            assets/admin/package.json|assets/admin/package-lock.json|\
+            assets/customer/package.json|assets/customer/package-lock.json|\
+            pnpm-lock.yaml|yarn.lock|Cargo.toml|Cargo.lock|Dockerfile|Dockerfile.*|\
+            docker-compose.yml|docker-compose.yaml|compose.yml|compose.yaml)
+              ;;
+            *)
+              echo "✗ Dependabot changed disallowed path '${path}'."
+              echo "  WHY: privileged dependency auto-merge is limited to dependency and Action manifests."
+              echo "  HOW: review this pull request manually."
+              exit 1
+              ;;
+          esac
+        done < <(jq -r '.[][] | .filename' "${files_json}")
+
+        ghsa_set=""
+        if [ "${SECURITY}" = "true" ]; then
+          query='query($owner:String!,$name:String!,$endCursor:String){repository(owner:$owner,name:$name){vulnerabilityAlerts(first:100,after:$endCursor,states:OPEN){nodes{securityAdvisory{ghsaId severity cvss{score}}dependabotUpdate{pullRequest{number}}}pageInfo{hasNextPage endCursor}}}}'
+          owner="${GITHUB_REPOSITORY%%/*}"
+          name="${GITHUB_REPOSITORY#*/}"
+          alerts="$(gh api graphql --paginate --slurp \
+            -f query="${query}" -f owner="${owner}" -f name="${name}")"
+          matched="$(jq -c --argjson pr "${PR_NUMBER}" \
+            '[.[].data.repository.vulnerabilityAlerts.nodes[]
+              | select(.dependabotUpdate.pullRequest.number == $pr)
+              | {ghsa: .securityAdvisory.ghsaId, severity: .securityAdvisory.severity, cvss: .securityAdvisory.cvss.score}]' \
+            <<<"${alerts}")"
+          count="$(jq 'length' <<<"${matched}")"
+          [ "${ALERT_STATE}" = "OPEN" ] && [ "${count}" -gt 0 ] || {
+            echo "✗ Official alert association could not be proven."
+            exit 1
+          }
+          jq -e --arg ghsa "${GHSA_ID}" 'any(.ghsa == $ghsa)' <<<"${matched}" >/dev/null || {
+            echo "✗ Metadata GHSA does not match GitHub's alert-to-PR association."
+            exit 1
+          }
+          ghsa_set="$(jq -r 'map(.ghsa) | unique | join(",")' <<<"${matched}")"
+        fi
+
+        echo "head_sha=${EVENT_HEAD_SHA}" >> "${GITHUB_OUTPUT}"
+        echo "ghsa_set=${ghsa_set}" >> "${GITHUB_OUTPUT}"
 
     - name: Validate merge method
       if: ${{ steps.eligibility.outputs.allowed == 'true' }}
@@ -79,6 +191,57 @@ runs:
             ;;
         esac
 
+    - name: Approve the exact validated revision
+      if: ${{ steps.eligibility.outputs.allowed == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        HEAD_SHA: ${{ steps.validate.outputs.head_sha }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+      run: |
+        set -euo pipefail
+        current_head="$(gh pr view "${PR_URL}" --json headRefOid --jq '.headRefOid')"
+        [ "${current_head}" = "${HEAD_SHA}" ] || {
+          echo "✗ Pull-request head moved before approval."
+          exit 1
+        }
+        gh pr review "${PR_URL}" --approve \
+          --body "Automation review for validated dependency revision ${HEAD_SHA}. Required CI still governs merge."
+
+    - name: Record exact-head security classification
+      if: >-
+        ${{ steps.eligibility.outputs.allowed == 'true' &&
+            steps.eligibility.outputs.security == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        GHSA_SET: ${{ steps.validate.outputs.ghsa_set }}
+        HEAD_SHA: ${{ steps.validate.outputs.head_sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        check_name="AlphaApps Security Classification"
+        external_id="security-pr-${PR_NUMBER}-${HEAD_SHA}"
+        summary="Dependabot PR #${PR_NUMBER}; advisories: ${GHSA_SET}; exact head: ${HEAD_SHA}"
+        jq -n \
+          --arg name "${check_name}" \
+          --arg head_sha "${HEAD_SHA}" \
+          --arg external_id "${external_id}" \
+          --arg summary "${summary}" \
+          '{
+            name: $name,
+            head_sha: $head_sha,
+            status: "completed",
+            conclusion: "success",
+            external_id: $external_id,
+            output: {
+              title: "Official security association verified",
+              summary: $summary
+            }
+          }' | gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/check-runs" --input - \
+            > "${RUNNER_TEMP:-/tmp}/security-classification-check.json"
+
     - name: Enable auto-merge
       if: ${{ steps.eligibility.outputs.allowed == 'true' }}
       shell: bash
@@ -86,6 +249,19 @@ runs:
         GH_TOKEN: ${{ inputs.github_token }}
         MERGE_METHOD: ${{ inputs.merge_method }}
         PR_URL: ${{ github.event.pull_request.html_url }}
+        HEAD_SHA: ${{ steps.validate.outputs.head_sha }}
+        SECURITY: ${{ steps.eligibility.outputs.security }}
+        GHSA_SET: ${{ steps.validate.outputs.ghsa_set }}
       run: |
         set -euo pipefail
-        gh pr merge --auto "--${MERGE_METHOD}" "${PR_URL}"
+        if [ "${SECURITY}" = "true" ]; then
+          gh pr edit "${PR_URL}" --add-label security-autopromote
+        fi
+        gh pr merge --auto --match-head-commit "${HEAD_SHA}" "--${MERGE_METHOD}" "${PR_URL}"
+        {
+          echo "## Dependabot auto-merge armed"
+          echo
+          echo "- head: \`${HEAD_SHA}\`"
+          echo "- security: \`${SECURITY}\`"
+          echo "- advisories: \`${GHSA_SET:-none}\`"
+        } >> "${GITHUB_STEP_SUMMARY}"

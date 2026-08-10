@@ -39,8 +39,8 @@ class ValidateGitHubActionsTest(unittest.TestCase):
         )
 
         self.assertTrue(
-            any("third-party action reference" in error for error in errors),
-            "validate_uses_ref must reject unallowlisted third-party moving tags. "
+            any("external action reference" in error for error in errors),
+            "validate_uses_ref must reject unallowlisted external moving tags. "
             f"WHY: moving tags can change without review. HOW: inspect validate_uses_ref; errors={errors!r}",
         )
 
@@ -59,6 +59,21 @@ class ValidateGitHubActionsTest(unittest.TestCase):
             "validate_uses_ref must allow SHA-pinned third-party actions. "
             f"WHY: full commit SHAs provide a reviewed stable dependency boundary. "
             f"HOW: inspect third-party SHA handling in validate_uses_ref; errors={errors!r}",
+        )
+
+    def test_first_party_moving_tag_fails(self):
+        errors = []
+
+        validator.validate_uses_ref(
+            Path(".github/workflows/ci.yml"),
+            "actions/checkout@v7",
+            errors,
+        )
+
+        self.assertTrue(
+            any("external action reference" in error for error in errors),
+            "GitHub-owned Actions must use immutable full SHAs too. "
+            f"WHY: first-party moving tags are still mutable. HOW: inspect validate_uses_ref; errors={errors!r}",
         )
 
     def test_root_write_permissions_fail(self):
@@ -119,7 +134,7 @@ class ValidateGitHubActionsTest(unittest.TestCase):
             f"WHY: reusable workflow refs can drift like action refs. HOW: inspect iter_workflow_job_uses; errors={errors!r}",
         )
 
-    def test_internal_probe_reusable_workflow_main_ref_passes(self):
+    def test_internal_probe_reusable_workflow_v1_ref_passes(self):
         errors = []
         workflow = {
             "name": "Probe",
@@ -127,7 +142,7 @@ class ValidateGitHubActionsTest(unittest.TestCase):
             "permissions": {"contents": "read"},
             "jobs": {
                 "probe": {
-                    "uses": "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
+                    "uses": "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@v1",
                 }
             },
         }
@@ -138,8 +153,8 @@ class ValidateGitHubActionsTest(unittest.TestCase):
         self.assertEqual(
             errors,
             [],
-            "validate_workflow must allow ForgingAlpha reusable probe workflows on @main. "
-            "WHY: manual non-required probes intentionally consume the latest internal diagnostic platform. "
+            "validate_workflow must allow ForgingAlpha reusable probe workflows on @v1. "
+            "WHY: diagnostics consume the same latest-green internal platform as required CI. "
             f"HOW: inspect ForgingAlpha shared automation ref handling; errors={errors!r}",
         )
 

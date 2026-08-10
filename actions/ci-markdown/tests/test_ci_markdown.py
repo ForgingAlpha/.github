@@ -65,7 +65,7 @@ class CiMarkdownTest(unittest.TestCase):
         )
         self.assertEqual(
             steps[0]["uses"],
-            "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
             "ci-markdown must set up Node with the existing pinned setup-node action. "
             "WHY: local Node-based CI actions establish Node before running npx/npm tools. "
             "HOW: restore the Setup Node.js step before Markdown linting.",

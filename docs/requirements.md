@@ -6,229 +6,214 @@ tags:
 ---
 # ForgingAlpha/.github - Requirements
 
-> Reading note. These requirements derive from [intent.md](intent.md).
-> Architecture chooses how this repo satisfies them.
+> These requirements derive from [intent.md](intent.md). Architecture chooses
+> how this repository satisfies them.
 
----
+## Shared CI
 
-## Actors
+### REQ-001 - Single Merge Authority
 
-- **Consumer Repository** - a ForgingAlpha repository that uses shared GitHub
-  automation from this repository.
-- **Control-Plane Maintainer** - a human or bot-assisted maintainer changing
-  this repository through review and release.
-- **Shared Automation** - composite actions, workflows, templates, examples,
-  Dependabot helpers, release mechanics, and policy checks owned by this repo.
-- **Diagnostic Workflow** - a manually or selectively run workflow that collects
-  evidence without granting merge permission.
-- **Dependency Update Coverage** - repo-local Dependabot configuration that
-  covers the dependency ecosystems and GitHub Actions manifests present in a
-  Consumer Repository.
-- **Product Evidence** - required repo-local verification evidence files under
-  `docs/evidence/` that connect important promises to current proof for active
-  ForgingAlpha repositories.
+Shared automation SHALL preserve one required status named `CI`.
 
-## Requirements
+**Fit:** Every supported consumer can make one `CI` result required without
+depending on matrix job names.
 
-### Shared Automation Contract
+### REQ-002 - Approved Source Truth
 
-#### REQ-001 - Consistent Required Status
+Active repositories SHALL validate approved `docs/intent.md`,
+`docs/requirements.md`, and `docs/architecture.md` before ordinary changes
+merge.
 
-Shared Automation SHALL preserve a single required GitHub status named `CI` for
-standard Consumer Repository workflows.
+**Fit:** Missing, provisional, or malformed source truth produces actionable
+failure output while a definition-only change can repair it.
 
-**Fit:** A standard consumer workflow can call shared automation from a job
-named `CI` without creating a different required-check name.
+### REQ-003 - Strict Checks Without Silent Skips
 
-#### REQ-002 - Centralized Cross-Repo Rules
+Every check promised by a shared CI profile SHALL run deterministically or fail
+with WHAT-WHY-HOW remediation.
 
-Shared Automation SHALL contain only rules that are intended to apply across
-ForgingAlpha repositories.
+**Fit:** A missing formatter, analyzer, audit tool, lock, or required command is
+a failure rather than a skipped success.
 
-**Fit:** A proposed shared rule is rejected or moved back to the consuming repo
-when it depends on one repo's product behavior, runtime command, local service,
-or private environment.
+### REQ-004 - Static Once, Tests Lean
 
-#### REQ-003 - Strict Reproducible Checks
+Fanned-out application CI SHALL run cross-cutting and static analysis once and
+SHALL NOT repeat it inside test lanes.
 
-Shared Automation SHALL run strict, reproducible checks for the languages and
-surfaces it claims to support.
+**Fit:** The static profile contains policy, formatting, compilation, lint,
+audit, security, and type analysis; test profiles contain only locked setup,
+caller preparation, and their assigned tests.
 
-**Fit:** Supported shared checks have deterministic commands, pinned or declared
-tool versions where practical, and fail on violations instead of silently
-downgrading.
+## Rollout And Protection
 
-#### REQ-004 - Composite Action Job-Name Preservation
+### REQ-005 - Reviewed Green Current-Channel Rollout
 
-WHEN Shared Automation must preserve the caller's required job name, the
-Control-Plane Maintainer SHALL provide it as a composite action.
+A reviewed merge to `.github/main` SHALL advance mutable `v1` only after the
+approved `CI` workflow succeeds from a `push` on that exact merged commit and it
+remains the current `main` SHA.
 
-**Fit:** A consumer job named `CI` can use the shared action as a step while the
-reported GitHub status remains `CI`.
+**Fit:** A red, stale, or superseded commit cannot move `v1`.
 
-#### REQ-005 - Merge Flow Enforcement
+### REQ-006 - Serialized And Recorded Rollout
 
-Shared Automation SHALL enforce the Alpha Apps merge flow for repositories with
-a `dev` branch: pull requests into `main` or `staging` must come from `dev`.
+Every `v1` movement SHALL be serialized, use an expected-old raw-ref lease, and
+SHALL create an immutable rollout or rollback tag plus a summary containing the
+previous SHA, new SHA, CI run or rollback source, and actor. Mutable movement
+and immutable record creation SHALL use one atomic push so a failure changes
+neither ref.
 
-**Fit:** Language CI actions run the merge-flow guard before language checks,
-and main-only control-plane repositories are exempt.
+**Fit:** Concurrent runs cannot reorder `v1`; every deployed control-plane
+version has an immutable recovery point.
 
-### Release And Consumer Contract
+### REQ-007 - Constrained Rollback
 
-#### REQ-006 - Required CI Released Tag Consumption
+Rollback SHALL require operator approval and SHALL accept only an existing
+protected immutable rollout tag whose commit historically passed `CI`, except
+for the exact operator-recorded pre-cutover bootstrap commit.
 
-Required CI examples SHALL reference released shared-action tags such as `@v1`,
-not ordinary branch refs such as `@main`.
+**Fit:** Arbitrary refs, non-`main` ancestry, and shell input are rejected;
+immutable tags never move and the one bootstrap exception is SHA-bound.
 
-**Fit:** Repository examples for required merge-authority CI use released tags
-for shared actions.
+### REQ-008 - Least-Privilege Trusted Automation
 
-#### REQ-007 - Required CI Deliberate Shared Rollout
+Write-capable jobs SHALL receive only their necessary permissions and SHALL NOT
+execute pull-request code.
 
-Moving a required-CI release tag SHALL be a deliberate release action after
-review.
+**Fit:** Validation jobs are read-only; release and promotion jobs validate
+trusted metadata and exact SHAs without checking out a pull-request head.
 
-**Fit:** Merging to `main` updates this repo but does not by itself move the
-required-CI `v1` rollout boundary.
+### REQ-009 - Immutable External Automation
 
-### Public Safety
+Every non-local external Action SHALL use a full commit SHA with an adjacent
+reviewed release comment. Downloaded tools SHALL use an exact version and
+verified integrity or provenance.
 
-#### REQ-008 - Public-Safe Repository Content
+**Fit:** CI rejects floating external tags, branches, and unqualified images.
+Internal `ForgingAlpha/.github/...@v1` remains the documented current-channel
+exception.
 
-Shared Automation and public documentation SHALL NOT include runtime secrets,
-deployment credentials, private customer data, private worktree paths, private
-incident evidence, or repo-specific private failure details.
+## Runtime And Dependencies
 
-**Fit:** A public-safety scan over changed files finds no prohibited private
-content before release.
+### REQ-010 - Repository-Owned Exact Runtime
 
-#### REQ-009 - Private Policy Source Boundary
+Application runtime versions SHALL come from the repository's committed exact
+lock and SHALL NOT be duplicated in workflow inputs.
 
-Shared Automation SHALL NOT require Consumer Repositories to check out private
-Alpha Apps lifecycle, convention, skill, agent, or runbook sources during CI.
+**Fit:** CI fails before compilation when the lock is missing, stale,
+incomplete, or inconsistent with the active runtime.
 
-**Fit:** A consumer workflow can run the shared policy surface with normal
-repository checkout and GitHub-provided credentials only.
+### REQ-011 - Complete Update Coverage
 
-### Merge Authority And Diagnostics
+Every active repository SHALL assign exactly one machine-verifiable update
+owner to every versioned dependency, runtime, tool, external Action, active
+container image, and installed external plugin it contains.
 
-#### REQ-010 - CI Is Merge Authority
+**Fit:** Deterministic validation reports any manifest, nested Action directory,
+runtime declaration, lock, or version literal without supported management or a
+narrow documented exception.
 
-Required CI SHALL remain the merge authority for normal consuming repositories.
+### REQ-012 - Normal Update Cooldown
 
-**Fit:** Required-check examples and ruleset documentation treat `CI` as the
-merge gate.
+Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
+of three days for patches, seven days for minors, and thirty days for majors.
 
-#### REQ-011 - Diagnostics Are Evidence Only
+**Fit:** Eligible patch, minor, and major PRs merge automatically into a code
+repository's protected `dev` after exact-head `CI`; they do not auto-promote to
+`main`. Runtime and tool changes use the same path after their exact generated
+locks and integrity data pass CI. Main-only control-plane updates merge through
+protected `main` only after their complete control-plane gates pass.
 
-WHEN Diagnostic Workflows are provided, their outputs SHALL NOT be required
-merge checks or release gates.
+### REQ-013 - Immediate Security Updates
 
-**Fit:** Probe templates and documentation describe diagnostics as evidence, and
-no required-check example depends on a diagnostic workflow.
+Only a Dependabot pull request with a re-provable official GitHub
+vulnerability-alert association and a trusted automation-App classification
+check bound to its exact current head SHALL be treated as an automatically
+promotable security update. Eligible security updates SHALL bypass normal
+cooldown and SHALL automatically merge and promote after that exact current
+head passes complete required `CI`.
 
-#### REQ-012 - Constrained Diagnostic Execution
+**Fit:** Every synchronization clears stale auto-merge state and routing labels.
+A changed head, untrusted merge identity, missing or ambiguous alert association
+at merge or promotion time, failed trusted workflow run, disallowed file,
+changed target, or non-fast-forward state fails closed.
 
-WHEN Diagnostic Workflows are provided, they SHALL constrain their inputs and
-SHALL NOT accept arbitrary shell commands.
+### REQ-014 - Exact-SHA Deployment
 
-**Fit:** Invalid probe modes, paths, labels, refs, and command-like inputs are
-rejected before command construction.
+Security promotion SHALL deploy the exact tested, still-current source SHA.
+Turnkey SHALL prove that SHA in staging before lease-protected promotion to
+`main` and production.
 
-#### REQ-012A - Latest Diagnostic Standard
+**Fit:** CI, staging, `main`, and the production deployment record identify the
+same commit; notification lists the promoted `dev` commit range.
 
-WHEN Diagnostic Workflows are provided for internal Alpha Apps agent debugging,
-they SHALL use the latest approved reusable diagnostic workflow on this repo's
-`main` branch.
+## Operations
 
-**Fit:** A Consumer Repository's manual `ci-probe.yml` calls a centralized
-`ForgingAlpha/.github/.github/workflows/ci-probe-*.yml@main` workflow, and the
-workflow remains diagnostic-only and non-required.
+### REQ-015 - Protected Branches And Refs
 
-#### REQ-012B - Repo-Owned Probe Adapter
+Application `dev` SHALL require pull requests and `CI`. Application `main`,
+deployment refs, and control-plane release tags SHALL reject untrusted direct
+writes, deletion, and uncontrolled force pushes.
 
-WHEN Diagnostic Workflows execute repo behavior, the Consumer Repository SHALL
-own the adapter that maps validated selectors to concrete commands.
+**Fit:** Only the scoped release identity and operator can perform authorized
+promotion or release movements.
 
-**Fit:** The shared reusable workflow validates inputs and invokes
-`./bin/ci-probe`; it does not accept arbitrary command strings or embed
-private repo-specific diagnostics in this public control-plane repo.
+### REQ-016 - Operator Boundary
 
-### Deterministic Enforcement
+Agents MAY prepare changes, tests, commits, and operator scripts. Destructive
+pushes, ruleset administration, rollout enablement, and rollback execution
+remain operator-owned.
 
-#### REQ-013 - Deterministic Checks First
+**Fit:** Automation and agent workflows contain no operator SSH key, personal
+access token, or agent-readable personal credential.
 
-WHEN a policy or quality rule can be checked mechanically, Shared Automation
-SHALL enforce it with deterministic tooling rather than LLM judgment alone.
+### REQ-017 - Scheduled Backstops
 
-**Fit:** Mechanical policy failures come from executable checks with clear
-pass/fail behavior.
+Dependency advisory audits SHALL run daily against integration and deployed
+refs; a secondary-runner sentinel MAY run weekly as a non-required diagnostic.
 
-#### REQ-014 - Actionable Failure Output
+**Fit:** Scheduled failures are actionable and deduplicated even when no pull
+request is open.
 
-Shared Automation SHALL explain failures with what failed, why it matters, and
-how to fix it.
+### REQ-018 - Disjoint Update Authorities
 
-**Fit:** Invalid inputs and policy failures identify the violated rule and the
-next corrective action.
+Renovate SHALL own normal version updates and SHALL NOT create vulnerability
+remediation pull requests. Dependabot SHALL own security remediation and SHALL
+NOT create normal version-update pull requests.
 
-#### REQ-015 - Self Validation Before Release
+**Fit:** Required CI validates the central Renovate preset, security-only
+Dependabot configuration, repository coverage, and absence of overlapping
+update ownership. During migration, each repository declares its sole normal
+update owner as `dependabot` or `renovate`; the audited mode flip is atomic, and
+final-state validation permits only `renovate`.
 
-This repository's own CI SHALL validate workflow syntax, composite action
-metadata, forbidden branch refs, and high-risk workflow triggers before
-consumer-facing release tags move.
+### REQ-019 - Safe Generated-Lock Refresh
 
-**Fit:** A pull request that introduces an invalid shared action, forbidden
-`@main` action reference, or disallowed trigger fails this repo's `CI` job.
+An automated change to a source version declaration SHALL refresh every derived
+lock or integrity record through constrained automation before merge.
 
-#### REQ-016 - Dependabot Coverage Standard
+**Fit:** A credential-free resolver runs an exact trusted tool in safe mode; a
+separate writer verifies bot identity, exact head, and an allowlisted file diff
+before committing only the expected generated artifacts. The new exact head
+must pass locked-mode `CI`.
 
-Shared Automation SHALL define a standard Dependabot configuration pattern for
-Consumer Repositories.
+### REQ-020 - Version-Coherent Control-Plane Release
 
-**Fit:** A Consumer Repository can copy or sync a standard Dependabot template
-that covers the package ecosystems and GitHub Actions manifests present in that
-repo.
+After the Renovate plan's Phase 6 gate is active, an update to shared automation
+SHALL NOT advance `v1` until representative consumer profiles exercise one
+coherent candidate revision and the exact merged control-plane commit remains
+green and current. Before that gate is activated, bootstrap rollouts SHALL
+satisfy REQ-005 through REQ-007 and the operator checklist; this transition
+exception expires when Phase 6 acceptance passes.
 
-#### REQ-017 - Dependabot Coverage Validation
+**Fit:** Candidate tests cannot mix proposed top-level Actions with sibling
+Actions from the already-live `v1`; failure or ambiguity leaves `v1` unchanged.
 
-Shared Automation SHALL provide deterministic validation for missing obvious
-Dependabot coverage.
+### REQ-021 - External Plugin Update Ownership
 
-**Fit:** A repository with workflows, composite actions, Cargo manifests, npm
-manifests, Mix projects, or Python dependency manifests receives an actionable
-failure or report when `.github/dependabot.yml` does not cover the detected
-surface.
+Installed marketplace plugins SHALL be updated by their official installer or
+marketplace. Customized vendored external skills SHALL record a machine-readable
+upstream identity and revision and SHALL surface upstream changes through a
+reviewable synchronization pull request.
 
-#### REQ-018 - Baseline Source-Truth Enforcement
-
-Shared Automation SHALL provide deterministic enforcement for approved
-`docs/intent.md`, `docs/requirements.md`, and `docs/architecture.md` in
-active ForgingAlpha repositories that run the Alpha Apps policy check.
-
-**Fit:** A Consumer Repository that is missing an approved baseline receives an
-actionable failure for ordinary code, test, dependency, or runtime changes while
-definition/backfill-only changes remain possible.
-
-#### REQ-019 - Durable Rationale Reference Enforcement
-
-Shared Automation SHALL reject durable code, test, and assertion rationale that
-uses plans, phases, PRs, handoffs, audits, or other execution artifacts as the
-primary authority.
-
-**Fit:** A durable source comment, docstring, or assertion message that cites an
-execution artifact as its reason fails with guidance to cite requirements,
-architecture, ADRs, stable conventions, or local invariants instead.
-
-#### REQ-020 - Required Product Evidence Validation
-
-Shared Automation SHALL require and validate Product Evidence for active
-ForgingAlpha repositories that run the Alpha Apps policy check.
-
-**Fit:** A Consumer Repository without `docs/evidence/product-evidence.json`
-receives an actionable failure for ordinary code, test, dependency, runtime,
-maintenance, release, or broad planning changes while source-truth and
-evidence-backfill-only changes remain possible. Malformed manifests,
-unsupported statuses, orphaned generated views, and stale generated views
-receive actionable failures.
+**Fit:** Installed artifacts are inventoried rather than edited in place, and a
+vendored copy without an upstream owner fails update-coverage validation.

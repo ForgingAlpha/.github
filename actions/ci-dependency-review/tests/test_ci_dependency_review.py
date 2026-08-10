@@ -50,13 +50,13 @@ class CiDependencyReviewTest(unittest.TestCase):
         dependency_review_steps = [
             step
             for step in action["runs"]["steps"]
-            if step.get("uses") == "actions/dependency-review-action@v5"
+            if step.get("uses") == "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294"
         ]
 
         self.assertEqual(
             len(dependency_review_steps),
             1,
-            "ci-dependency-review must wrap the official actions/dependency-review-action@v5. "
+            "ci-dependency-review must wrap the SHA-pinned official dependency review Action. "
             "WHY: the shared action should centralize GitHub's dependency diff review. "
             f"HOW: restore the dependency review uses step; steps={action['runs']['steps']!r}",
         )

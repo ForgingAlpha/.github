@@ -6,188 +6,177 @@ tags:
 ---
 # ForgingAlpha/.github - Architecture
 
-## Architecture Posture
+## Control Plane
 
-`ForgingAlpha/.github` is a public GitHub Actions control plane. It owns
-reusable automation surfaces; consuming repositories own the jobs, services,
-runtime setup, and product behavior that call those surfaces.
+`.github` and `alphaapps-docs` are main-only control planes. Every change lands
+through a reviewed pull request with required `CI`. Application repositories
+use feature/worktree branches into protected `dev`; `main` is the deployed
+branch.
 
-Status preservation is the core constraint: shared checks that report through a
-consumer repo's required `CI` status run as composite actions inside the
-consumer job.
+Shared merge-authority checks are composite actions so the caller preserves a
+single required job named `CI`. Consumers call internal actions at
+`ForgingAlpha/.github/actions/<action>@v1`. Self-CI uses local paths so a pull
+request validates its proposed implementation.
 
-## Automation Surfaces
+## Current-Channel Rollout
 
-### Composite Actions
+`v1` is a mutable current channel. A trusted release gate observes successful
+`CI` on a push to `.github/main`, verifies that the completed head is still the
+remote `main` SHA, and then performs the serialized rollout below. During the
+Renovate-plan transition, bootstrap rollouts use this exact-green-current-main
+gate plus the protected rollback proof in the operator checklist.
 
-Composite actions live under `actions/<name>/action.yml`. They are the default
-surface for shared CI, lint, policy, and dependency checks.
+Phase 6 adds a version-coherent candidate gate before rollout. Once active, it
+is mandatory for every `v1` movement: every live consumer profile must resolve
+the proposed top-level and sibling shared Actions from the same revision, never
+mixing the candidate with the already-live `v1` implementation.
 
-Use a composite action when a check must execute inside the caller's job,
-preserve the caller's job name, or inherit caller-owned services or
-environment.
+After those gates pass, the release enters a non-cancelling `v1-rollout`
+concurrency group. It advances `v1` with a raw-ref expected-old lease, then
+creates `v1-rollout-<UTC timestamp>-<short SHA>` and records the transition.
+Mutable movement and immutable record creation are one atomic Git push, so a
+failure changes neither ref; an existing completed record makes a retry a
+no-op.
 
-Composite actions do not own workflow triggers, job services, runner selection,
-checkout, or branch protection. The consuming workflow owns those concerns.
+The rollout job alone receives `contents: write`. Validation remains read-only.
+Tag rules permit only the release identity and operator. The legacy semver
+writer is removed before the replacement first moves `v1`.
 
-### Workflows
+Rollback is a protected manual workflow. It accepts only an existing immutable
+`v1-rollout-*` tag, verifies historical successful `CI` and ancestry from
+current `main`, serializes with normal rollout, moves mutable `v1` with a
+raw-ref expected-old lease, and creates an immutable `v1-rollback-*` record in
+the same atomic push.
+The first cutover records the peeled legacy commit as a protected
+`v1-bootstrap-*` tag and SHA-bound repository variable because that historical
+commit predates the new `CI` contract. Rollout stays disabled until the
+protected environment and this bootstrap rollback are proven.
 
-Workflows under `.github/workflows/` are either repo-owned automation for this
-repository or explicit reusable workflows where a separate workflow/job boundary
-is intentional.
+The rollout is intentionally fail-closed: if current `main` is red or stale,
+`v1` stays at its last green SHA. Recovery is a newer reviewed green commit,
+not an out-of-order release.
 
-Use repo-owned workflows for self CI, release-tag movement, and Dependabot
-automation. Use reusable workflows only when the shared automation contract
-requires a separate workflow/job boundary.
+## Shared CI Profiles
 
-Self CI uses local action paths such as `./actions/<name>` so pull requests
-validate proposed action code before any release tag moves.
+`ci-elixir` exposes `full`, `static`, and `test` profiles. `full` runs all
+cross-cutting/static work and the caller test command. `static` runs the same
+cross-cutting/static work without tests. `test` performs only locked runtime and
+dependency setup, caller preparation, and the assigned test command.
 
-Self CI validates workflow syntax, composite action metadata, forbidden branch
-refs, and high-risk workflow triggers before release tags move.
+The static surface includes merge flow, approved source truth, Markdown,
+workflow safety when relevant, update coverage, dependency review, formatting,
+warnings-as-errors compilation, repo-owned architecture checks, Credo strict,
+unused dependency validation, dependency audits, Phoenix security analysis, and
+Dialyzer. Missing required tools fail clearly.
 
-### Templates And Examples
+Fanned-out workflows expose one `CI` fan-in that fails when any required job is
+failed, cancelled, or skipped.
 
-README examples define the public consumer contract; workflow templates do the
-same when present. Show the smallest valid caller workflow and keep
-repo-specific runtime commands in the consuming repo.
+## Runtime And Cache Model
 
-## Consumer Integration Model
+`mise.toml` declares supported runtime families and `mise.lock` records exact
+resolutions. CI installs with a SHA-pinned mise Action, an exact mise version,
+and locked mode. Workflow YAML does not duplicate language runtime versions.
 
-Consumers call released shared actions from a job named `CI`:
+The Renovate plan's Phase 5 is the target runtime-update flow. Renovate proposes
+normal runtime changes; a credential-free resolver runs the exact trusted mise
+version in safe mode and emits the refreshed lock. A separate metadata-only
+writer verifies the Renovate identity, exact pull-request head, and allowlisted
+`mise.toml`/`mise.lock` diff before committing the lock result. The writer uses
+a unique Git author that the central preset explicitly recognizes through
+`gitIgnoredAuthors`; every Renovate rebase triggers an idempotent refresh. The
+resulting head reruns complete locked-mode CI.
 
-```yaml
-- uses: ForgingAlpha/.github/actions/<shared-action>@v1
-```
+Runtime, dependency/build, and Dialyzer caches are keyed by operating system,
+architecture, exact resolved runtimes, dependency locks, and relevant build
+inputs. Cache design is validated on both cold and warm Blacksmith runs and may
+not restore artifacts across incompatible OTP/Elixir combinations.
 
-The consuming workflow owns checkout, permissions, timeouts, services,
-environment variables, and repo-specific command inputs.
+## Dependency And Security Flow
 
-Shared actions may expose explicit inputs for caller-owned behavior. Private
-product knowledge, private runtime state, local service contracts, and
-repo-specific command definitions stay in the consuming repository.
+Normal updates and security remediation are separate, non-overlapping lanes.
 
-Language CI actions run the merge-flow guard before language checks. Repos with
-a `dev` branch must merge feature work through `dev` before `main` or
-`staging`; main-only control-plane repos are exempt from that guard.
+The security flow below is already implemented by the in-flight control-plane
+refactor. The Renovate ownership, lock-refresh, consumer-profile, and
+updater-coverage portions are target state implemented in Phases 2 through 7 of
+`docs/plans/renovate-normal-dependency-automation.md`. Until each repository's
+audited cutover, its declared normal-update owner remains Dependabot; the
+repository never has two owners or a bot-less interval.
 
-## Policy Enforcement Model
+At target state, the organization Renovate preset lives in `.github`;
+repository-local Renovate configuration extends it and selects the repository
+class. Native managers own package manifests, lockfiles, mise runtimes,
+external Actions, and active image references. Narrow annotated custom managers
+own irreducible version literals. Exact ranges and digests remain pinned.
+Renovate vulnerability remediation is disabled.
 
-`actions/ci-alphaapps-policy` is the shared policy composite action. It is
-self-contained so public and private Consumer Repositories can run it without
-checking out private control-plane sources.
+Normal updates are evaluated daily. Patches, minors, and majors become eligible
+after three, seven, and thirty days respectively, then auto-merge through a
+pull request into protected code-repository `dev` only after exact-head `CI`.
+They do not auto-promote to `main`. Main-only control-plane updates target
+protected `main`; `.github` release remains independently gated by coherent
+consumer validation before `v1` moves.
 
-The action owns deterministic checks for approved baseline source truth,
-durable rationale references, and required Product Evidence for active
-ForgingAlpha repositories. It mirrors the public enforcement contract; private
-lifecycle process detail stays outside this repo.
+At target state, repository-local Dependabot entries remain only to customize
+security updates; normal version-update capacity is zero. During migration, the
+updater-coverage gate validates a machine-readable sole-owner mode per
+repository. It also validates the applicable central preset and local coverage,
+Dependabot configuration, annotated literals, and exactly one owner per
+detected surface.
 
-Baseline source-truth enforcement checks for approved `docs/intent.md`,
-`docs/requirements.md`, and `docs/architecture.md`. When the baseline is
-missing, malformed, or provisional, ordinary implementation changes fail and
-definition/backfill-only changes remain the permitted path.
+Security classification uses the SHA-pinned official Dependabot metadata Action
+with alert lookup plus GitHub's alert-to-pull-request association. Grouped PRs
+record every associated GHSA. A trusted default-branch workflow validates
+actor, base, file scope, classification, mergeability, and successful checks.
+Every synchronization first clears stale auto-merge and routing state. The
+automation App creates a trusted classification check on the exact PR head and
+then calls GitHub's merge API with that head SHA as an atomic precondition.
 
-Durable rationale validation scans durable code comments, docstrings, and
-assertion messages. It rejects plans, phases, PRs, handoffs, audits, and other
-execution artifacts as the reason a behavior exists while ignoring execution
-artifact folders themselves.
+Promotion does not trust the label as authority. A trusted post-merge job uses
+the automation App's read-only alert permission to re-prove that the exact PR
+head carries the App-owned classification check, the App performed the merge,
+and the Dependabot PR remains associated with an official open or fixed GitHub
+security alert. Branch promotion requires an approved `CI` workflow `push` run
+on the exact source SHA and re-reads the source immediately before its
+expected-old target lease. Target movement and the immutable deployment tag are
+one atomic push.
 
-Product Evidence validation is required for ordinary code, test, dependency,
-runtime, maintenance, release, and broad planning changes in active
-ForgingAlpha repositories. When the manifest is missing, only source-truth or
-evidence-backfill-only changes that create or repair the required evidence
-artifacts remain permitted. The action validates manifest schema, status
-taxonomy, orphaned generated views, and generated view freshness.
+For Turnkey, the merged `dev` SHA deploys to the staging environment and passes
+health verification. Automation then advances `main` with an exact expected-old
+SHA lease and invokes the same reusable exact-SHA production deployment used by
+routine releases. Outliers promotes directly from tested `dev` to `main` when
+no separate staging environment exists. The entire already-green `dev` range is
+promoted and reported.
 
-Bounded Product Evidence waivers are operator-scoped source-truth exceptions,
-not a normal shared-action input. A shared action caller cannot casually turn
-Product Evidence off for ordinary work.
+Privileged jobs process trusted GitHub metadata only. They never check out or
+execute pull-request code.
 
-## Dependency Update Model
+Installed marketplace plugins remain outside repository dependency bots and
+are owned by their official installer. Customized vendored external skills
+record an upstream repository and revision so deterministic synchronization can
+surface reviewable changes. First-party repository skills remain normal source
+code rather than pretending to be external dependencies.
 
-Dependabot configuration is repo-local. Each Consumer Repository keeps its own
-`.github/dependabot.yml` on the default branch.
+## External Dependencies And Scheduled Backstops
 
-This repo owns the public Dependabot standard: templates, examples, validation,
-and the shared Dependabot auto-merge helper.
+All external Actions use full commit SHAs with reviewed-version comments.
+Downloaded tools use exact versions plus checksums, lock integrity, or reviewed
+provenance. CI rejects floating refs.
 
-Dependabot coverage must match the repository surface. Repos with workflows
-cover GitHub Actions at `/`; repos with nested composite actions cover the
-action manifest directories as well. Package ecosystems are listed only when
-their manifests exist in that repo.
+A deployment integration remains active for update-ownership purposes while a
+live release workflow or configuration references it. A maintained
+update-surface inventory names every active integration and owner. Integrations
+proven inactive are deleted rather than enrolled in Renovate. The
+updater-coverage gate rejects new unmanaged version literals and stale
+exceptions.
 
-Dependabot updates GitHub Actions references and package manifests. It does not
-own hardcoded tool versions embedded inside shell commands or scripts; shared CI
-validation must audit those pins separately when they are part of the public
-contract.
+Advisory audits run daily against application `dev` and deployed `main`.
+Turnkey retains one weekly Ubuntu sentinel for independent runner and timing
+diversity; it is diagnostic and never a merge requirement.
 
-## Release And Rollout Model
+## Operator Boundary
 
-`main` is the authoring branch. Merging to `main` does not roll shared-action
-changes out to required CI consumers.
-
-Semver tags record reviewed releases. Mutable major tags such as `v1` are the
-required-CI consumer rollout boundary.
-
-Consumer examples and published shared-action dependencies use released refs
-such as `@v1` for required CI. Branch refs such as `@main` are not the required
-CI consumer contract. Self CI may use local `./actions/...` paths to validate
-branch-local changes.
-
-Manual diagnostic probes are the exception. Probe wrappers in Consumer
-Repositories call centralized reusable workflows on `ForgingAlpha/.github@main`
-so internal agent diagnostics always use the latest approved probe platform.
-This latest-on-main model is allowed because probes are non-required,
-manual-only, read-only, and not merge authority.
-
-## Public And Private Boundary
-
-This public repo may mirror deterministic policy that can run without private
-context.
-
-Private Alpha Apps lifecycle policy, conventions, skills, agents, runbooks,
-operator notes, incident detail, customer data, and local worktree paths stay
-outside this repo.
-
-Consumer CI must not check out private `alphaapps-docs` sources. If a policy
-cannot run publicly without leaking private context, keep it in private review
-tooling.
-
-## Diagnostic Workflow Model
-
-Diagnostic workflows, when provided, collect CI-only evidence; they do not
-replace required `CI` and do not grant merge permission.
-
-Diagnostic entrypoints must use constrained inputs, never arbitrary shell
-commands. This repo owns reusable diagnostic workflow scaffolding and the
-shared input guard. The consuming repository owns the executable
-`bin/ci-probe` command adapter that maps constrained inputs to runtime probes.
-
-When a diagnostic workflow needs to test branch code, the workflow definition
-must remain trusted while the target checkout ref is treated as input.
-
-Diagnostic runs should upload artifacts or summaries even on failure.
-
-Reusable diagnostic workflows live under `.github/workflows/ci-probe-*.yml`.
-Consumer wrappers call those workflows at `@main` and pass only reviewed static
-configuration plus manual selector inputs. The reusable workflow validates
-selectors before checkout, checks out the target ref only after validation, and
-then invokes the repo-owned adapter.
-
-## Durable State
-
-- Git commits record reviewed control-plane changes.
-- Release tags record consumer-facing action versions.
-- Action metadata defines shared action inputs and execution steps.
-- Workflow files define repo-owned automation and reusable workflow entrypoints.
-- README examples define the public consumer contract; workflow templates do the
-  same when present.
-
-## Security Posture
-
-- Default workflow permissions are read-only unless a specific job needs more.
-- Avoid `pull_request_target`; any use requires an explicit allowlist reason.
-- Diagnostic workflows must not accept arbitrary shell commands.
-- Keep secrets, private paths, customer data, and private operational evidence
-  out of public files.
-- Prefer deterministic validation for enforceable policy.
+Agents prepare scoped repository changes, verification, and `/tmp` scripts.
+The operator owns destructive pushes, organization rules, credential/App setup,
+rollout activation, and rollback execution. No SSH or personal credentials are
+available to agents.
