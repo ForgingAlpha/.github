@@ -37,10 +37,10 @@ Application repositories use feature/worktree pull requests into protected
 | Action | Contract |
 | --- | --- |
 | `ci-alphaapps-policy` | Approved Intent, Requirements, and Architecture |
-| `ci-markdown` | Pinned Markdown validation |
+| `ci-markdown` | Pinned validation of every tracked Markdown file |
 | `ci-github-actions` | Actionlint, immutable refs, permissions, and trigger safety |
 | `ci-dependabot-coverage` | Current pre-cutover update coverage; replaced by the updater-neutral gate in the Renovate plan |
-| `ci-dependency-review` | Pull-request dependency vulnerability and license review |
+| `ci-dependency-review` | Mandatory PR vulnerability review and central commercial-license allowlist |
 | `ci-merge-flow` | Feature → `dev` and tested `dev` → `main` flow |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
 | `ci-rust` | Format, Clippy, dead code, tests, and audit |
@@ -104,7 +104,7 @@ rollout that:
 3. leaves both refs unchanged if either update cannot be accepted;
 4. records the transition in the workflow summary.
 
-This describes the live bootstrap gate. Phase 6 of the Renovate plan adds the
+This describes the initial rollout gate. Phase 6 of the Renovate plan adds the
 mandatory version-coherent consumer-profile gate before step 2; after that gate
 is activated, no `v1` movement may bypass it.
 

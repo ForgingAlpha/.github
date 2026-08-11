@@ -43,10 +43,6 @@ inputs:
     description: "Subdirectory containing package.json"
     required: false
     default: "."
-  markdown-mode:
-    description: "Markdown lint mode for ci-markdown (changed|all)"
-    required: false
-    default: "changed"
   github-actions-mode:
     description: "GitHub Actions safety mode (changed|all)"
     required: false
@@ -65,8 +61,6 @@ runs:
     - name: Validate Markdown
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
       uses: ForgingAlpha/.github/actions/ci-markdown@v1
-      with:
-        mode: ${{ inputs.markdown-mode }}
 
     - name: Plan GitHub Actions safety gate
       id: github_actions_safety

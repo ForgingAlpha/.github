@@ -1,8 +1,8 @@
 # Automation Operator Checklist
 
 Complete these GitHub settings before merging the replacement workflows. Keep
-the repository variable `V1_ROLLOUT_ENABLED` absent or `false` during bootstrap,
-so the merge cannot move `v1` before the rollback path is proven:
+the repository variable `V1_ROLLOUT_ENABLED` absent or `false` during initial
+cutover, so the merge cannot move `v1` before the release controls are proven:
 
 - Require pull requests, approval, and `CI` on `.github/main`. Allow the
   automation App's exact-revision approval to satisfy the review requirement;
@@ -11,11 +11,15 @@ so the merge cannot move `v1` before the rollback path is proven:
   the protection is active. GitHub otherwise auto-creates an unprotected
   environment on first use.
 - Protect creation, update, and deletion of `v1`, `v1-rollout-*`,
-  `v1-rollback-*`, and `v1-bootstrap-*` from identities other
-  than the repository GitHub Actions workflow identity, scoped release identity,
-  and operator.
+  and `v1-rollback-*` from identities other than the repository GitHub Actions
+  workflow identity, scoped release identity, and operator.
 - Confirm the workflow token may write repository contents only for release and
   rollback jobs.
+- For every private consumer repository, confirm the dependency graph and
+  GitHub dependency review are enabled and that the organization has the GitHub
+  Code Security/Advanced Security entitlement required by the official action.
+  Do not merge the consumer rollout until a pull-request probe returns real
+  dependency-change output.
 - Install the automation GitHub App with repository contents and pull-request
   write, issues write, checks write, and read-only Dependabot-alert permissions.
   Store its ID
@@ -27,21 +31,19 @@ so the merge cannot move `v1` before the rollback path is proven:
   in the Actions context and require those stores.
 - Create the `security-autopromote` label in every participating repository,
   including `ForgingAlpha/.github` and each application repository.
-- Record the peeled current `v1` commit as both repository variable
-  `V1_BOOTSTRAP_SHA` and lightweight tag `v1-bootstrap-<first 12 SHA>`. Confirm
-  it is an ancestor of `main`; this explicit bootstrap exception exists because
-  legacy `v1` predates the new `CI` contract.
 - Protect creation, update, and deletion of `prod-*` promotion tags in every
   application repository. Confirm Turnkey's existing Integration bypass is the
   intended release App.
 - Confirm the legacy release writer no longer exists on the merged branch.
 
 Then merge `ForgingAlpha/.github` while rollout remains disabled. Confirm the
-new workflows exist on `main` and `v1` did not move. Run the protected rollback
-once against the bootstrap tag. Set `V1_ROLLOUT_ENABLED=true`, manually dispatch
-`Roll Out v1` for the exact current green `main` SHA, and confirm the immutable
-record plus `v1` movement. Re-running the old CI run must not re-advance a
-rolled-back SHA.
+new workflows exist on `main` and `v1` did not move. Set
+`V1_ROLLOUT_ENABLED=true`, manually dispatch `Roll Out v1` for the exact current
+green `main` SHA, and confirm the immutable record plus `v1` movement. Do not
+roll back to the implementation that predates this contract. Once two
+`v1-rollout-*` records exist, exercise the protected rollback between those
+records and confirm that re-running an old CI run cannot re-advance the rolled
+back SHA.
 
 Only then merge the four consumer branches, so their new inputs and action calls
 resolve against the matching shared contract. The Turnkey and Outliers branches
@@ -58,8 +60,8 @@ destructive pushes, rollout activation, and rollback execution.
 
 ## Later Renovate Cutover
 
-Do not begin this cutover until the `v1` bootstrap, rollback proof, and consumer
-automation rollout above are complete. Follow
+Do not begin this cutover until the initial `v1` rollout and consumer automation
+rollout above are complete. Follow
 [`plans/renovate-normal-dependency-automation.md`](plans/renovate-normal-dependency-automation.md)
 in order.
 

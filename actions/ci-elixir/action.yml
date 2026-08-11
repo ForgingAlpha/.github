@@ -18,10 +18,6 @@ inputs:
     description: "Repo-owned test command for full/test profiles"
     required: false
     default: "mix test"
-  markdown-mode:
-    description: "Markdown lint mode for ci-markdown (changed|all)"
-    required: false
-    default: "changed"
   github-actions-mode:
     description: "GitHub Actions safety mode (changed|all)"
     required: false
@@ -90,8 +86,6 @@ runs:
     - name: Validate Markdown
       if: ${{ inputs.profile != 'test' && github.repository != 'ForgingAlpha/.github' }}
       uses: ForgingAlpha/.github/actions/ci-markdown@v1
-      with:
-        mode: ${{ inputs.markdown-mode }}
 
     - name: Plan GitHub Actions safety gate
       if: ${{ inputs.profile != 'test' }}

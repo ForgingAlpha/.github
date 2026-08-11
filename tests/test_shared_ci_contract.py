@@ -103,6 +103,24 @@ class SharedCiContractTest(unittest.TestCase):
             "HOW: restore the uses step or update the contract test with the approved replacement.",
         )
 
+    def test_markdown_policy_has_no_incremental_consumer_contract(self):
+        for path in LANGUAGE_ACTIONS:
+            with self.subTest(path=path.relative_to(ROOT).as_posix()):
+                action = self.load_action(path)
+                self.assertNotIn("markdown-mode", action.get("inputs", {}))
+                _, markdown_step = self.require_uses_step(
+                    path,
+                    "ForgingAlpha/.github/actions/ci-markdown@v1",
+                )
+                self.assertNotIn("with", markdown_step)
+
+    def test_github_actions_validator_has_one_canonical_entrypoint(self):
+        self.assertTrue(
+            (ROOT / "actions" / "ci-github-actions" / "scripts" / "check_workflows.py").is_file()
+        )
+        self.assertFalse((ROOT / "scripts" / "validate-github-actions.py").exists())
+        self.assertFalse((ROOT / "tests" / "test_validate_github_actions.py").exists())
+
     def test_language_composites_run_cross_cutting_policy_before_language_checks(self):
         for path in LANGUAGE_ACTIONS:
             with self.subTest(path=path.relative_to(ROOT).as_posix()):

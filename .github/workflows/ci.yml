@@ -30,8 +30,6 @@ jobs:
 
       - name: Validate Markdown
         uses: ./actions/ci-markdown
-        with:
-          mode: all
 
       - name: Validate GitHub Actions safety
         uses: ./actions/ci-github-actions

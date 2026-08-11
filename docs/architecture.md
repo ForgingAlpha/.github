@@ -22,9 +22,9 @@ request validates its proposed implementation.
 
 `v1` is a mutable current channel. A trusted release gate observes successful
 `CI` on a push to `.github/main`, verifies that the completed head is still the
-remote `main` SHA, and then performs the serialized rollout below. During the
-Renovate-plan transition, bootstrap rollouts use this exact-green-current-main
-gate plus the protected rollback proof in the operator checklist.
+remote `main` SHA, and then performs the serialized rollout below. Initial
+rollouts use this same exact-green-current-main gate; there is no exception for
+the implementation that previously occupied `v1`.
 
 Phase 6 adds a version-coherent candidate gate before rollout. Once active, it
 is mandatory for every `v1` movement: every live consumer profile must resolve
@@ -39,7 +39,7 @@ failure changes neither ref; an existing completed record makes a retry a
 no-op.
 
 The rollout job alone receives `contents: write`. Validation remains read-only.
-Tag rules permit only the release identity and operator. The legacy semver
+Tag rules permit only the release identity and operator. The obsolete semver
 writer is removed before the replacement first moves `v1`.
 
 Rollback is a protected manual workflow. It accepts only an existing immutable
@@ -47,10 +47,10 @@ Rollback is a protected manual workflow. It accepts only an existing immutable
 current `main`, serializes with normal rollout, moves mutable `v1` with a
 raw-ref expected-old lease, and creates an immutable `v1-rollback-*` record in
 the same atomic push.
-The first cutover records the peeled legacy commit as a protected
-`v1-bootstrap-*` tag and SHA-bound repository variable because that historical
-commit predates the new `CI` contract. Rollout stays disabled until the
-protected environment and this bootstrap rollback are proven.
+The pre-policy implementation is not an eligible rollback target. Rollout stays
+disabled until the protected environment and release controls are configured;
+rollback is exercised only between immutable `v1-rollout-*` records created by
+this contract.
 
 The rollout is intentionally fail-closed: if current `main` is red or stale,
 `v1` stays at its last green SHA. Recovery is a newer reviewed green commit,
@@ -68,6 +68,21 @@ workflow safety when relevant, update coverage, dependency review, formatting,
 warnings-as-errors compilation, repo-owned architecture checks, Credo strict,
 unused dependency validation, dependency audits, Phoenix security analysis, and
 Dialyzer. Missing required tools fail clearly.
+
+Markdown validation always enumerates all tracked `.md` and `.markdown` files;
+there is no changed-file mode. Dependency review is mandatory on consumer pull
+requests and has no caller disable switch. The SHA-pinned official action blocks
+low-or-higher vulnerabilities and licenses outside a centrally owned permissive
+commercial-use SPDX allowlist. A following fail-closed check inspects the
+official dependency-change output and rejects introduced or updated packages
+whose license is null or empty. Package-specific license exceptions require a
+reviewed control-plane policy change rather than a consumer input.
+Private organization repositories must have GitHub's dependency-review feature
+and required Code Security entitlement enabled before adopting this gate.
+
+Each policy surface has one canonical implementation and test entrypoint.
+Workflows and tests invoke it directly; obsolete compatibility wrappers are not
+published alongside the current contract.
 
 Fanned-out workflows expose one `CI` fan-in that fails when any required job is
 failed, cancelled, or skipped.

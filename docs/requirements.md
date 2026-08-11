@@ -33,7 +33,8 @@ Every check promised by a shared CI profile SHALL run deterministically or fail
 with WHAT-WHY-HOW remediation.
 
 **Fit:** A missing formatter, analyzer, audit tool, lock, or required command is
-a failure rather than a skipped success.
+a failure rather than a skipped success. Markdown validation covers every
+tracked Markdown file rather than only the current diff.
 
 ### REQ-004 - Static Once, Tests Lean
 
@@ -68,11 +69,10 @@ version has an immutable recovery point.
 ### REQ-007 - Constrained Rollback
 
 Rollback SHALL require operator approval and SHALL accept only an existing
-protected immutable rollout tag whose commit historically passed `CI`, except
-for the exact operator-recorded pre-cutover bootstrap commit.
+protected immutable rollout tag whose commit historically passed `CI`.
 
 **Fit:** Arbitrary refs, non-`main` ancestry, and shell input are rejected;
-immutable tags never move and the one bootstrap exception is SHA-bound.
+immutable tags never move, and no pre-policy commit can bypass historical CI.
 
 ### REQ-008 - Least-Privilege Trusted Automation
 
@@ -201,9 +201,8 @@ must pass locked-mode `CI`.
 After the Renovate plan's Phase 6 gate is active, an update to shared automation
 SHALL NOT advance `v1` until representative consumer profiles exercise one
 coherent candidate revision and the exact merged control-plane commit remains
-green and current. Before that gate is activated, bootstrap rollouts SHALL
-satisfy REQ-005 through REQ-007 and the operator checklist; this transition
-exception expires when Phase 6 acceptance passes.
+green and current. Before that gate is activated, initial rollouts SHALL satisfy
+REQ-005 through REQ-007 and the operator checklist.
 
 **Fit:** Candidate tests cannot mix proposed top-level Actions with sibling
 Actions from the already-live `v1`; failure or ambiguity leaves `v1` unchanged.
@@ -217,3 +216,25 @@ reviewable synchronization pull request.
 
 **Fit:** Installed artifacts are inventoried rather than edited in place, and a
 vendored copy without an upstream owner fails update-coverage validation.
+
+### REQ-022 - One Current Automation Contract
+
+Shared automation SHALL expose one strict current contract and SHALL NOT retain
+obsolete rollout exceptions, incremental Markdown enforcement, or
+compatibility entrypoints.
+
+**Fit:** Current workflows call and test the canonical implementation directly;
+old policy paths cannot remain green through a wrapper, opt-out input, or
+legacy-tag exception.
+
+### REQ-023 - Commercial Dependency License Gate
+
+Every pull request that introduces or updates a dependency SHALL run dependency
+vulnerability and license review. License policy SHALL use one centrally owned
+commercial-use allowlist; callers SHALL NOT disable the review, substitute a
+denylist, or exempt individual packages. Missing, unknown, or custom license
+evidence SHALL fail closed.
+
+**Fit:** Approved SPDX evidence passes, non-approved evidence fails, null or
+empty license data fails with WHAT-WHY-HOW remediation, and non-pull-request
+events report that the diff-only check is not applicable.

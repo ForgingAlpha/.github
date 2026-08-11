@@ -1,3 +1,6 @@
+import json
+import os
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -6,102 +9,99 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 ACTION = ROOT / "actions" / "ci-dependency-review" / "action.yml"
+SCRIPT = ROOT / "actions" / "ci-dependency-review" / "scripts" / "validate_license_evidence.py"
+OFFICIAL_ACTION = "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294"
 
 
 class CiDependencyReviewTest(unittest.TestCase):
     def load_action(self):
         return yaml.safe_load(ACTION.read_text(encoding="utf-8"))
 
-    def run_blocks(self):
+    def run_validator(self, changes):
+        value = changes if isinstance(changes, str) else json.dumps(changes)
+        return subprocess.run(
+            ["python3", str(SCRIPT)],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env={**os.environ, "DEPENDENCY_CHANGES": value},
+        )
+
+    def test_contract_has_no_caller_bypass_or_license_override(self):
         action = self.load_action()
-        return "\n".join(
-            step.get("run", "")
-            for step in action["runs"]["steps"]
-            if isinstance(step, dict)
-        )
+        self.assertNotIn("inputs", action)
+        text = ACTION.read_text(encoding="utf-8")
+        for obsolete in ("enabled", "deny-licenses", "allow-dependencies-licenses"):
+            self.assertNotIn(obsolete, text)
 
-    def test_defaults_match_security_baseline(self):
-        inputs = self.load_action()["inputs"]
-
-        self.assertEqual(
-            inputs["enabled"]["default"],
-            "true",
-            "ci-dependency-review must default to enabled. "
-            "WHY: dependency review is a security baseline PR check. "
-            "HOW: restore enabled default true in action.yml.",
-        )
-        self.assertEqual(
-            inputs["fail-on-severity"]["default"],
-            "low",
-            "ci-dependency-review must fail on low or higher vulnerabilities by default. "
-            "WHY: the shared security baseline treats PR dependency vulnerabilities as merge-blocking evidence. "
-            "HOW: restore fail-on-severity default low.",
-        )
-        self.assertEqual(
-            inputs["fail-on-scopes"]["default"],
-            "runtime,development,unknown",
-            "ci-dependency-review must include runtime, development, and unknown scopes. "
-            "WHY: dependency scope gaps should not bypass PR review. "
-            "HOW: restore the fail-on-scopes default.",
-        )
-
-    def test_wraps_official_dependency_review_action_on_pull_requests(self):
+    def test_official_review_uses_strict_central_policy(self):
         action = self.load_action()
-        dependency_review_steps = [
-            step
-            for step in action["runs"]["steps"]
-            if step.get("uses") == "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294"
-        ]
+        review = next(step for step in action["runs"]["steps"] if step.get("uses") == OFFICIAL_ACTION)
 
-        self.assertEqual(
-            len(dependency_review_steps),
-            1,
-            "ci-dependency-review must wrap the SHA-pinned official dependency review Action. "
-            "WHY: the shared action should centralize GitHub's dependency diff review. "
-            f"HOW: restore the dependency review uses step; steps={action['runs']['steps']!r}",
-        )
-        self.assertIn(
-            "github.event_name == 'pull_request'",
-            dependency_review_steps[0]["if"],
-            "ci-dependency-review must run upstream dependency review only on pull_request. "
-            "WHY: non-PR events do not provide the intended dependency diff enforcement surface. "
-            "HOW: restore the pull_request condition on the Dependency Review step.",
-        )
+        self.assertEqual(review["id"], "review")
+        self.assertEqual(review["if"], "${{ github.event_name == 'pull_request' }}")
+        self.assertEqual(review["with"]["fail-on-severity"], "low")
+        self.assertEqual(review["with"]["fail-on-scopes"], "runtime,development,unknown")
+        allowlist = review["with"]["allow-licenses"]
+        for expected in ("MIT", "Apache-2.0", "BSD-3-Clause", "ISC"):
+            self.assertIn(expected, allowlist.split(","))
 
     def test_non_pull_request_skip_is_explanatory(self):
-        run_blocks = self.run_blocks()
+        text = ACTION.read_text(encoding="utf-8")
+        self.assertIn("not applicable outside pull_request", text)
+        self.assertIn("WHAT:", text)
+        self.assertIn("WHY:", text)
+        self.assertIn("HOW:", text)
 
-        self.assertIn(
-            "Dependency review skipped outside pull_request",
-            run_blocks,
-            "ci-dependency-review must skip cleanly outside pull_request events. "
-            "WHY: push and manual runs should explain why dependency review did not run. "
-            "HOW: restore the non-pull_request skip step.",
+    def test_missing_license_guard_runs_even_if_official_review_fails(self):
+        action = self.load_action()
+        guard = next(
+            step for step in action["runs"]["steps"] if step.get("name") == "Reject missing license evidence"
         )
-        self.assertIn(
-            "WHAT:",
-            run_blocks,
-            "ci-dependency-review skip and failure output must include WHAT. "
-            "WHY: agents need actionable diagnostics from shared CI. HOW: keep WHAT/WHY/HOW output.",
-        )
-
-    def test_license_policy_is_fail_closed_for_conflicting_inputs(self):
-        run_blocks = self.run_blocks()
-
-        self.assertIn(
-            "Both allow-licenses and deny-licenses were set",
-            run_blocks,
-            "ci-dependency-review must reject simultaneous allow and deny license policies. "
-            "WHY: GitHub dependency-review supports only one license policy direction. "
-            "HOW: keep the input validation guard.",
-        )
+        self.assertIn("always()", guard["if"])
         self.assertEqual(
-            self.load_action()["inputs"]["deny-licenses"]["default"],
-            "",
-            "ci-dependency-review must not set deprecated deny-licenses by default. "
-            "WHY: upstream marks deny-licenses deprecated for possible removal. "
-            "HOW: keep deny-licenses optional and empty by default.",
+            guard["env"]["DEPENDENCY_CHANGES"],
+            "${{ steps.review.outputs.dependency-changes }}",
         )
+
+    def test_validator_accepts_known_license_and_ignores_removals(self):
+        result = self.run_validator(
+            [
+                {"change_type": "added", "package_url": "pkg:npm/good@1", "license": "MIT"},
+                {"change_type": "removed", "package_url": "pkg:npm/old@1", "license": None},
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_validator_rejects_unknown_license_with_remediation(self):
+        result = self.run_validator(
+            [{"change_type": "added", "package_url": "pkg:npm/unknown@1", "license": None}]
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("pkg:npm/unknown@1", result.stderr)
+        self.assertIn("WHAT:", result.stderr)
+        self.assertIn("WHY:", result.stderr)
+        self.assertIn("HOW:", result.stderr)
+
+    def test_validator_rejects_missing_or_malformed_output(self):
+        for value in ("", "not-json", "{}", "[null]"):
+            with self.subTest(value=value):
+                result = self.run_validator(value)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("WHAT:", result.stderr)
+
+    def test_validator_rejects_malformed_license_or_change_type(self):
+        invalid_records = (
+            {"change_type": "added", "package_url": "pkg:npm/object@1", "license": {}},
+            {"change_type": "added", "package_url": "pkg:npm/list@1", "license": []},
+            {"change_type": "modified", "package_url": "pkg:npm/future@1", "license": "MIT"},
+        )
+        for record in invalid_records:
+            with self.subTest(record=record):
+                result = self.run_validator([record])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("WHAT:", result.stderr)
 
 
 if __name__ == "__main__":

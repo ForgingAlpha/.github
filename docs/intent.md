@@ -39,6 +39,9 @@ automation without copying workflow logic between repositories.
   locally and in CI.
 - External automation dependencies are immutable and integrity-verifiable.
 - Required CI, rather than diagnostics or human memory, is merge authority.
+- Every introduced or updated package has license evidence approved by one
+  central commercial-use allowlist; unknown or custom license evidence fails
+  closed for review.
 
 ## Boundaries
 
@@ -56,6 +59,9 @@ pull-request code.
 
 - `@v1` is the current approved internal automation channel, not a SemVer
   backward-compatibility promise.
+- The control plane publishes one strict current contract. Obsolete rollout
+  exceptions, incremental Markdown enforcement, and compatibility entrypoints
+  are removed rather than carried forward.
 - Every control-plane change lands through a reviewed pull request with green
   `CI`; after merge, the exact merged commit and version-coherent consumer
   profiles are verified before rollout.

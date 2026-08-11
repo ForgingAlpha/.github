@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       rollout_tag:
-        description: Existing immutable v1-rollout-* or recorded v1-bootstrap-* tag to restore
+        description: Existing immutable v1-rollout-* tag to restore
         required: true
         type: string
 
@@ -36,13 +36,12 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BOOTSTRAP_SHA: ${{ vars.V1_BOOTSTRAP_SHA }}
           ROLLOUT_TAG: ${{ inputs.rollout_tag }}
         run: |
           set -euo pipefail
 
-          if [[ ! "${ROLLOUT_TAG}" =~ ^v1-(rollout-[0-9]{8}T[0-9]{6}Z|bootstrap)-[0-9a-f]{12}$ ]]; then
-            echo "✗ rollout_tag must be an exact v1-rollout timestamp tag or v1-bootstrap-<12 hex>."
+          if [[ ! "${ROLLOUT_TAG}" =~ ^v1-rollout-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}$ ]]; then
+            echo "✗ rollout_tag must be an exact v1-rollout-<UTC timestamp>-<12 hex> tag."
             exit 1
           fi
 
@@ -75,32 +74,25 @@ jobs:
               ;;
           esac
 
-          if [[ "${ROLLOUT_TAG}" =~ ^v1-bootstrap- ]]; then
-            if [ -z "${BOOTSTRAP_SHA}" ] || [ "${target_sha}" != "${BOOTSTRAP_SHA}" ]; then
-              echo "✗ Bootstrap tag does not match the operator-recorded V1_BOOTSTRAP_SHA."
-              exit 1
-            fi
-          else
-            gh api --paginate --slurp \
-              "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${target_sha}&branch=main&event=push&status=success&per_page=100" \
-              > /tmp/ci-runs.json
-            approved_ci="$(jq -c \
-              --arg repo "${GITHUB_REPOSITORY}" \
-              --arg sha "${target_sha}" \
-              '[.[].workflow_runs[] | select(
-                .path == ".github/workflows/ci.yml" and
-                .event == "push" and
-                .head_branch == "main" and
-                .head_sha == $sha and
-                .conclusion == "success" and
-                .repository.full_name == $repo
-              )] | sort_by(.run_attempt // 0, .created_at) | last // empty' \
-              /tmp/ci-runs.json)"
-            [ -n "${approved_ci}" ] || {
-              echo "✗ ${ROLLOUT_TAG} lacks a successful approved main CI workflow run."
-              exit 1
-            }
-          fi
+          gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${target_sha}&branch=main&event=push&status=success&per_page=100" \
+            > /tmp/ci-runs.json
+          approved_ci="$(jq -c \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            --arg sha "${target_sha}" \
+            '[.[].workflow_runs[] | select(
+              .path == ".github/workflows/ci.yml" and
+              .event == "push" and
+              .head_branch == "main" and
+              .head_sha == $sha and
+              .conclusion == "success" and
+              .repository.full_name == $repo
+            )] | sort_by(.run_attempt // 0, .created_at) | last // empty' \
+            /tmp/ci-runs.json)"
+          [ -n "${approved_ci}" ] || {
+            echo "✗ ${ROLLOUT_TAG} lacks a successful approved main CI workflow run."
+            exit 1
+          }
 
           current_v1_object="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v1" --jq '.object.sha')"
           current_v1_commit="$(resolve_tag_commit v1)" || {
