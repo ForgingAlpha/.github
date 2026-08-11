@@ -76,10 +76,10 @@ jobs:
           esac
 
           if [[ "${ROLLOUT_TAG}" =~ ^v1-bootstrap- ]]; then
-            [ -n "${BOOTSTRAP_SHA}" ] && [ "${target_sha}" = "${BOOTSTRAP_SHA}" ] || {
+            if [ -z "${BOOTSTRAP_SHA}" ] || [ "${target_sha}" != "${BOOTSTRAP_SHA}" ]; then
               echo "✗ Bootstrap tag does not match the operator-recorded V1_BOOTSTRAP_SHA."
               exit 1
-            }
+            fi
           else
             gh api --paginate --slurp \
               "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${target_sha}&branch=main&event=push&status=success&per_page=100" \
@@ -107,9 +107,11 @@ jobs:
             echo "✗ Current v1 does not resolve to a commit."
             exit 1
           }
-          echo "current_v1_commit=${current_v1_commit}" >> "${GITHUB_OUTPUT}"
-          echo "current_v1_object=${current_v1_object}" >> "${GITHUB_OUTPUT}"
-          echo "target_sha=${target_sha}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "current_v1_commit=${current_v1_commit}"
+            echo "current_v1_object=${current_v1_object}"
+            echo "target_sha=${target_sha}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Restore v1 and record atomically
         id: restore

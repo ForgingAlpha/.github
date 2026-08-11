@@ -147,12 +147,14 @@ jobs:
             rollout_tag="v1-rollout-${timestamp}-${short_sha}"
           fi
 
-          echo "already_complete=${already_complete}" >> "${GITHUB_OUTPUT}"
-          echo "previous_v1_commit=${previous_v1_commit}" >> "${GITHUB_OUTPUT}"
-          echo "previous_v1_object=${previous_v1_object}" >> "${GITHUB_OUTPUT}"
-          echo "rollout_tag=${rollout_tag}" >> "${GITHUB_OUTPUT}"
-          echo "verified_run_url=${verified_run_url}" >> "${GITHUB_OUTPUT}"
-          echo "verified_sha=${VERIFIED_SHA}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "already_complete=${already_complete}"
+            echo "previous_v1_commit=${previous_v1_commit}"
+            echo "previous_v1_object=${previous_v1_object}"
+            echo "rollout_tag=${rollout_tag}"
+            echo "verified_run_url=${verified_run_url}"
+            echo "verified_sha=${VERIFIED_SHA}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Advance v1 and record atomically
         if: ${{ steps.verify.outputs.already_complete != 'true' }}
