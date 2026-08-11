@@ -84,7 +84,7 @@ jobs:
           file-suffixes: ${{ inputs.file_suffixes }}
 
       - name: Checkout target ref
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ steps.guard.outputs.checkout_ref }}
           fetch-depth: 1
@@ -96,7 +96,7 @@ jobs:
           components: clippy, rustfmt
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Run repo probe adapter
         shell: bash
@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload diagnostic packet
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ci-probe-${{ steps.guard.outputs.out_label }}
           path: ${{ steps.guard.outputs.artifact_path }}
