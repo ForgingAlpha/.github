@@ -134,6 +134,26 @@ class ProductLifecycleBaselineValidatorTest(unittest.TestCase):
             f"STDOUT={result.stdout!r} STDERR={result.stderr!r}",
         )
 
+    def test_approved_baseline_allows_source_truth_and_plan_changes(self):
+        self.start_feature_with_approved_baseline()
+        self.write("docs/intent.md", self.approved_doc("Updated Intent"))
+        self.write("docs/requirements.md", self.approved_doc("Updated Requirements"))
+        self.write("docs/architecture.md", self.approved_doc("Updated Architecture"))
+        self.write("docs/plans/refactor.md", "# Refactor plan\n")
+        self.commit_all("update approved source truth")
+
+        result = self.run_validator()
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            "approved source-truth and plan changes must pass without a separate "
+            "review receipt. WHY: PR review and required CI govern source-truth "
+            "changes; this validator owns only the approved baseline contract. "
+            "HOW: remove per-change receipt enforcement from the source-truth "
+            f"validator. STDOUT={result.stdout!r} STDERR={result.stderr!r}",
+        )
+
     def test_approved_baseline_allows_leading_html_comment_before_frontmatter(self):
         self.git("switch", "main")
         self.write("docs/intent.md", self.approved_doc_with_leading_comment("Intent"))

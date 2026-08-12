@@ -10,31 +10,17 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 10
 #       steps:
-#         - uses: actions/checkout@v7
+#         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 #         - uses: ForgingAlpha/.github/actions/ci-markdown@v1
-#           with:
-#             mode: all
 
 name: CI Markdown
 description: "Markdown CI: markdownlint-cli2 for repo docs"
 
 inputs:
-  mode:
-    description: "Markdown lint mode (all|changed)"
-    required: false
-    default: "changed"
   config-path:
     description: "Path to markdownlint-cli2 config"
     required: false
     default: ".markdownlint-cli2.yaml"
-  base-ref:
-    description: "Base branch/ref for changed mode, or auto"
-    required: false
-    default: "auto"
-  ignore:
-    description: "Newline-delimited path prefixes to ignore"
-    required: false
-    default: ""
   node-version:
     description: "Node.js version for markdownlint-cli2"
     required: false
@@ -44,29 +30,15 @@ runs:
   using: composite
   steps:
     - name: Setup Node.js (${{ inputs.node-version }})
-      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ inputs.node-version }}
 
     - name: Run Markdown lint
       env:
-        MARKDOWN_MODE: ${{ inputs.mode }}
         MARKDOWN_CONFIG_PATH: ${{ inputs.config-path }}
-        MARKDOWN_BASE_REF: ${{ inputs.base-ref }}
-        MARKDOWN_IGNORE: ${{ inputs.ignore }}
       run: |
         set -euo pipefail
-
-        case "${MARKDOWN_MODE}" in
-          all|changed) ;;
-          *)
-            echo "✗ Invalid mode input '${MARKDOWN_MODE}'."
-            echo "  WHAT: mode was '${MARKDOWN_MODE}', expected all or changed."
-            echo "  WHY: ci-markdown supports only full-repo or changed-file linting."
-            echo "  HOW: set mode to all for clean repos or changed for legacy cleanup."
-            exit 1
-            ;;
-        esac
 
         if [ -z "${MARKDOWN_CONFIG_PATH}" ]; then
           echo "✗ Invalid config-path input: empty string."
@@ -84,29 +56,10 @@ runs:
           exit 1
         fi
 
-        if [ "${MARKDOWN_MODE}" = "all" ]; then
-          mapfile -t markdown_files < <(
-            MARKDOWN_IGNORE="${MARKDOWN_IGNORE}" \
-            "$GITHUB_ACTION_PATH/scripts/changed_markdown.sh" --all
-          )
-
-          if [ "${#markdown_files[@]}" -eq 0 ]; then
-            echo "✓ No tracked Markdown files found."
-            exit 0
-          fi
-
-          npx --yes markdownlint-cli2@0.22.1 --config "${MARKDOWN_CONFIG_PATH}" "${markdown_files[@]}"
-          exit 0
-        fi
-
-        mapfile -t markdown_files < <(
-          MARKDOWN_BASE_REF="${MARKDOWN_BASE_REF}" \
-          MARKDOWN_IGNORE="${MARKDOWN_IGNORE}" \
-          "$GITHUB_ACTION_PATH/scripts/changed_markdown.sh"
-        )
+        mapfile -t markdown_files < <("$GITHUB_ACTION_PATH/scripts/tracked_markdown.sh")
 
         if [ "${#markdown_files[@]}" -eq 0 ]; then
-          echo "✓ No changed Markdown files found."
+          echo "✓ No tracked Markdown files found."
           exit 0
         fi
 

@@ -11,129 +11,36 @@
 #       runs-on: ubuntu-latest
 #       timeout-minutes: 10
 #       steps:
-#         - uses: actions/checkout@v7
+#         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 #         - uses: ForgingAlpha/.github/actions/ci-dependency-review@v1
 
 name: CI Dependency Review
-description: "Dependency review: PR dependency vulnerability and license checks"
-
-inputs:
-  enabled:
-    description: "Run dependency review (true|false)"
-    required: false
-    default: "true"
-  fail-on-severity:
-    description: "Minimum vulnerability severity that fails the action"
-    required: false
-    default: "low"
-  fail-on-scopes:
-    description: "Comma-separated scopes that fail dependency review"
-    required: false
-    default: "runtime,development,unknown"
-  allow-licenses:
-    description: "Optional SPDX license allowlist"
-    required: false
-    default: ""
-  deny-licenses:
-    description: "Optional deprecated SPDX license denylist; prefer allow-licenses"
-    required: false
-    default: ""
-  allow-dependencies-licenses:
-    description: "Optional package-url list excluded from license checks"
-    required: false
-    default: ""
+description: "Mandatory PR vulnerability and commercial-license review"
 
 runs:
   using: composite
   steps:
-    - name: Validate dependency review inputs
-      shell: bash
-      env:
-        ENABLED: ${{ inputs.enabled }}
-        FAIL_ON_SEVERITY: ${{ inputs.fail-on-severity }}
-        FAIL_ON_SCOPES: ${{ inputs.fail-on-scopes }}
-        ALLOW_LICENSES: ${{ inputs.allow-licenses }}
-        DENY_LICENSES: ${{ inputs.deny-licenses }}
-      run: |
-        set -euo pipefail
-
-        case "${ENABLED}" in
-          true|false) ;;
-          *)
-            echo "✗ Invalid enabled input '${ENABLED}'."
-            echo "  WHAT: enabled was '${ENABLED}', expected true or false."
-            echo "  WHY: ci-dependency-review supports only an explicit enabled boolean."
-            echo "  HOW: set enabled to true or false."
-            exit 1
-            ;;
-        esac
-
-        case "${FAIL_ON_SEVERITY}" in
-          low|moderate|high|critical) ;;
-          *)
-            echo "✗ Invalid fail-on-severity input '${FAIL_ON_SEVERITY}'."
-            echo "  WHAT: fail-on-severity was '${FAIL_ON_SEVERITY}'."
-            echo "  WHY: GitHub dependency-review supports low, moderate, high, or critical."
-            echo "  HOW: set fail-on-severity to one of: low, moderate, high, critical."
-            exit 1
-            ;;
-        esac
-
-        IFS=',' read -ra scopes <<< "${FAIL_ON_SCOPES}"
-        for raw_scope in "${scopes[@]}"; do
-          scope="$(echo "${raw_scope}" | xargs)"
-          [ -n "${scope}" ] || continue
-          case "${scope}" in
-            runtime|development|unknown) ;;
-            *)
-              echo "✗ Invalid fail-on-scopes entry '${scope}'."
-              echo "  WHAT: fail-on-scopes included '${scope}'."
-              echo "  WHY: GitHub dependency-review supports runtime, development, and unknown scopes."
-              echo "  HOW: set fail-on-scopes to a comma-separated subset of runtime,development,unknown."
-              exit 1
-              ;;
-          esac
-        done
-
-        if [ -n "${ALLOW_LICENSES}" ] && [ -n "${DENY_LICENSES}" ]; then
-          echo "✗ Both allow-licenses and deny-licenses were set."
-          echo "  WHAT: license policy used both allow and deny lists."
-          echo "  WHY: GitHub dependency-review supports only one license policy direction at a time."
-          echo "  HOW: prefer allow-licenses, or remove allow-licenses before using the deprecated deny-licenses input."
-          exit 1
-        fi
-
-        if [ -n "${DENY_LICENSES}" ]; then
-          echo "⚠ deny-licenses is deprecated by actions/dependency-review-action."
-          echo "  WHAT: deny-licenses was set for this repo."
-          echo "  WHY: the upstream action marks deny-licenses deprecated for possible removal."
-          echo "  HOW: document the repo-specific reason or migrate to allow-licenses."
-        fi
-
-    - name: Skip dependency review when disabled
-      if: ${{ inputs.enabled == 'false' }}
-      shell: bash
-      run: |
-        echo "✓ Dependency review disabled by input."
-        echo "  WHAT: ci-dependency-review enabled=false."
-        echo "  WHY: this shared action was explicitly disabled by the caller."
-        echo "  HOW: set enabled=true to enforce dependency review on pull requests."
-
     - name: Skip dependency review outside pull_request
-      if: ${{ inputs.enabled == 'true' && github.event_name != 'pull_request' }}
+      if: ${{ github.event_name != 'pull_request' }}
       shell: bash
       run: |
-        echo "✓ Dependency review skipped outside pull_request."
+        echo "✓ Dependency review is not applicable outside pull_request."
         echo "  WHAT: event was '${{ github.event_name }}'."
         echo "  WHY: dependency review compares dependency changes introduced by pull requests."
         echo "  HOW: run this action from a pull_request workflow to enforce dependency review."
 
     - name: Dependency Review
-      if: ${{ inputs.enabled == 'true' && github.event_name == 'pull_request' }}
-      uses: actions/dependency-review-action@v5
+      id: review
+      if: ${{ github.event_name == 'pull_request' }}
+      uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
       with:
-        fail-on-severity: ${{ inputs.fail-on-severity }}
-        fail-on-scopes: ${{ inputs.fail-on-scopes }}
-        allow-licenses: ${{ inputs.allow-licenses }}
-        deny-licenses: ${{ inputs.deny-licenses }}
-        allow-dependencies-licenses: ${{ inputs.allow-dependencies-licenses }}
+        fail-on-severity: low
+        fail-on-scopes: runtime,development,unknown
+        allow-licenses: 0BSD,Apache-2.0,BSD-2-Clause,BSD-3-Clause,BlueOak-1.0.0,BSL-1.0,CC0-1.0,ISC,MIT,MIT-0,PostgreSQL,Python-2.0,Unicode-3.0,Unicode-DFS-2016,Unlicense,Zlib
+
+    - name: Reject missing license evidence
+      if: ${{ github.event_name == 'pull_request' && always() }}
+      shell: bash
+      env:
+        DEPENDENCY_CHANGES: ${{ steps.review.outputs.dependency-changes }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/validate_license_evidence.py"

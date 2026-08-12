@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: main
+      source_sha:
+        description: Exact already-green source SHA to promote; defaults to the current source branch head.
+        required: false
+        type: string
+        default: ""
       required_checks:
         description: Comma-separated check names required on the source SHA.
         required: false
@@ -33,8 +38,8 @@ on:
         required: true
 
 permissions:
+  actions: read
   contents: read
-  checks: read
 
 concurrency:
   group: promote-${{ github.repository }}-${{ inputs.target_branch }}
@@ -51,13 +56,10 @@ jobs:
         with:
           app-id: ${{ inputs.release_app_id }}
           private-key: ${{ secrets.release_app_private_key }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
           permission-contents: write
-          permission-checks: read
 
       - name: Checkout target repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
@@ -66,8 +68,10 @@ jobs:
       - name: Validate and promote
         shell: bash
         env:
+          ACTIONS_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SOURCE_BRANCH: ${{ inputs.source_branch }}
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
           REQUIRED_CHECKS: ${{ inputs.required_checks }}
           TAG_PREFIX: ${{ inputs.tag_prefix }}
@@ -94,6 +98,17 @@ jobs:
               "Invalid target_branch '${TARGET_BRANCH}'" \
               "promotion inputs must be valid Git branch names" \
               "pass a branch name accepted by 'git check-ref-format --branch'"
+          [[ "${TAG_PREFIX}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+            || fail \
+              "Invalid tag_prefix '${TAG_PREFIX}'" \
+              "release tag names must not be interpreted as command options or ref syntax" \
+              "use a simple alphanumeric, dot, underscore, or hyphen prefix"
+          normalized_checks="$(printf '%s' "${REQUIRED_CHECKS}" | tr -d '[:space:]')"
+          [[ "${normalized_checks}" == "CI" ]] \
+            || fail \
+              "Unsupported required_checks '${REQUIRED_CHECKS}'" \
+              "privileged promotion requires the non-optional approved CI workflow" \
+              "omit required_checks or set it to exactly CI"
 
           git fetch --prune origin \
             "+refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}" \
@@ -101,6 +116,16 @@ jobs:
 
           source_sha="$(git rev-parse "origin/${SOURCE_BRANCH}")"
           target_sha_before="$(git rev-parse "origin/${TARGET_BRANCH}")"
+
+          if [[ -n "${REQUESTED_SOURCE_SHA}" ]]; then
+            [[ "${REQUESTED_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]] \
+              || fail "Invalid source_sha" "promotion requires an immutable commit" "pass a full 40-character SHA"
+            [[ "${source_sha}" == "${REQUESTED_SOURCE_SHA}" ]] \
+              || fail \
+                "${SOURCE_BRANCH} moved away from requested SHA ${REQUESTED_SOURCE_SHA}" \
+                "only the exact tested source head may be promoted" \
+                "rerun CI on the current source head and invoke promotion with that SHA"
+          fi
 
           if [[ "${source_sha}" == "${target_sha_before}" ]]; then
             echo "✓ ${TARGET_BRANCH} already matches ${SOURCE_BRANCH} at ${source_sha}"
@@ -120,32 +145,47 @@ jobs:
               "branch promotion must be fast-forward-only" \
               "merge or rebase ${SOURCE_BRANCH} so it contains origin/${TARGET_BRANCH}, then rerun promotion"
 
-          gh api "repos/${GITHUB_REPOSITORY}/commits/${source_sha}/check-runs?per_page=100" > /tmp/check-runs.json
-
-          IFS=',' read -ra checks <<< "${REQUIRED_CHECKS}"
-          for raw_check in "${checks[@]}"; do
-            check="$(echo "${raw_check}" | xargs)"
-            [[ -n "${check}" ]] || continue
-
-            conclusion="$(jq -r --arg name "${check}" \
-              '[.check_runs[] | select(.name == $name)]
-               | sort_by(.completed_at // .started_at // .created_at)
-               | last
-               | .conclusion // empty' /tmp/check-runs.json)"
-
-            if [[ "${conclusion}" != "success" ]]; then
-              fail \
-                "Required check '${check}' is not successful on ${SOURCE_BRANCH} (${source_sha})" \
-                "only commits with successful required checks may be promoted" \
-                "fix or rerun '${check}' on ${SOURCE_BRANCH}; observed conclusion='${conclusion:-missing}'"
-            fi
-            echo "✓ required check '${check}' passed on ${source_sha}"
-          done
+          GH_TOKEN="${ACTIONS_TOKEN}" gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${source_sha}&branch=${SOURCE_BRANCH}&event=push&status=success&per_page=100" \
+            > /tmp/ci-runs.json
+          ci_run="$(jq -c \
+            --arg branch "${SOURCE_BRANCH}" \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            --arg sha "${source_sha}" \
+            '[.[].workflow_runs[] | select(
+              .path == ".github/workflows/ci.yml" and
+              .event == "push" and
+              .head_branch == $branch and
+              .head_sha == $sha and
+              .conclusion == "success" and
+              .repository.full_name == $repo
+            )] | sort_by(.run_attempt // 0, .created_at) | last // empty' \
+            /tmp/ci-runs.json)"
+          [[ -n "${ci_run}" ]] \
+            || fail \
+              "Approved CI workflow has no successful push run for ${SOURCE_BRANCH} (${source_sha})" \
+              "check names alone can be spoofed and do not prove trusted workflow provenance" \
+              "run .github/workflows/ci.yml by push on the exact current source SHA"
+          echo "✓ approved CI workflow passed on ${source_sha}"
 
           git config user.name "forgingalpha-release"
           git config user.email "forgingalpha-release@users.noreply.github.com"
 
-          git push origin "refs/remotes/origin/${SOURCE_BRANCH}:refs/heads/${TARGET_BRANCH}"
+          git fetch origin \
+            "+refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}" \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          source_sha_now="$(git rev-parse "origin/${SOURCE_BRANCH}")"
+          target_sha_now="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          [[ "${source_sha_now}" == "${source_sha}" ]] \
+            || fail \
+              "${SOURCE_BRANCH} moved after CI validation" \
+              "promotion must carry the exact still-current tested source head" \
+              "rerun promotion for the new source head after its required CI succeeds"
+          [[ "${target_sha_now}" == "${target_sha_before}" ]] \
+            || fail \
+              "${TARGET_BRANCH} moved after validation" \
+              "the expected-old target lease is stale" \
+              "rerun promotion against the current target"
 
           timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
           tag="${TAG_PREFIX}-${timestamp}"
@@ -154,7 +194,11 @@ jobs:
             -m "Repository: ${GITHUB_REPOSITORY}" \
             -m "Source SHA: ${source_sha}" \
             -m "Previous ${TARGET_BRANCH} SHA: ${target_sha_before}"
-          git push origin "refs/tags/${tag}"
+          git push --atomic \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${target_sha_before}" \
+            origin \
+            "${source_sha}:refs/heads/${TARGET_BRANCH}" \
+            "refs/tags/${tag}"
 
           {
             echo "## Promotion complete"

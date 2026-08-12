@@ -1,73 +1,23 @@
-# Composite action: Elixir CI checks.
-#
-# Runs the standard Elixir/Phoenix CI gate. The Postgres service MUST be
-# declared in the calling workflow's job when the consumer repo needs a
-# database, because composite actions cannot define services.
-#
-# Usage (in the consuming repo's .github/workflows/ci.yml):
-#
-#   jobs:
-#     CI:
-#       name: CI
-#       runs-on: ubuntu-latest
-#       timeout-minutes: 30
-#       services:
-#         postgres:
-#           image: postgres:15
-#           env:
-#             POSTGRES_USER: postgres
-#             POSTGRES_PASSWORD: postgres
-#             POSTGRES_DB: test
-#           ports:
-#             - 5432:5432
-#           options: >-
-#             --health-cmd pg_isready
-#             --health-interval 10s
-#             --health-timeout 5s
-#             --health-retries 5
-#       env:
-#         MIX_ENV: test
-#         DATABASE_URL: postgres://postgres:postgres@localhost:5432/test
-#       steps:
-#         - uses: actions/checkout@v7
-#           with:
-#             fetch-depth: 0
-#         - uses: ForgingAlpha/.github/actions/ci-elixir@v1
-#           with:
-#             elixir-version: "1.20"
-#             otp-version: "29"
-#             extra-checks-command: "<repo-owned extra check command>"
-#             pre-test-command: "<repo-owned pre-test setup command>"
-#             test-command: "<repo-owned test command>"
-
 name: CI Elixir
-description: "Elixir CI: deps, format, compile strict, credo strict, tests"
+description: "Locked Elixir CI with full, static, and lean test profiles"
 
 inputs:
-  elixir-version:
-    description: "Elixir version"
+  profile:
+    description: "CI profile: full, static, or test"
     required: false
-    default: "1.20"
-  otp-version:
-    description: "Erlang/OTP version"
-    required: false
-    default: "29"
+    default: "full"
   extra-checks-command:
-    description: "Optional repo-specific strict checks to run after compile and before Credo"
+    description: "Optional repo-owned strict checks for full/static profiles"
     required: false
     default: ""
   pre-test-command:
-    description: "Optional repo-specific setup command to run immediately before tests"
+    description: "Optional repo-owned setup immediately before tests"
     required: false
     default: ""
   test-command:
-    description: "Repo-specific test command"
+    description: "Repo-owned test command for full/test profiles"
     required: false
     default: "mix test"
-  markdown-mode:
-    description: "Markdown lint mode for ci-markdown (changed|all)"
-    required: false
-    default: "changed"
   github-actions-mode:
     description: "GitHub Actions safety mode (changed|all)"
     required: false
@@ -76,21 +26,69 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Validate CI profile and runtime lock
+      shell: bash
+      env:
+        PROFILE: ${{ inputs.profile }}
+      run: |
+        set -euo pipefail
+        case "${PROFILE}" in
+          full|static|test) ;;
+          *)
+            echo "✗ Unsupported Elixir CI profile '${PROFILE}'."
+            echo "  WHY: shared CI has exactly full, static, and test execution contracts."
+            echo "  HOW: set profile to full, static, or test."
+            exit 1
+            ;;
+        esac
+        for file in mise.toml mise.lock mix.exs mix.lock; do
+          if [ ! -f "${file}" ]; then
+            echo "✗ Required locked-runtime file '${file}' is missing."
+            echo "  WHY: CI and local development must resolve the same exact runtime and dependencies."
+            echo "  HOW: commit ${file} and regenerate mise.lock with the approved mise version."
+            exit 1
+          fi
+        done
+        python3 - <<'PY'
+        import sys
+        import tomllib
+
+        with open("mise.lock", "rb") as lock_file:
+            lock = tomllib.load(lock_file)
+
+        missing = []
+        for tool_name, entries in lock.get("tools", {}).items():
+            if not isinstance(entries, list):
+                entries = [entries]
+            for entry in entries:
+                version = entry.get("version", "unknown")
+                for platform, artifact in entry.get("platforms", {}).items():
+                    if artifact.get("url") and not artifact.get("checksum"):
+                        missing.append(f"{tool_name}@{version} {platform}")
+
+        if missing:
+            print("✗ mise.lock contains downloaded artifacts without checksums:", file=sys.stderr)
+            for artifact in missing:
+                print(f"  - {artifact}", file=sys.stderr)
+            print("  WHY: exact versions without integrity checks do not prevent artifact substitution.", file=sys.stderr)
+            print("  HOW: regenerate the lock with checksums or add the publisher-provided SHA-256 values.", file=sys.stderr)
+            raise SystemExit(1)
+        PY
+
     - name: Enforce merge flow
-      if: ${{ github.repository != 'ForgingAlpha/.github' }}
+      if: ${{ inputs.profile != 'test' && github.repository != 'ForgingAlpha/.github' }}
       uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
 
     - name: Validate Alpha Apps policy
-      if: ${{ github.repository != 'ForgingAlpha/.github' }}
+      if: ${{ inputs.profile != 'test' && github.repository != 'ForgingAlpha/.github' }}
       uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
 
     - name: Validate Markdown
-      if: ${{ github.repository != 'ForgingAlpha/.github' }}
+      if: ${{ inputs.profile != 'test' && github.repository != 'ForgingAlpha/.github' }}
       uses: ForgingAlpha/.github/actions/ci-markdown@v1
-      with:
-        mode: ${{ inputs.markdown-mode }}
 
     - name: Plan GitHub Actions safety gate
+      if: ${{ inputs.profile != 'test' }}
       id: github_actions_safety
       shell: bash
       env:
@@ -101,66 +99,31 @@ runs:
         REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
-
-        emit_run() {
-          echo "run=$1" >> "${GITHUB_OUTPUT}"
-        }
-
-        if [ "${REPOSITORY}" = "ForgingAlpha/.github" ]; then
-          echo "✓ Skipping remote GitHub Actions safety gate for central repo self-CI."
-          emit_run false
-          exit 0
-        fi
-
-        case "${GITHUB_ACTIONS_MODE}" in
-          changed|all)
-            ;;
-          *)
-            echo "✗ Unsupported github-actions-mode '${GITHUB_ACTIONS_MODE}'."
-            echo "  WHY: language composites support only changed or all for GitHub Actions safety."
-            echo "  HOW: set github-actions-mode to changed or all."
-            exit 1
-            ;;
-        esac
-
-        if [ "${GITHUB_ACTIONS_MODE}" = "all" ]; then
-          echo "✓ GitHub Actions safety gate enabled by github-actions-mode=all."
-          emit_run true
-          exit 0
-        fi
-
-        if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-          echo "✗ GitHub Actions changed-file detection requires a Git checkout."
-          echo "  WHY: github-actions-mode=changed must compare workflow/action files before resolving ci-github-actions."
-          echo "  HOW: run actions/checkout with fetch-depth: 0 before this shared CI composite."
-          exit 1
-        fi
-
+        emit_run() { echo "run=$1" >> "${GITHUB_OUTPUT}"; }
+        if [ "${REPOSITORY}" = "ForgingAlpha/.github" ]; then emit_run false; exit 0; fi
+        case "${GITHUB_ACTIONS_MODE}" in changed|all) ;; *) echo "✗ github-actions-mode must be changed or all."; exit 1;; esac
+        if [ "${GITHUB_ACTIONS_MODE}" = "all" ]; then emit_run true; exit 0; fi
         range=""
         if [ "${EVENT_NAME}" = "pull_request" ] && [ -n "${BASE_REF}" ]; then
-          if ! git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null; then
-            echo "✗ Cannot find origin/${BASE_REF} for GitHub Actions changed-file detection."
-            echo "  WHY: github-actions-mode=changed compares the pull request with its base branch."
-            echo "  HOW: set actions/checkout fetch-depth: 0 before this shared CI composite."
+          git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null || {
+            echo "✗ origin/${BASE_REF} is unavailable for changed-file validation."
+            echo "  HOW: run actions/checkout fetch-depth: 0 before ci-elixir."
             exit 1
-          fi
+          }
           range="origin/${BASE_REF}...HEAD"
         elif [ -n "${EVENT_BEFORE}" ] && [ "${EVENT_BEFORE}" != "0000000000000000000000000000000000000000" ]; then
-          if ! git rev-parse --verify --quiet "${EVENT_BEFORE}^{commit}" >/dev/null; then
-            echo "✗ Cannot find before SHA ${EVENT_BEFORE} for GitHub Actions changed-file detection."
-            echo "  WHY: github-actions-mode=changed compares push changes before resolving ci-github-actions."
-            echo "  HOW: set actions/checkout fetch-depth: 0 before this shared CI composite."
+          git rev-parse --verify --quiet "${EVENT_BEFORE}^{commit}" >/dev/null || {
+            echo "✗ Push comparison SHA ${EVENT_BEFORE} is unavailable."
+            echo "  HOW: run actions/checkout fetch-depth: 0 before ci-elixir."
             exit 1
-          fi
+          }
           range="${EVENT_BEFORE}..HEAD"
-        elif git rev-parse --verify --quiet "HEAD^" >/dev/null; then
+        elif git rev-parse --verify --quiet HEAD^ >/dev/null; then
           range="HEAD^..HEAD"
         else
-          echo "✓ Single-commit checkout without a comparison base; running GitHub Actions safety gate."
           emit_run true
           exit 0
         fi
-
         workflow_action_paths=(
           ".github/workflows/*.yml"
           ".github/workflows/*.yaml"
@@ -173,8 +136,7 @@ runs:
         )
         if ! changed_paths="$(git diff --name-only --diff-filter=ACMR "${range}" -- "${workflow_action_paths[@]}")"; then
           echo "✗ Failed to compute changed workflow/action files."
-          echo "  WHAT: git diff failed for comparison range ${range}."
-          echo "  WHY: github-actions-mode=changed must fail closed before deciding whether to run ci-github-actions."
+          echo "  WHY: changed-mode detection must fail closed before deciding whether to run validation."
           echo "  HOW: verify the comparison ref is fetched and rerun with actions/checkout fetch-depth: 0."
           exit 1
         fi
@@ -185,70 +147,130 @@ runs:
           changed=true
           break
         done <<<"${changed_paths}"
-
-        if [ "${changed}" = true ]; then
-          echo "✓ GitHub workflow or action files changed; running GitHub Actions safety gate."
-          emit_run true
-        else
-          echo "✓ No changed GitHub workflow or action files."
-          emit_run false
-        fi
+        if [ "${changed}" = true ]; then emit_run true; else emit_run false; fi
 
     - name: Validate GitHub Actions safety
-      if: ${{ steps.github_actions_safety.outputs.run == 'true' }}
+      if: ${{ inputs.profile != 'test' && steps.github_actions_safety.outputs.run == 'true' }}
       uses: ForgingAlpha/.github/actions/ci-github-actions@v1
 
     - name: Validate Dependabot coverage
-      if: ${{ github.repository != 'ForgingAlpha/.github' }}
+      if: ${{ inputs.profile != 'test' && github.repository != 'ForgingAlpha/.github' }}
       uses: ForgingAlpha/.github/actions/ci-dependabot-coverage@v1
 
     - name: Review dependency changes
-      if: ${{ github.repository != 'ForgingAlpha/.github' && github.event_name == 'pull_request' }}
+      if: ${{ inputs.profile != 'test' && github.repository != 'ForgingAlpha/.github' && github.event_name == 'pull_request' }}
       uses: ForgingAlpha/.github/actions/ci-dependency-review@v1
 
-    - name: Setup Elixir / OTP
-      uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+    - name: Install exact locked runtime
+      uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
       with:
-        elixir-version: ${{ inputs.elixir-version }}
-        otp-version: ${{ inputs.otp-version }}
+        version: 2026.8.3
+        install: true
+        install_args: --locked
+        cache: true
 
-    - name: Cache deps + build
+    - name: Record resolved runtime
+      id: runtime
+      shell: bash
+      run: |
+        set -euo pipefail
+        mise current
+        elixir_version="$(elixir -e 'IO.write(System.version())')"
+        otp_version="$(elixir -e 'IO.write(System.otp_release())')"
+        echo "elixir=${elixir_version}" >> "${GITHUB_OUTPUT}"
+        echo "otp=${otp_version}" >> "${GITHUB_OUTPUT}"
+
+    - name: Cache Mix dependencies and build
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           deps
           _build
-        key: ${{ runner.os }}-mix-${{ inputs.elixir-version }}-${{ inputs.otp-version }}-${{ hashFiles('**/mix.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-mix-${{ inputs.elixir-version }}-${{ inputs.otp-version }}-
-          ${{ runner.os }}-mix-
+        key: ${{ runner.os }}-${{ runner.arch }}-mix-${{ steps.runtime.outputs.elixir }}-otp-${{ steps.runtime.outputs.otp }}-${{ hashFiles('mix.lock') }}
 
     - name: Install dependencies
-      run: mix deps.get
       shell: bash
+      run: mix deps.get
+
+    - name: Require static-analysis tools
+      if: ${{ inputs.profile != 'test' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        required_tasks=(credo deps.audit dialyzer)
+        for task in "${required_tasks[@]}"; do
+          mix help "${task}" >/dev/null 2>&1 || {
+            echo "✗ Required Mix task '${task}' is unavailable."
+            echo "  WHY: full/static CI promises lint, dependency audit, and type analysis without silent skips."
+            echo "  HOW: add the compatible development/test dependency that provides '${task}'."
+            exit 1
+          }
+        done
+        if mix deps | grep -Eq '^\* phoenix '; then
+          mix help sobelow >/dev/null 2>&1 || {
+            echo "✗ Phoenix was detected but the Sobelow Mix task is unavailable."
+            echo "  HOW: add a compatible Sobelow dependency for dev and test."
+            exit 1
+          }
+        fi
 
     - name: Check formatting
+      if: ${{ inputs.profile != 'test' }}
+      shell: bash
       run: mix format --check-formatted
-      shell: bash
 
-    - name: Compile (warnings as errors)
+    - name: Compile with warnings as errors
+      if: ${{ inputs.profile != 'test' }}
+      shell: bash
       run: mix compile --warnings-as-errors
-      shell: bash
 
-    - name: Extra strict checks
-      if: ${{ inputs.extra-checks-command != '' }}
+    - name: Run repo-owned strict checks
+      if: ${{ inputs.profile != 'test' && inputs.extra-checks-command != '' }}
+      shell: bash
       run: ${{ inputs.extra-checks-command }}
-      shell: bash
 
-    - name: Credo (strict)
+    - name: Credo strict
+      if: ${{ inputs.profile != 'test' }}
+      shell: bash
       run: mix credo --strict
-      shell: bash
 
-    - name: Pre-test setup
-      if: ${{ inputs.pre-test-command != '' }}
-      run: ${{ inputs.pre-test-command }}
+    - name: Reject unused dependencies
+      if: ${{ inputs.profile != 'test' }}
       shell: bash
+      run: mix deps.unlock --check-unused
+
+    - name: Audit Hex packages
+      if: ${{ inputs.profile != 'test' }}
+      shell: bash
+      run: mix hex.audit
+
+    - name: Audit retired dependencies
+      if: ${{ inputs.profile != 'test' }}
+      shell: bash
+      run: mix deps.audit
+
+    - name: Analyze Phoenix security
+      if: ${{ inputs.profile != 'test' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if mix deps | grep -Eq '^\* phoenix '; then
+          mix sobelow --exit
+        else
+          echo "✓ Phoenix is not a dependency; Sobelow does not apply."
+        fi
+
+    - name: Run Dialyzer
+      if: ${{ inputs.profile != 'test' }}
+      shell: bash
+      run: mix dialyzer
+
+    - name: Run pre-test setup
+      if: ${{ inputs.profile != 'static' && inputs.pre-test-command != '' }}
+      shell: bash
+      run: ${{ inputs.pre-test-command }}
 
     - name: Run tests
-      run: ${{ inputs.test-command }}
+      if: ${{ inputs.profile != 'static' }}
       shell: bash
+      run: ${{ inputs.test-command }}

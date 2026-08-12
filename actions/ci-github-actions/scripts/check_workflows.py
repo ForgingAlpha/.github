@@ -21,7 +21,6 @@ FORBIDDEN_CHECK_DISABLE_INPUTS = {
     "run-lint",
     "run-tests",
 }
-FIRST_PARTY_ACTION_OWNERS = {"actions", "github"}
 DEFAULT_ALLOWLIST_PATH = ".github/alphaapps-github-actions-allowlist.yml"
 
 
@@ -30,7 +29,6 @@ class Allowlists:
     action_refs: dict[str, str]
     pull_request_target: dict[str, str]
     root_permissions: dict[str, str]
-    first_party_action_refs: str = "version-or-sha"
 
     @classmethod
     def empty(cls) -> "Allowlists":
@@ -70,31 +68,13 @@ def load_yaml(path: Path, errors: list[str], root: Path | None = None) -> dict[s
     return loaded
 
 
-def ref_is_versioned(ref: str) -> bool:
-    if re.fullmatch(r"[0-9a-f]{40}", ref):
-        return True
-    if re.fullmatch(r"v?\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?", ref):
-        return True
-    return False
-
-
 def is_sha_ref(ref: str) -> bool:
     return bool(re.fullmatch(r"[0-9a-f]{40}", ref))
-
-
-def action_owner(target: str) -> str:
-    return target.split("/", 1)[0]
 
 
 def is_forgingalpha_shared_automation(target: str) -> bool:
     return target.startswith("ForgingAlpha/.github/actions/") or target.startswith(
         "ForgingAlpha/.github/.github/workflows/"
-    )
-
-
-def is_forgingalpha_probe_automation(target: str) -> bool:
-    return target == "ForgingAlpha/.github/actions/ci-remote-probe-guard" or bool(
-        re.fullmatch(r"ForgingAlpha/\.github/\.github/workflows/ci-probe-[A-Za-z0-9_-]+\.yml", target)
     )
 
 
@@ -150,16 +130,6 @@ def load_allowlists(root: Path, allowlist_path: str | None, errors: list[str]) -
     if not loaded:
         return Allowlists.empty()
 
-    first_party_policy = loaded.get("first_party_action_refs", "version-or-sha")
-    if first_party_policy not in {"version-or-sha", "sha"}:
-        errors.append(
-            f"{path}: first_party_action_refs must be version-or-sha or sha. "
-            f"WHAT: first_party_action_refs was {first_party_policy!r}. "
-            "WHY: the checker supports only the current version/SHA policy or a stricter SHA-only rollout. "
-            "HOW: set first_party_action_refs to version-or-sha or sha."
-        )
-        first_party_policy = "version-or-sha"
-
     return Allowlists(
         action_refs=require_reason_map(path, "action_refs", loaded.get("action_refs"), errors),
         pull_request_target=require_reason_map(
@@ -174,7 +144,6 @@ def load_allowlists(root: Path, allowlist_path: str | None, errors: list[str]) -
             loaded.get("root_permissions"),
             errors,
         ),
-        first_party_action_refs=first_party_policy,
     )
 
 
@@ -205,24 +174,14 @@ def validate_uses_ref(
         return
 
     target, ref = uses.rsplit("@", 1)
-    if is_forgingalpha_probe_automation(target):
-        if ref != "main":
-            errors.append(
-                f"{path}: probe diagnostic automation '{uses}' must use @main. "
-                "WHAT: the probe diagnostic ref is outside the approved latest-on-main policy. "
-                "WHY: manual non-required probes intentionally run the latest reviewed diagnostic platform. "
-                "HOW: use @main for ForgingAlpha ci-probe reusable workflows and the ci-remote-probe-guard action."
-            )
-        return
-
     if is_forgingalpha_shared_automation(target):
         if not re.fullmatch(r"v\d+", ref):
             errors.append(
                 f"{path}: internal shared automation '{uses}' must use a vN major tag. "
                 "WHAT: the internal shared automation ref is not a released major tag. "
                 "WHY: required shared CI rollout remains deliberate through released major tags; "
-                "only manual probe diagnostics use @main. "
-                "HOW: replace the ref with @v1 unless this is a ci-probe reusable workflow or ci-remote-probe-guard."
+                "required and diagnostic shared automation use the current approved channel. "
+                "HOW: replace the ref with @v1."
             )
         return
 
@@ -235,28 +194,6 @@ def validate_uses_ref(
         )
         return
 
-    if action_owner(target) in FIRST_PARTY_ACTION_OWNERS:
-        if allowlists.first_party_action_refs == "sha" and not is_sha_ref(ref):
-            reason = allowlist_reason(allowlists.action_refs, uses)
-            if reason:
-                return
-            errors.append(
-                f"{path}: first-party action reference '{uses}' is not pinned to a full SHA. "
-                "WHAT: SHA-only first-party policy is enabled and this ref is not a 40-character SHA. "
-                "WHY: first_party_action_refs is set to sha for stricter dependency control. "
-                "HOW: pin to a 40-character SHA or add a non-empty action_refs allowlist reason."
-            )
-            return
-        if not ref_is_versioned(ref):
-            errors.append(
-                f"{path}: first-party action reference '{uses}' is not a version "
-                "tag or SHA. WHAT: the ref is neither semver-shaped nor a full SHA. "
-                "WHY: GitHub-owned action dependencies still need a "
-                "stable release boundary. HOW: use a semver tag such as @v6 or "
-                "a full 40-character SHA."
-            )
-        return
-
     if is_sha_ref(ref):
         return
 
@@ -265,9 +202,9 @@ def validate_uses_ref(
         return
 
     errors.append(
-        f"{path}: third-party action reference '{uses}' is not pinned to a full "
-        "SHA and is not allowlisted. WHAT: the ref is a moving third-party tag. "
-        "WHY: third-party moving tags can change "
+        f"{path}: external action reference '{uses}' is not pinned to a full "
+        "SHA and is not allowlisted. WHAT: the ref is a moving external tag. "
+        "WHY: external moving tags can change "
         "without this repo's review. HOW: pin to a 40-character SHA or add a "
         "non-empty action_refs allowlist reason."
     )

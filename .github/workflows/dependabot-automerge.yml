@@ -1,33 +1,63 @@
 name: Dependabot Auto-merge
 
 on:
-  pull_request:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: read
 
 jobs:
-  skip-nondependabot:
-    name: Skip non-Dependabot PR
-    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Explain skip
-        run: echo "Dependabot auto-merge only runs for Dependabot PRs."
-
   dependabot-automerge:
-    name: Enable auto-merge
-    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
-    permissions:
-      contents: write
-      pull-requests: write
+    name: Classify and arm exact-head merge
+    if: >-
+      ${{ github.event.pull_request.user.login == 'dependabot[bot]' &&
+          github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     steps:
-      - name: Enable auto-merge
+      - name: Mint automation App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ALPHAAPPS_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.ALPHAAPPS_AUTOMATION_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-checks: write
+          permission-vulnerability-alerts: read
+
+      - name: Clear stale merge and security classification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          state="$(gh pr view "${PR_URL}" --json autoMergeRequest,labels)"
+          if [ "$(jq -r '.autoMergeRequest != null' <<<"${state}")" = "true" ]; then
+            gh pr merge --disable-auto "${PR_URL}"
+          fi
+          if jq -e 'any(.labels[]?; .name == "security-autopromote")' \
+            <<<"${state}" >/dev/null; then
+            gh pr edit "${PR_URL}" --remove-label security-autopromote
+          fi
+          cleared="$(gh pr view "${PR_URL}" --json autoMergeRequest,labels)"
+          jq -e \
+            '.autoMergeRequest == null and
+             (any(.labels[]?; .name == "security-autopromote") | not)' \
+            <<<"${cleared}" >/dev/null || {
+              echo "✗ Stale Dependabot merge or security-classification state remains."
+              exit 1
+            }
+
+      - name: Classify and arm auto-merge
+        if: ${{ github.actor == 'dependabot[bot]' }}
         uses: ForgingAlpha/.github/actions/dependabot-automerge@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           allow_patch: "true"
-          allow_minor: "true"
+          allow_minor: "false"
           allow_major: "false"
+          allow_security: "true"
           merge_method: merge

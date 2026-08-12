@@ -39,6 +39,7 @@ CROSS_CUTTING_ORDER = [
 ]
 CROSS_CUTTING_HELPER_STEP_NAMES = {
     "Plan GitHub Actions safety gate",
+    "Validate CI profile and runtime lock",
 }
 
 
@@ -48,6 +49,28 @@ class SharedCiContractTest(unittest.TestCase):
 
     def load_workflow(self, path):
         return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    def test_human_trust_surface_boundary_is_governed_consistently(self):
+        intent = (ROOT / "docs" / "intent.md").read_text(encoding="utf-8")
+        requirements = (ROOT / "docs" / "requirements.md").read_text(
+            encoding="utf-8"
+        )
+        architecture = (ROOT / "docs" / "architecture.md").read_text(
+            encoding="utf-8"
+        )
+        checklist = (ROOT / "docs" / "operator-checklist.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("authorized human code owner", intent)
+        self.assertIn("REQ-024 - Human Trust-Surface Approval", requirements)
+        self.assertIn("authorized-human code-owner", architecture)
+        self.assertIn("cannot\n  satisfy the approval", checklist)
+        self.assertNotIn(
+            "automation App's exact-revision approval to satisfy",
+            checklist,
+            "automation must not be documented as a substitute for human approval",
+        )
 
     def uses_sequence(self, path):
         action = self.load_action(path)
@@ -101,6 +124,24 @@ class SharedCiContractTest(unittest.TestCase):
             "WHY: shared CI contract tests need the published action step to verify ordering and guards. "
             "HOW: restore the uses step or update the contract test with the approved replacement.",
         )
+
+    def test_markdown_policy_has_no_incremental_consumer_contract(self):
+        for path in LANGUAGE_ACTIONS:
+            with self.subTest(path=path.relative_to(ROOT).as_posix()):
+                action = self.load_action(path)
+                self.assertNotIn("markdown-mode", action.get("inputs", {}))
+                _, markdown_step = self.require_uses_step(
+                    path,
+                    "ForgingAlpha/.github/actions/ci-markdown@v1",
+                )
+                self.assertNotIn("with", markdown_step)
+
+    def test_github_actions_validator_has_one_canonical_entrypoint(self):
+        self.assertTrue(
+            (ROOT / "actions" / "ci-github-actions" / "scripts" / "check_workflows.py").is_file()
+        )
+        self.assertFalse((ROOT / "scripts" / "validate-github-actions.py").exists())
+        self.assertFalse((ROOT / "tests" / "test_validate_github_actions.py").exists())
 
     def test_language_composites_run_cross_cutting_policy_before_language_checks(self):
         for path in LANGUAGE_ACTIONS:
@@ -224,9 +265,12 @@ class SharedCiContractTest(unittest.TestCase):
                     path,
                     "ForgingAlpha/.github/actions/ci-github-actions@v1",
                 )
+                expected_safety_condition = "${{ steps.github_actions_safety.outputs.run == 'true' }}"
+                if path == ROOT / "actions" / "ci-elixir" / "action.yml":
+                    expected_safety_condition = "${{ inputs.profile != 'test' && steps.github_actions_safety.outputs.run == 'true' }}"
                 self.assertEqual(
                     safety_step.get("if"),
-                    "${{ steps.github_actions_safety.outputs.run == 'true' }}",
+                    expected_safety_condition,
                     f"{path} must resolve ci-github-actions only when the local planner enables it. "
                     "WHY: changed-file gating should happen before remote action resolution. "
                     "HOW: gate ci-github-actions on steps.github_actions_safety.outputs.run.",
@@ -256,9 +300,12 @@ class SharedCiContractTest(unittest.TestCase):
                     path,
                     "ForgingAlpha/.github/actions/ci-dependency-review@v1",
                 )
+                expected_condition = "${{ github.repository != 'ForgingAlpha/.github' && github.event_name == 'pull_request' }}"
+                if path == ROOT / "actions" / "ci-elixir" / "action.yml":
+                    expected_condition = "${{ inputs.profile != 'test' && github.repository != 'ForgingAlpha/.github' && github.event_name == 'pull_request' }}"
                 self.assertEqual(
                     dependency_review_step.get("if"),
-                    "${{ github.repository != 'ForgingAlpha/.github' && github.event_name == 'pull_request' }}",
+                    expected_condition,
                     f"{path} must resolve dependency review only on consumer pull requests. "
                     "WHY: dependency-review is a PR diff gate and should not add remote action startup to pushes. "
                     "HOW: gate ci-dependency-review on non-central pull_request events.",
@@ -410,7 +457,7 @@ class SharedCiContractTest(unittest.TestCase):
                     (
                         index
                         for index, step in enumerate(steps)
-                        if step.get("uses") == "ForgingAlpha/.github/actions/ci-remote-probe-guard@main"
+                        if step.get("uses") == "ForgingAlpha/.github/actions/ci-remote-probe-guard@v1"
                     ),
                     None,
                 )
@@ -418,22 +465,22 @@ class SharedCiContractTest(unittest.TestCase):
                     (
                         index
                         for index, step in enumerate(steps)
-                        if step.get("uses") == "actions/checkout@v7"
+                        if step.get("uses") == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
                     ),
                     None,
                 )
 
                 self.assertIsNotNone(
                     guard_index,
-                    f"{path} must use the shared probe guard at @main. "
-                    "WHY: manual probes follow the latest-on-main internal diagnostic model. "
-                    "HOW: restore ForgingAlpha/.github/actions/ci-remote-probe-guard@main.",
+                    f"{path} must use the shared probe guard at @v1. "
+                    "WHY: diagnostics use the same latest-green control-plane channel. "
+                    "HOW: restore ForgingAlpha/.github/actions/ci-remote-probe-guard@v1.",
                 )
                 self.assertIsNotNone(
                     checkout_index,
                     f"{path} must checkout the target ref after validation. "
                     "WHY: target code is untrusted input until the guard normalizes checkout_ref. "
-                    "HOW: restore actions/checkout after the guard step.",
+                    "HOW: restore the SHA-pinned actions/checkout step after the guard.",
                 )
                 self.assertLess(
                     guard_index,
@@ -461,7 +508,7 @@ class SharedCiContractTest(unittest.TestCase):
                     "HOW: keep execution in the repo-owned adapter without eval.",
                 )
 
-    def test_probe_template_is_thin_latest_on_main_wrapper(self):
+    def test_probe_template_is_thin_latest_green_wrapper(self):
         template_path = ROOT / "workflow-templates" / "ci-probe.yml"
         workflow = yaml.safe_load(template_path.read_text(encoding="utf-8"))
         jobs = workflow.get("jobs", {})
@@ -469,8 +516,8 @@ class SharedCiContractTest(unittest.TestCase):
 
         self.assertEqual(
             probe.get("uses"),
-            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
-            "ci-probe template must call the centralized reusable workflow at @main. "
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@v1",
+            "ci-probe template must call the centralized reusable workflow at @v1. "
             "WHY: templates should install thin wrappers, not drift-prone copied command bodies. "
             f"HOW: restore the reusable workflow call; probe={probe!r}",
         )

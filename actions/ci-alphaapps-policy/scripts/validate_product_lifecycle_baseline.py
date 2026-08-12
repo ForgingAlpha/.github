@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Alpha Apps product lifecycle baseline and review evidence."""
+"""Validate the approved Alpha Apps source-truth baseline."""
 
 from __future__ import annotations
 
@@ -17,9 +17,6 @@ CONTROL_PLANE_REPOS = {".github", "alphaapps-docs"}
 DEFINITION_ONLY_FILES = {"PROJECT.md", "AGENTS.md", "docs/glossary.md"} | set(
     BASELINE_SOURCE_TRUTH_FILES
 )
-EVIDENCE_GLOB = "*product-lifecycle-review*.md"
-EVIDENCE_PATH_HINT = "docs/audits/YYYY-MM-DD-product-lifecycle-review-<slug>.md"
-REVIEWER = "reviewer-product-development-lifecycle"
 GIT_ENV_OVERRIDES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX")
 MAX_LEADING_COMMENT_LINES = 20
 MAX_FRONTMATTER_LINES = 200
@@ -82,7 +79,7 @@ def git_stdout(repo: Path, *args: str) -> str:
     if result.returncode != 0:
         fail(
             f"git {' '.join(args)} failed",
-            "product lifecycle policy needs git history to compare the branch with its base ref.",
+            "source-truth policy needs git history to compare the branch with its base ref.",
             "run from a valid checkout with the configured base ref fetched.",
             result.stderr.strip() or result.stdout.strip(),
         )
@@ -94,7 +91,7 @@ def repo_root() -> Path:
     if result.returncode != 0:
         fail(
             "not inside a git repository",
-            "product lifecycle policy is defined relative to a repository worktree.",
+            "source-truth policy is defined relative to a repository worktree.",
             "run this action after actions/checkout.",
             result.stderr.strip(),
         )
@@ -186,11 +183,6 @@ def changed_file_statuses(repo: Path, old: str, new: str) -> list[tuple[str, str
         new_path = parts[2].strip() if status.startswith(("R", "C")) and len(parts) > 2 else None
         statuses.append((status, new_path or old_path, old_path if new_path else None))
     return statuses
-
-
-def changed_files(repo: Path, old: str, new: str) -> list[str]:
-    output = git_stdout(repo, "diff", "--name-only", "--diff-filter=ACMRD", f"{old}..{new}")
-    return [line.strip() for line in output.splitlines() if line.strip()]
 
 
 def paths_from_statuses(statuses: list[tuple[str, str, str | None]]) -> list[str]:
@@ -288,43 +280,11 @@ def definition_only_work_allowed(incomplete: list[BaselineStatus]) -> bool:
     return all(item.problem in (None, "missing file") for item in incomplete)
 
 
-def evidence_file(path: str) -> bool:
-    parts = PurePosixPath(path).parts
-    return (
-        len(parts) == 3
-        and parts[0] == "docs"
-        and parts[1] == "audits"
-        and "product-lifecycle-review" in parts[2]
-        and parts[2].endswith(".md")
-    )
-
-
-def lifecycle_file(path: str) -> bool:
-    if evidence_file(path):
-        return False
-    posix = PurePosixPath(path)
-    parts = posix.parts
-    if path in ("docs/intent.md", "docs/requirements.md", "docs/glossary.md", "docs/architecture.md"):
-        return True
-    if len(parts) != 3 or parts[0] != "docs":
-        return False
-    directory, name = parts[1], parts[2]
-    if directory == "architecture":
-        return name.startswith("ADR-") and name.endswith(".md")
-    if directory == "design":
-        return name.startswith("DES-") and name.endswith(".md")
-    if directory == "stories":
-        return name.endswith(".md")
-    if directory == "plans":
-        return name.endswith(".md")
-    return False
-
-
 def definition_only_path(path: str) -> bool:
     if path in DEFINITION_ONLY_FILES:
         return True
     parts = PurePosixPath(path).parts
-    return len(parts) >= 3 and parts[0] == "docs" and parts[1] == "architecture" or evidence_file(path)
+    return len(parts) >= 3 and parts[0] == "docs" and parts[1] == "architecture"
 
 
 def deleted_baseline_from_statuses(statuses: list[tuple[str, str, str | None]]) -> list[str]:
@@ -336,90 +296,10 @@ def deleted_baseline_from_statuses(statuses: list[tuple[str, str, str | None]]) 
     )
 
 
-def parse_fields(path: Path) -> dict[str, str]:
-    fields: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^-?\s*([A-Za-z ]+):\s*(.+?)\s*$", line)
-        if match:
-            fields[match.group(1)] = match.group(2)
-    return fields
-
-
-def changed_paths_in_evidence(path: Path) -> set[str]:
-    paths: set[str] = set()
-    in_section = False
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped == "Changed lifecycle files:":
-            in_section = True
-            continue
-        if not in_section:
-            continue
-        if stripped.startswith("- "):
-            paths.add(stripped[2:].strip())
-            continue
-        if paths and stripped:
-            break
-    return paths
-
-
-def is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
-    return run_git(repo, "merge-base", "--is-ancestor", ancestor, descendant).returncode == 0
-
-
-def evidence_head_is_fresh(repo: Path, recorded_head: str, current_head: str) -> tuple[bool, str]:
-    if recorded_head == current_head:
-        return True, ""
-    if not is_ancestor(repo, recorded_head, current_head):
-        return False, f"Head SHA {recorded_head} is not an ancestor of current HEAD {current_head}."
-    changed_after_head = changed_files(repo, recorded_head, current_head)
-    stale_lifecycle = [path for path in changed_after_head if lifecycle_file(path)]
-    if stale_lifecycle:
-        return (
-            False,
-            "Non-evidence lifecycle files changed after recorded Head SHA:\n"
-            + "\n".join(f"- {path}" for path in stale_lifecycle),
-        )
-    return True, ""
-
-
-def evidence_matches(
-    repo: Path,
-    evidence_path: Path,
-    *,
-    base_ref: str,
-    base_sha: str,
-    current_head: str,
-    lifecycle_changes: list[str],
-) -> tuple[bool, str]:
-    fields = parse_fields(evidence_path)
-    for field in ("Reviewer", "Status", "Base Ref", "Base SHA", "Head SHA"):
-        if field not in fields:
-            return False, f"{evidence_path}: missing field {field}."
-    if fields["Reviewer"] != REVIEWER:
-        return False, f"{evidence_path}: Reviewer must be {REVIEWER}."
-    if fields["Status"] != "pass":
-        return False, f"{evidence_path}: Status must be pass, got {fields['Status']}."
-    if fields["Base Ref"] != base_ref:
-        return False, f"{evidence_path}: Base Ref must be {base_ref}, got {fields['Base Ref']}."
-    if fields["Base SHA"] != base_sha:
-        return False, f"{evidence_path}: Base SHA must be {base_sha}, got {fields['Base SHA']}."
-    head_ok, head_reason = evidence_head_is_fresh(repo, fields["Head SHA"], current_head)
-    if not head_ok:
-        return False, f"{evidence_path}: stale Head SHA. {head_reason}"
-    reviewed_paths = changed_paths_in_evidence(evidence_path)
-    missing = [path for path in lifecycle_changes if path not in reviewed_paths]
-    if missing:
-        return False, f"{evidence_path}: missing changed lifecycle file paths:\n" + "\n".join(
-            f"- {path}" for path in missing
-        )
-    return True, ""
-
-
 def validate(repo: Path) -> int:
     repo_name = alphaapps_repo_name(repo)
     if repo_name is None:
-        print("✓ Product lifecycle baseline validation skipped: non-ForgingAlpha repo")
+        print("✓ Approved source-truth validation skipped: non-ForgingAlpha repo")
         return 0
 
     base_ref = default_base_ref(repo_name)
@@ -441,7 +321,7 @@ def validate(repo: Path) -> int:
             and definition_only_work_allowed(incomplete)
         ):
             print(
-                "✓ Product lifecycle baseline validation passed for "
+                "✓ Approved source-truth validation passed for "
                 f"definition/backfill-only work (BASE_REF={base_ref})"
             )
             return 0
@@ -463,44 +343,8 @@ def validate(repo: Path) -> int:
             details,
         )
 
-    lifecycle_changes = sorted(path for path in changed if lifecycle_file(path))
-    if not lifecycle_changes:
-        print(f"✓ Product lifecycle baseline validation passed (BASE_REF={base_ref})")
-        return 0
-
-    evidence_dir = repo / "docs" / "audits"
-    evidence_paths = sorted(evidence_dir.glob(EVIDENCE_GLOB)) if evidence_dir.is_dir() else []
-    if not evidence_paths:
-        fail(
-            "Missing product lifecycle review evidence",
-            f"changed lifecycle files require fresh Status: pass evidence from {REVIEWER}.",
-            f"add {EVIDENCE_PATH_HINT} with Reviewer, Status, Base Ref, Base SHA, Head SHA, "
-            "and every changed lifecycle file path.",
-            "Changed lifecycle files:\n" + "\n".join(f"- {path}" for path in lifecycle_changes),
-        )
-
-    reasons: list[str] = []
-    for path in evidence_paths:
-        ok, reason = evidence_matches(
-            repo,
-            path,
-            base_ref=base_ref,
-            base_sha=base_sha,
-            current_head=current_head,
-            lifecycle_changes=lifecycle_changes,
-        )
-        if ok:
-            print(f"✓ Product lifecycle baseline validation passed (BASE_REF={base_ref})")
-            return 0
-        reasons.append(reason)
-
-    fail(
-        "Stale product lifecycle review evidence",
-        "lifecycle review evidence must be Status: pass, match Base SHA, use a fresh reviewed Head SHA, "
-        "and list every changed lifecycle file.",
-        f"rerun {REVIEWER}, record fresh evidence at {EVIDENCE_PATH_HINT}, and rerun validation.",
-        "\n".join(reasons),
-    )
+    print(f"✓ Approved source-truth validation passed (BASE_REF={base_ref})")
+    return 0
 
 
 if __name__ == "__main__":

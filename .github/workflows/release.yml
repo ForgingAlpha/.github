@@ -1,67 +1,206 @@
-name: Release
-
-# When a semver tag like v1.2.3 is pushed, force-move the corresponding
-# major tag (v1) to point at the same commit. Consumers pinned to @v1
-# automatically receive the update.
-#
-# This is the pattern actions/checkout, actions/setup-node, and the
-# rest of the first-party GitHub Actions use.
+name: Roll Out v1
 
 on:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact current green main SHA to roll out after bootstrap preconditions are verified
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
-  checks: read
+
+concurrency:
+  group: v1-rollout
+  cancel-in-progress: false
 
 jobs:
-  update-major-tag:
-    name: Update major version tag
+  rollout:
+    name: Roll out current channel
+    if: >-
+      ${{ vars.V1_ROLLOUT_ENABLED == 'true' &&
+          (github.event_name == 'workflow_dispatch' ||
+           (github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.event == 'push' &&
+            github.event.workflow_run.head_branch == 'main')) }}
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
-      checks: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Checkout control plane
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: Verify tagged commit CI
+      - name: Verify exact current main SHA
+        id: verify
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          VERIFIED_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.event.workflow_run.head_sha }}
+          VERIFIED_RUN_ID: ${{ github.event.workflow_run.id }}
+          VERIFIED_RUN_URL: ${{ github.event.workflow_run.html_url }}
         run: |
           set -euo pipefail
 
-          checks_json="${RUNNER_TEMP:-/tmp}/tag-check-runs.json"
-          gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100" > "${checks_json}"
-
-          conclusion="$(jq -r \
-            '[.check_runs[] | select(.name == "CI")]
-             | sort_by(.completed_at // .started_at // .created_at)
-             | last
-             | .conclusion // empty' "${checks_json}")"
-
-          if [[ "${conclusion}" != "success" ]]; then
-            echo "✗ Tagged commit ${GITHUB_SHA} does not have a successful CI check"
-            echo "  WHY: release tags move consumer-facing major tags; self CI must pass before rollout."
-            echo "  HOW: tag only a commit whose CI check succeeded; observed conclusion='${conclusion:-missing}'."
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "${VERIFIED_SHA}" != "${current_main}" ]; then
+            echo "✗ Refusing stale rollout: verified=${VERIFIED_SHA} current-main=${current_main}"
+            echo "  WHY: v1 may advance only to the newest green main commit."
+            echo "  HOW: make the current main commit green; a later CI completion will retry."
             exit 1
           fi
 
-          echo "✓ Tagged commit ${GITHUB_SHA} passed CI"
+          verified_run_url="${VERIFIED_RUN_URL}"
+          if [ -n "${VERIFIED_RUN_ID}" ]; then
+            run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${VERIFIED_RUN_ID}")"
+            jq -e \
+              --arg repo "${GITHUB_REPOSITORY}" \
+              --arg sha "${VERIFIED_SHA}" \
+              '.path == ".github/workflows/ci.yml" and
+               .event == "push" and
+               .head_branch == "main" and
+               .head_sha == $sha and
+               .conclusion == "success" and
+               .repository.full_name == $repo' \
+              <<<"${run_json}" >/dev/null || {
+                echo "✗ Workflow-run evidence is not the approved successful main CI run for the rollout SHA."
+                exit 1
+              }
+            verified_run_url="$(jq -r '.html_url' <<<"${run_json}")"
+          else
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${VERIFIED_SHA}&branch=main&event=push&status=success&per_page=100" \
+              > /tmp/ci-runs.json
+            latest_ci="$(jq -c \
+              --arg repo "${GITHUB_REPOSITORY}" \
+              --arg sha "${VERIFIED_SHA}" \
+              '[.[].workflow_runs[] | select(
+                .path == ".github/workflows/ci.yml" and
+                .event == "push" and
+                .head_branch == "main" and
+                .head_sha == $sha and
+                .conclusion == "success" and
+                .repository.full_name == $repo
+              )] | sort_by(.run_attempt // 0, .created_at) | last // empty' \
+              /tmp/ci-runs.json)"
+            [ -n "${latest_ci}" ] || {
+              echo "✗ Manual rollout SHA lacks a successful approved main CI workflow run."
+              exit 1
+            }
+            verified_run_url="$(jq -r '.html_url' <<<"${latest_ci}")"
+          fi
 
-      - name: Force-move major tag
+          resolve_tag_commit() {
+            local tag="$1"
+            local object sha type
+            object="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object')" || return 1
+            sha="$(jq -r '.sha' <<<"${object}")"
+            type="$(jq -r '.type' <<<"${object}")"
+            while [ "${type}" = "tag" ]; do
+              object="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${sha}" --jq '.object')"
+              sha="$(jq -r '.sha' <<<"${object}")"
+              type="$(jq -r '.type' <<<"${object}")"
+            done
+            [ "${type}" = "commit" ] || return 1
+            printf '%s\n' "${sha}"
+          }
+          previous_v1_object="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v1" --jq '.object.sha' 2>/dev/null || true)"
+          previous_v1_commit="$(resolve_tag_commit v1 2>/dev/null || true)"
+          gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/v1-rollout-" \
+            > /tmp/prior-rollouts.json
+          prior_rollouts=0
+          existing_rollout_tag=""
+          while IFS= read -r prior_tag; do
+            [ -n "${prior_tag}" ] || continue
+            prior_sha="$(resolve_tag_commit "${prior_tag}")" || {
+              echo "✗ Existing rollout tag ${prior_tag} does not resolve to a commit."
+              exit 1
+            }
+            if [ "${prior_sha}" = "${VERIFIED_SHA}" ]; then
+              prior_rollouts=$((prior_rollouts + 1))
+              existing_rollout_tag="${prior_tag}"
+            fi
+          done < <(jq -r '.[][] | .ref | sub("^refs/tags/"; "")' /tmp/prior-rollouts.json)
+          if [ "${prior_rollouts}" -gt 0 ] && [ "${previous_v1_commit}" != "${VERIFIED_SHA}" ]; then
+            echo "✗ ${VERIFIED_SHA} was already rolled out and v1 has since moved away."
+            echo "  WHY: an Actions re-run must not silently undo an operator rollback."
+            echo "  HOW: land a new reviewed commit on main; rolled-back SHAs cannot re-advance v1."
+            exit 1
+          fi
+
+          already_complete=false
+          if [ "${prior_rollouts}" -gt 0 ]; then
+            already_complete=true
+            rollout_tag="${existing_rollout_tag}"
+          else
+            timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+            short_sha="${VERIFIED_SHA:0:12}"
+            rollout_tag="v1-rollout-${timestamp}-${short_sha}"
+          fi
+
+          {
+            echo "already_complete=${already_complete}"
+            echo "previous_v1_commit=${previous_v1_commit}"
+            echo "previous_v1_object=${previous_v1_object}"
+            echo "rollout_tag=${rollout_tag}"
+            echo "verified_run_url=${verified_run_url}"
+            echo "verified_sha=${VERIFIED_SHA}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Advance v1 and record atomically
+        if: ${{ steps.verify.outputs.already_complete != 'true' }}
         shell: bash
         env:
-          TAG: ${{ github.ref_name }}
+          PREVIOUS_V1_COMMIT: ${{ steps.verify.outputs.previous_v1_commit }}
+          PREVIOUS_V1_OBJECT: ${{ steps.verify.outputs.previous_v1_object }}
+          ROLLOUT_TAG: ${{ steps.verify.outputs.rollout_tag }}
+          VERIFIED_RUN_URL: ${{ steps.verify.outputs.verified_run_url }}
+          VERIFIED_SHA: ${{ steps.verify.outputs.verified_sha }}
         run: |
           set -euo pipefail
-          major="${TAG%%.*}"
-          echo "Moving ${major} to ${TAG} (commit ${GITHUB_SHA})"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -fa "${major}" -m "Pointing ${major} at ${TAG}"
-          git push origin "${major}" --force
+          git config user.name "forgingalpha-release"
+          git config user.email "forgingalpha-release@users.noreply.github.com"
+          git tag -a "${ROLLOUT_TAG}" "${VERIFIED_SHA}" \
+            -m "Rolled v1 forward" \
+            -m "Repository: ${GITHUB_REPOSITORY}" \
+            -m "Previous v1 SHA: ${PREVIOUS_V1_COMMIT:-none}" \
+            -m "Current v1 SHA: ${VERIFIED_SHA}" \
+            -m "Verified CI: ${VERIFIED_RUN_URL}"
+          if [ -n "${PREVIOUS_V1_OBJECT}" ]; then
+            git push --atomic \
+              --force-with-lease="refs/tags/v1:${PREVIOUS_V1_OBJECT}" \
+              origin \
+              "${VERIFIED_SHA}:refs/tags/v1" \
+              "refs/tags/${ROLLOUT_TAG}"
+          else
+            git push --atomic origin \
+              "${VERIFIED_SHA}:refs/tags/v1" \
+              "refs/tags/${ROLLOUT_TAG}"
+          fi
+
+      - name: Record rollout
+        shell: bash
+        env:
+          PREVIOUS_V1_COMMIT: ${{ steps.verify.outputs.previous_v1_commit }}
+          ROLLOUT_TAG: ${{ steps.verify.outputs.rollout_tag }}
+          VERIFIED_RUN_URL: ${{ steps.verify.outputs.verified_run_url }}
+          VERIFIED_SHA: ${{ steps.verify.outputs.verified_sha }}
+        run: |
+          {
+            echo "## v1 rollout"
+            echo
+            echo "- previous: \`${PREVIOUS_V1_COMMIT:-none}\`"
+            echo "- current: \`${VERIFIED_SHA}\`"
+            echo "- immutable record: \`${ROLLOUT_TAG}\`"
+            echo "- verified CI: ${VERIFIED_RUN_URL}"
+            echo "- actor: \`${GITHUB_ACTOR}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -226,9 +226,9 @@ class RemoteProbeGuardTest(unittest.TestCase):
             )
         self.assertEqual(
             probe.get("uses"),
-            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
-            f"Probe template must call the centralized reusable probe workflow on @main. "
-            "WHY: manual probes intentionally use the latest internal diagnostic platform. "
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@v1",
+            f"Probe template must call the centralized reusable probe workflow on @v1. "
+            "WHY: manual probes intentionally use the latest green internal platform. "
             f"HOW: keep the template as a thin reusable-workflow caller; probe={probe!r}",
         )
         self.assertNotIn(
@@ -244,7 +244,7 @@ class RemoteProbeGuardTest(unittest.TestCase):
         self.assertTrue(
             workflow_paths,
             "Remote probe platform must define reusable probe workflows. "
-            "WHY: consumers should call centralized @main workflows instead of copying command YAML. "
+            "WHY: consumers should call centralized @v1 workflows instead of copying command YAML. "
             "HOW: add .github/workflows/ci-probe-*.yml.",
         )
 
@@ -281,10 +281,10 @@ class RemoteProbeGuardTest(unittest.TestCase):
                     f"HOW: move the guard step before actions/checkout; step_names={step_names!r}",
                 )
                 self.assertIn(
-                    "ForgingAlpha/.github/actions/ci-remote-probe-guard@main",
+                    "ForgingAlpha/.github/actions/ci-remote-probe-guard@v1",
                     [step.get("uses") for step in steps if isinstance(step, dict)],
-                    f"Reusable probe workflow must use the shared guard at @main. "
-                    "WHY: manual probes follow the latest-on-main internal diagnostic platform. "
+                    f"Reusable probe workflow must use the shared guard at @v1. "
+                    "WHY: manual probes follow the latest-green internal diagnostic platform. "
                     "HOW: restore the guard uses ref.",
                 )
                 self.assertIn(
