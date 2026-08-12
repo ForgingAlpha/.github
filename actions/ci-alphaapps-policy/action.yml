@@ -1,8 +1,9 @@
 # Composite action: Alpha Apps policy checks.
 #
 # Enforces the approved repo-local Intent, Requirements, and Architecture
-# baseline. The action is self-contained so public consumer CI does not need a
-# private docs checkout token.
+# baseline plus the repository's human-ownership boundary. The action is
+# self-contained so public consumer CI does not need a private docs checkout
+# token.
 #
 # Usage:
 #
@@ -18,7 +19,7 @@
 #         - uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
 
 name: CI Alpha Apps Policy
-description: "Alpha Apps policy: approved Intent, Requirements, and Architecture"
+description: "Alpha Apps policy: approved source truth and human ownership"
 
 inputs:
   base-ref:
@@ -67,4 +68,10 @@ runs:
       run: |
         set -euo pipefail
         python3 "$GITHUB_ACTION_PATH/scripts/validate_product_lifecycle_baseline.py"
+      shell: bash
+
+    - name: Validate repository ownership contract
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_ACTION_PATH/scripts/validate_codeowners_contract.py"
       shell: bash

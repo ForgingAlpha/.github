@@ -9,9 +9,22 @@ tags:
 ## Control Plane
 
 `.github` and `alphaapps-docs` are main-only control planes. Every change lands
-through a reviewed pull request with required `CI`. Application repositories
-use feature/worktree branches into protected `dev`; `main` is the deployed
-branch.
+through a pull request with required `CI` and authorized-human code-owner
+approval of the exact current revision. Application repositories use
+feature/worktree branches into protected `dev`; `main` is the deployed branch.
+
+The shared policy action validates `.github/CODEOWNERS` before lower-level
+language checks. Control-plane repositories assign their complete tree to an
+authorized human. Consumer repositories assign `.github/` and each detected
+production-control file or directory to an authorized human in the final
+active CODEOWNERS block, preserving GitHub's last-match semantics. Repository
+rules require code-owner review and invalidate stale approvals. Agents and the
+general-purpose authoring identity may create and update pull requests, but
+their approval cannot satisfy this boundary and they cannot merge
+trust-surface or control-plane changes. Separately scoped updater, security,
+and release Apps retain only their governed exact-revision update, merge,
+promotion, rollout, and rollback authority; they cannot substitute for human
+approval of a trust-surface or control-plane change.
 
 Shared merge-authority checks are composite actions so the caller preserves a
 single required job named `CI`. Consumers call internal actions at
@@ -193,5 +206,7 @@ diversity; it is diagnostic and never a merge requirement.
 
 Agents prepare scoped repository changes, verification, and `/tmp` scripts.
 The operator owns destructive pushes, organization rules, credential/App setup,
-rollout activation, and rollback execution. No SSH or personal credentials are
-available to agents.
+exact-revision trust-surface approval, trust-surface and control-plane merges,
+rollout activation, and rollback execution. Governed updater, security, and
+release automation retains only its separately defined persistent-branch and
+release authority. No SSH or personal credentials are available to agents.

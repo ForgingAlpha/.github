@@ -15,6 +15,9 @@ automation without copying workflow logic between repositories.
 ## Durable Outcomes
 
 - Every repository exposes one required merge status named `CI`.
+- Every control-plane and protected production-control change is approved by
+  an authorized human code owner on its exact current revision; an agent or
+  authoring-bot identity cannot substitute for that approval.
 - A reviewed, green control-plane merge reaches consumers promptly through the
   internal `@v1` current channel.
 - Every `v1` rollout is serialized, traceable, immutable-recorded, and
@@ -52,8 +55,11 @@ enforcement.
 
 Consumer repositories own product behavior, services, runtime commands,
 deployment configuration, secrets, and data. Agents never receive operator SSH
-keys or personal credentials. Privileged automation never executes untrusted
-pull-request code.
+keys or personal credentials. The general-purpose agent/authoring identity
+cannot approve or merge trust-surface or control-plane changes. Separately
+scoped updater, security, and release identities may perform only the exact,
+pre-authorized operations defined by their governing contracts. Privileged
+automation never executes untrusted pull-request code.
 
 ## Invariants And Tradeoffs
 
@@ -63,8 +69,9 @@ pull-request code.
   exceptions, incremental Markdown enforcement, and compatibility entrypoints
   are removed rather than carried forward.
 - Every control-plane change lands through a reviewed pull request with green
-  `CI`; after merge, the exact merged commit and version-coherent consumer
-  profiles are verified before rollout.
+  `CI` and authorized-human approval of the exact current revision; after
+  merge, the exact merged commit and version-coherent consumer profiles are
+  verified before rollout.
 - Normal and security automation have disjoint authority. Renovate does not
   remediate vulnerability alerts, and Dependabot does not create normal version
   updates.

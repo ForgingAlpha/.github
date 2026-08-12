@@ -4,9 +4,17 @@ Complete these GitHub settings before merging the replacement workflows. Keep
 the repository variable `V1_ROLLOUT_ENABLED` absent or `false` during initial
 cutover, so the merge cannot move `v1` before the release controls are proven:
 
-- Require pull requests, approval, and `CI` on `.github/main`. Allow the
-  automation App's exact-revision approval to satisfy the review requirement;
-  do not bypass required CI.
+- Treat this pull request as the one-time CODEOWNERS bootstrap. GitHub evaluates
+  CODEOWNERS from the pull request's base branch, so the new file cannot enforce
+  itself before merge. The operator must manually review and approve the exact
+  final head, perform the merge, and immediately verify the merged file and
+  ruleset before any later control-plane change proceeds.
+
+- Require pull requests, authorized-human code-owner approval of the exact
+  current revision, dismissal of stale approvals, and `CI` on `.github/main`.
+  The agent/authoring App may create and update the pull request but cannot
+  satisfy the approval, bypass required CI, or merge `main`. Keep the scoped
+  security and release Apps separate from that authoring identity.
 - Create the `v1-rollback` environment, require operator approval, and verify
   the protection is active. GitHub otherwise auto-creates an unprotected
   environment on first use.
@@ -37,19 +45,26 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
 - Confirm the legacy release writer no longer exists on the merged branch.
 
 Then merge `ForgingAlpha/.github` while rollout remains disabled. Confirm the
-new workflows exist on `main` and `v1` did not move. Set
+new workflows exist on `main` and `v1` did not move. Before moving `v1`, add the
+canonical CODEOWNERS contract to every active consumer and control-plane
+repository while those repositories still use the existing `v1`. Each initial
+CODEOWNERS pull request is also a one-time bootstrap because GitHub reads the
+file from that pull request's base branch: the operator manually reviews and
+approves its exact final head, performs the merge, and then verifies GitHub's
+CODEOWNERS error endpoint reports no errors. Verify each protected
+persistent-branch ruleset requires code-owner review, dismisses stale
+approvals, requires `CI`, gives the agent/authoring identity no bypass, and
+allows only the intended scoped updater, security, or release operations.
+
+After every consumer passes its existing CI with the ownership contract, set
 `V1_ROLLOUT_ENABLED=true`, manually dispatch `Roll Out v1` for the exact current
 green `main` SHA, and confirm the immutable record plus `v1` movement. Do not
 roll back to the implementation that predates this contract. Once two
 `v1-rollout-*` records exist, exercise the protected rollback between those
 records and confirm that re-running an old CI run cannot re-advance the rolled
-back SHA.
-
-Only then merge the four consumer branches, so their new inputs and action calls
-resolve against the matching shared contract. The Turnkey and Outliers branches
-remain intentionally blocked until their surfaced strict application findings
-are fixed; do not weaken CI to merge them. Merge each green consumer promptly
-after its prerequisite refactor.
+back SHA. Only then merge consumer branches that adopt new action inputs or
+profiles. Turnkey and Outliers remain blocked until their surfaced strict
+application findings are fixed; do not weaken CI to merge them.
 
 - Treat a security promotion that reports an outdated `dev` SHA as a manual
   follow-up: another push won the race, so re-run the exact security change

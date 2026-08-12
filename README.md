@@ -36,7 +36,7 @@ Application repositories use feature/worktree pull requests into protected
 
 | Action | Contract |
 | --- | --- |
-| `ci-alphaapps-policy` | Approved Intent, Requirements, and Architecture |
+| `ci-alphaapps-policy` | Approved source truth and fail-closed human CODEOWNERS boundaries |
 | `ci-markdown` | Pinned validation of every tracked Markdown file |
 | `ci-github-actions` | Actionlint, immutable refs, permissions, and trigger safety |
 | `ci-dependabot-coverage` | Current pre-cutover update coverage; replaced by the updater-neutral gate in the Renovate plan |
@@ -115,6 +115,9 @@ with an expected-old lease, and creates an immutable rollback record.
 ## Security Boundary
 
 - Root workflow permissions are read-only; write permissions are job-scoped.
+- Every repository keeps an authorized human as code owner for `.github/` and
+  detected production controls; control-plane repositories require authorized
+  human ownership of the complete tree.
 - Privileged workflows never check out or execute pull-request code.
 - Agents receive no operator SSH key or personal credential.
 - Direct deployment and release writes belong only to the scoped release

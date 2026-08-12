@@ -238,3 +238,21 @@ evidence SHALL fail closed.
 **Fit:** Approved SPDX evidence passes, non-approved evidence fails, null or
 empty license data fails with WHAT-WHY-HOW remediation, and non-pull-request
 events report that the diff-only check is not applicable.
+
+### REQ-024 - Human Trust-Surface Approval
+
+Every change in a control-plane repository and every change to a repository's
+workflow or detected production-control surface SHALL require approval from an
+authorized human code owner on the exact current pull-request revision. An
+agent or authoring-bot identity SHALL NOT satisfy or bypass that approval and
+SHALL NOT merge the protected persistent branch. This does not prohibit the
+separately scoped security and release identities from performing the exact,
+pre-authorized operations required by REQ-005 through REQ-008 and REQ-013
+through REQ-015.
+
+**Fit:** Required CI validates a canonical `.github/CODEOWNERS` file whose final
+active block assigns the complete control-plane tree, or the applicable trust
+and production-control paths, to an authorized human. Protected-branch rules
+require code-owner review and dismiss or invalidate approval when the reviewed
+head changes. The protected non-agent operator performs trust-surface and
+control-plane merges.

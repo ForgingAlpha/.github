@@ -50,6 +50,28 @@ class SharedCiContractTest(unittest.TestCase):
     def load_workflow(self, path):
         return yaml.safe_load(path.read_text(encoding="utf-8"))
 
+    def test_human_trust_surface_boundary_is_governed_consistently(self):
+        intent = (ROOT / "docs" / "intent.md").read_text(encoding="utf-8")
+        requirements = (ROOT / "docs" / "requirements.md").read_text(
+            encoding="utf-8"
+        )
+        architecture = (ROOT / "docs" / "architecture.md").read_text(
+            encoding="utf-8"
+        )
+        checklist = (ROOT / "docs" / "operator-checklist.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("authorized human code owner", intent)
+        self.assertIn("REQ-024 - Human Trust-Surface Approval", requirements)
+        self.assertIn("authorized-human code-owner", architecture)
+        self.assertIn("cannot\n  satisfy the approval", checklist)
+        self.assertNotIn(
+            "automation App's exact-revision approval to satisfy",
+            checklist,
+            "automation must not be documented as a substitute for human approval",
+        )
+
     def uses_sequence(self, path):
         action = self.load_action(path)
         return [
