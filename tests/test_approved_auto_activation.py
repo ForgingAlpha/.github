@@ -39,7 +39,7 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         workflow = self.load(REUSABLE)
         triggers = workflow.get("on", workflow.get(True))
         call = triggers["workflow_call"]
-        self.assertTrue(call["inputs"]["release_app_client_id"]["required"])
+        self.assertNotIn("release_app_client_id", call["inputs"])
         self.assertTrue(call["inputs"]["pull_request_number"]["required"])
         self.assertEqual(
             call["inputs"]["release_environment"]["default"],
@@ -52,7 +52,10 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
 
         text = REUSABLE.read_text(encoding="utf-8")
         self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", text)
-        self.assertIn("client-id: ${{ inputs.release_app_client_id }}", text)
+        self.assertIn(
+            "client-id: ${{ vars.FORGINGALPHA_RELEASE_APP_CLIENT_ID }}",
+            text,
+        )
         self.assertIn(
             "private-key: ${{ secrets.FORGINGALPHA_RELEASE_APP_PRIVATE_KEY }}",
             text,
