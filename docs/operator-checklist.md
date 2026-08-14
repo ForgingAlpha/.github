@@ -73,8 +73,10 @@ The privileged job obtains the release key only through the default-branch-only
 `release-automation` environment; this blocks a pull-request workflow from
 requesting the key even when the pull request comes from a same-repository task
 branch.
-The protected workflow treats the associated pull-request number as untrusted
-passive data, re-queries GitHub, and requires the authorized human's latest
+The protected workflow treats the approval run's head SHA as GitHub-authentic
+event data, not as authorization. Before minting a write-capable token, it uses
+that SHA to resolve exactly one same-repository open pull request and fails
+closed on zero or multiple matches. It then re-queries GitHub and requires the authorized human's latest
 authoritative review to be `APPROVED` on the current full head SHA before it
 invokes GitHub native auto-merge with `--match-head-commit`. GitHub rulesets,
 not a parallel custom state machine, remain responsible for current approvals,
