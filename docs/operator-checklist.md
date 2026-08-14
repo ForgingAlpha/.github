@@ -45,13 +45,16 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
 - Confirm the legacy release writer no longer exists on the merged branch.
 
 Before enabling approved auto-activation, confirm `Allow auto-merge` is enabled
-in each participating repository. Store `FORGINGALPHA_RELEASE_APP_CLIENT_ID` as an
-organization Actions variable and `FORGINGALPHA_RELEASE_APP_PRIVATE_KEY` as an
-organization Actions secret for only the enrolled repositories. The protected
-release App must have only repository metadata read, contents write, and pull
-request write permission. Token creation must remain scoped to the current
-repository. The agent/authoring App must not receive the release credential or
-a ruleset bypass.
+in each participating repository. Store `FORGINGALPHA_RELEASE_APP_CLIENT_ID` as
+an organization Actions variable for only the enrolled repositories. In every
+enrolled repository, create a `release-automation` environment, restrict its
+deployment branches to that repository's exact default branch, add no required
+reviewer, and store `FORGINGALPHA_RELEASE_APP_PRIVATE_KEY` as an environment
+secret. A pull-request merge ref must not satisfy that deployment-branch rule.
+The protected release App must have only repository metadata read, contents
+write, and pull-request write permission. Token creation must remain scoped to
+the current repository. The agent/authoring App must not receive the release
+credential or a ruleset bypass.
 
 For every enrolled persistent branch, require the authorized human's code-owner
 review, dismiss stale approvals when the pull-request diff or merge base
@@ -66,12 +69,18 @@ pattern. `approval-signal.yml` runs in the pull-request context with no token
 permissions, secrets, checkout, or executable pull-request content. Its
 completion triggers `approved-auto-activation.yml` through `workflow_run`, so
 the privileged caller and reusable workflow are loaded from the default branch.
+The privileged job obtains the release key only through the default-branch-only
+`release-automation` environment; this blocks a pull-request workflow from
+requesting the key even when the pull request comes from a same-repository task
+branch.
 The protected workflow treats the associated pull-request number as untrusted
 passive data, re-queries GitHub, and requires the authorized human's latest
 authoritative review to be `APPROVED` on the current full head SHA before it
 invokes GitHub native auto-merge with `--match-head-commit`. GitHub rulesets,
 not a parallel custom state machine, remain responsible for current approvals,
 required checks, merge-base freshness, and branch-update restrictions.
+The environment grants secret access without recording a deployment because
+activation is a merge-control operation, not an environment deployment.
 
 Roll out `approval-signal.yml` and `approved-auto-activation.yml` to each
 consumer with that repository's complete persistent-branch list. The first

@@ -41,11 +41,22 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         call = triggers["workflow_call"]
         self.assertTrue(call["inputs"]["release_app_client_id"]["required"])
         self.assertTrue(call["inputs"]["pull_request_number"]["required"])
-        self.assertTrue(call["secrets"]["release_app_private_key"]["required"])
+        self.assertEqual(
+            call["inputs"]["release_environment"]["default"],
+            "release-automation",
+        )
+        self.assertNotIn("secrets", call)
+        environment = workflow["jobs"]["activation"]["environment"]
+        self.assertEqual(environment["name"], "${{ inputs.release_environment }}")
+        self.assertFalse(environment["deployment"])
 
         text = REUSABLE.read_text(encoding="utf-8")
         self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", text)
         self.assertIn("client-id: ${{ inputs.release_app_client_id }}", text)
+        self.assertIn(
+            "private-key: ${{ secrets.FORGINGALPHA_RELEASE_APP_PRIVATE_KEY }}",
+            text,
+        )
         self.assertNotIn("app-id:", text)
         self.assertIn("permission-contents: write", text)
         self.assertIn("permission-pull-requests: write", text)
