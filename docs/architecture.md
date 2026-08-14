@@ -36,12 +36,14 @@ local job statically owns the default-branch-only `release-automation`
 environment and invokes the centrally versioned `approved-automerge@v1`
 composite. The composite resolves one exact open revision before minting the
 short-lived release App token, then revalidates the current human approval and
-head before requesting an immediate exact-head pull-request merge as that App.
+head before calling GitHub's synchronous REST pull-request merge endpoint as
+that App, with the approved head SHA and governed merge method in the request.
 An update-only ruleset authorizes the release App to update the persistent
-branch, while independent protection rulesets give it no bypass from review,
-code-owner, latest-push, thread, CI, CodeQL, or current-base requirements. The
-merge uses neither deferred auto-merge nor an administrative bypass and fails
-closed if any protection changes before GitHub atomically updates the ref.
+branch through pull requests only, while independent protection rulesets give
+it no bypass from review, code-owner, latest-push, thread, CI, CodeQL, or
+current-base requirements. The merge uses neither deferred auto-merge nor an
+administrative bypass and fails closed if any protection changes before GitHub
+atomically updates the ref.
 Privileged activation never checks out or executes pull-request code, and
 environment credentials never traverse a called reusable-workflow boundary.
 

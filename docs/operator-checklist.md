@@ -62,11 +62,12 @@ changes, require the approved `CI` check, and require the branch to be current
 with its target before merge. Put review, code-owner, latest-push, thread,
 status-check, scanning, deletion, and non-fast-forward protections in rulesets
 where `forgingalpha-release` has no bypass. Put `Restrict updates` alone in a
-separate updater-authority ruleset where only the operator and
-`forgingalpha-release` have always-allow authority. Ruleset-local bypass keeps
-the App able to update the protected ref without letting it bypass any quality
-or human-authority rule. Prohibit direct pushes and `--admin` merge commands in
-the protected workflow.
+separate updater-authority ruleset where the operator retains emergency
+authority and `forgingalpha-release` has pull-request-only bypass. Ruleset-local
+bypass keeps the App able to update the protected ref only through GitHub's
+pull-request merge endpoint without letting it bypass any quality or
+human-authority rule. Prohibit direct pushes and administrative merge bypasses
+in the protected workflow.
 
 The auto-activation path intentionally follows GitHub's privilege-separation
 pattern. `approval-signal.yml` runs in the pull-request context with no token
@@ -84,8 +85,9 @@ event data, not as authorization. Before minting a write-capable token, it uses
 that SHA to resolve exactly one same-repository open pull request and fails
 closed on zero or multiple matches. It then re-queries GitHub and requires the authorized human's latest
 authoritative review to be `APPROVED` on the current full head SHA before it
-invokes a direct protected pull-request merge with `--match-head-commit` as the
-release App. The command uses neither `--auto` nor `--admin`; GitHub atomically
+calls GitHub's synchronous REST pull-request merge endpoint as the release App.
+The request supplies that exact SHA and the governed merge method; it uses
+neither deferred auto-merge nor an administrative bypass. GitHub atomically
 rejects it if an independent review, check, scanning, merge-base, or ref rule
 is no longer satisfied. GitHub rulesets, not a parallel custom state machine,
 remain responsible for those protections.
