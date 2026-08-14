@@ -151,6 +151,16 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertNotIn("pull-request-number", activation["with"])
         self.assertNotIn("pull_requests[0]", CALLER.read_text(encoding="utf-8"))
 
+    def test_activation_is_serialized_per_exact_signal_head_without_cancellation(self):
+        caller = self.load(CALLER)
+        concurrency = caller["jobs"]["activate"]["concurrency"]
+        self.assertEqual(
+            concurrency["group"],
+            "approved-auto-activation-${{ github.repository }}-"
+            "${{ github.event.workflow_run.head_sha }}",
+        )
+        self.assertFalse(concurrency["cancel-in-progress"])
+
 
 class PullRequestResolverBehaviorTest(unittest.TestCase):
     HEAD = "a" * 40
