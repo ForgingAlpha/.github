@@ -45,12 +45,12 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
 - Confirm the legacy release writer no longer exists on the merged branch.
 
 Before enabling approved auto-activation, confirm `Allow auto-merge` is enabled
-in each participating repository. Store `FORGINGALPHA_RELEASE_APP_CLIENT_ID` as
-an organization Actions variable for only the enrolled repositories. In every
-enrolled repository, create a `release-automation` environment, restrict its
-deployment branches to that repository's exact default branch, add no required
-reviewer, and store `FORGINGALPHA_RELEASE_APP_PRIVATE_KEY` as an environment
-secret. A pull-request merge ref must not satisfy that deployment-branch rule.
+in each participating repository. In every enrolled repository, create a
+`release-automation` environment, restrict its deployment branches to that
+repository's exact default branch, add no required reviewer, and store
+`FORGINGALPHA_RELEASE_APP_CLIENT_ID` as an environment variable and
+`FORGINGALPHA_RELEASE_APP_PRIVATE_KEY` as an environment secret. A pull-request
+merge ref must not satisfy that deployment-branch rule.
 The protected release App must have only repository metadata read, contents
 write, and pull-request write permission. Token creation must remain scoped to
 the current repository. The agent/authoring App must not receive the release
