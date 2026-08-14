@@ -22,4 +22,3 @@ jobs:
       persistent_branches: main
       merge_method: merge
       pull_request_number: ${{ github.event.workflow_run.pull_requests[0].number }}
-      release_app_client_id: ${{ vars.FORGINGALPHA_RELEASE_APP_CLIENT_ID }}
