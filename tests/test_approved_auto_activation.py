@@ -41,7 +41,8 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         triggers = workflow.get("on", workflow.get(True))
         call = triggers["workflow_call"]
         self.assertNotIn("release_app_client_id", call["inputs"])
-        self.assertTrue(call["inputs"]["pull_request_number"]["required"])
+        self.assertNotIn("pull_request_number", call["inputs"])
+        self.assertTrue(call["inputs"]["approval_head_sha"]["required"])
         self.assertEqual(
             call["inputs"]["release_environment"]["default"],
             "release-automation",
@@ -70,6 +71,13 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertNotIn("--admin", text)
         self.assertNotIn("actions/checkout", text)
 
+        steps = workflow["jobs"]["activation"]["steps"]
+        names = [step["name"] for step in steps]
+        self.assertLess(
+            names.index("Resolve unique open pull request"),
+            names.index("Mint protected release token"),
+        )
+
     def test_privileged_run_revalidates_event_and_current_exact_approval(self):
         workflow = self.load(REUSABLE)
         job_if = workflow["jobs"]["activation"]["if"]
@@ -85,10 +93,13 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         for required in (
             ".head.repo.full_name",
             ".draft",
+            "commits/${APPROVAL_HEAD_SHA}/pulls?per_page=100",
+            'candidate_count}" = "1"',
             "reviews?per_page=100",
             "max_by(.id)",
             '.state == "APPROVED"',
             ".commit_id == $head",
+            'head_sha}" = "${APPROVAL_HEAD_SHA}',
             "--match-head-commit",
         ):
             self.assertIn(required, text)
@@ -102,16 +113,130 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertIn("branch_allowed=false", text)
         self.assertIn("Target branch '${base_branch}' is not eligible", text)
 
-    def test_caller_passes_passive_pr_number_and_control_plane_branch(self):
+    def test_caller_passes_signal_head_and_control_plane_branch(self):
         workflow = self.load(CALLER)
         job = workflow["jobs"]["activate"]
         self.assertEqual(job["uses"], "./.github/workflows/approved-automerge.yml")
         self.assertEqual(job["with"]["persistent_branches"], "main")
         self.assertEqual(job["with"]["authorized_approver"], "leosmigel")
         self.assertIn(
-            "github.event.workflow_run.pull_requests[0].number",
-            job["with"]["pull_request_number"],
+            "github.event.workflow_run.head_sha",
+            job["with"]["approval_head_sha"],
         )
+        self.assertNotIn("pull_request_number", job["with"])
+        self.assertNotIn("pull_requests[0]", CALLER.read_text(encoding="utf-8"))
+
+
+class PullRequestResolverBehaviorTest(unittest.TestCase):
+    HEAD = "a" * 40
+
+    def setUp(self):
+        workflow = yaml.safe_load(REUSABLE.read_text(encoding="utf-8"))
+        self.script = next(
+            step["run"]
+            for step in workflow["jobs"]["activation"]["steps"]
+            if step["name"] == "Resolve unique open pull request"
+        )
+
+    def candidate(
+        self,
+        *,
+        number=7,
+        state="open",
+        head=None,
+        repo="ForgingAlpha/example",
+    ):
+        return {
+            "number": number,
+            "state": state,
+            "head": {
+                "sha": head or self.HEAD,
+                "repo": {"full_name": repo},
+            },
+        }
+
+    def run_resolver(self, pages, *, approval_head=None):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fake_gh = Path(temp_dir) / "gh"
+            calls = Path(temp_dir) / "calls"
+            output = Path(temp_dir) / "output"
+            fake_gh.write_text(
+                """#!/usr/bin/env python3
+import os
+import sys
+
+args = sys.argv[1:]
+with open(os.environ["FAKE_GH_CALLS"], "a", encoding="utf-8") as handle:
+    handle.write(" ".join(args) + "\\n")
+
+if args[:1] == ["api"] and "/commits/" in args[-1] and "/pulls?per_page=100" in args[-1]:
+    print(os.environ["FAKE_ASSOCIATED_PRS_JSON"])
+else:
+    raise SystemExit(f"unexpected gh call: {args}")
+""",
+                encoding="utf-8",
+            )
+            fake_gh.chmod(fake_gh.stat().st_mode | stat.S_IXUSR)
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "APPROVAL_HEAD_SHA": approval_head or self.HEAD,
+                    "FAKE_ASSOCIATED_PRS_JSON": json.dumps(pages),
+                    "FAKE_GH_CALLS": str(calls),
+                    "GH_TOKEN": "read-only-test-token",
+                    "GITHUB_OUTPUT": str(output),
+                    "GITHUB_REPOSITORY": "ForgingAlpha/example",
+                    "PATH": f"{temp_dir}:{env['PATH']}",
+                }
+            )
+            result = subprocess.run(
+                ["bash", "-c", self.script],
+                check=False,
+                capture_output=True,
+                env=env,
+                text=True,
+            )
+            call_text = calls.read_text(encoding="utf-8") if calls.exists() else ""
+            output_text = output.read_text(encoding="utf-8") if output.exists() else ""
+            return result, call_text, output_text
+
+    def test_unique_open_same_repo_exact_head_resolves(self):
+        result, calls, output = self.run_resolver([[self.candidate()]])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"commits/{self.HEAD}/pulls?per_page=100", calls)
+        self.assertEqual(output.strip(), "pull_request_number=7")
+
+    def test_resolver_fails_closed_for_zero_or_multiple_candidates(self):
+        cases = {
+            "zero": [[]],
+            "multiple": [[self.candidate(), self.candidate(number=8)]],
+            "closed": [[self.candidate(state="closed")]],
+            "fork": [[self.candidate(repo="Other/example")]],
+            "head mismatch": [[self.candidate(head="b" * 40)]],
+        }
+        for name, pages in cases.items():
+            with self.subTest(name=name):
+                result, _, output = self.run_resolver(pages)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("does not identify one open pull request", result.stderr)
+                self.assertEqual(output, "")
+
+    def test_paginated_results_are_flattened_before_unique_match(self):
+        pages = [
+            [self.candidate(number=5, state="closed")],
+            [self.candidate(number=7)],
+        ]
+        result, _, output = self.run_resolver(pages)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output.strip(), "pull_request_number=7")
+
+    def test_invalid_signal_head_fails_before_api_call(self):
+        result, calls, output = self.run_resolver([[]], approval_head="not-a-sha")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Invalid approval-signal head", result.stderr)
+        self.assertEqual(calls, "")
+        self.assertEqual(output, "")
 
 
 class ApprovedAutoActivationBehaviorTest(unittest.TestCase):
@@ -207,6 +332,7 @@ else:
             env.update(
                 {
                     "AUTHORIZED_APPROVER": "leosmigel",
+                    "APPROVAL_HEAD_SHA": self.HEAD,
                     "FAKE_CURRENT_HEAD": current_head,
                     "FAKE_GH_CALLS": str(calls),
                     "FAKE_PR_JSON": json.dumps(pr),
@@ -241,7 +367,7 @@ else:
     def test_changed_head_fails_before_merge(self):
         result, calls = self.run_activation(current_head="c" * 40)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("exact-head human approval is absent", result.stderr)
+        self.assertIn("no longer matches the approval signal", result.stderr)
         self.assertNotIn("pr merge", calls)
 
     def test_latest_change_request_fails_before_merge(self):
