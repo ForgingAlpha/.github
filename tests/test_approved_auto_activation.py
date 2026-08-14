@@ -156,13 +156,17 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertEqual(caller["permissions"], {"pull-requests": "read"})
         self.assertEqual(reusable["permissions"], {"pull-requests": "read"})
 
-        steps = reusable["jobs"]["activation"]["steps"]
+        caller_job = caller["jobs"]["activate"]
+        activation_job = reusable["jobs"]["activation"]
+        self.assertNotIn("permissions", caller_job)
+        self.assertNotIn("permissions", activation_job)
+
+        steps = activation_job["steps"]
         resolver = next(
             step for step in steps
             if step["name"] == "Resolve unique open pull request"
         )
         self.assertEqual(resolver["env"]["GH_TOKEN"], "${{ github.token }}")
-        self.assertNotIn("permissions", resolver)
 
 
 class PullRequestResolverBehaviorTest(unittest.TestCase):
