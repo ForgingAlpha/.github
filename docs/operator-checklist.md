@@ -44,6 +44,65 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
   intended release App.
 - Confirm the legacy release writer no longer exists on the merged branch.
 
+Before enabling approved auto-activation, confirm `Allow auto-merge` is enabled
+in each participating repository. In every enrolled repository, create a
+`release-automation` environment, restrict its deployment branches to that
+repository's exact default branch, add no required reviewer, and store
+`FORGINGALPHA_RELEASE_APP_CLIENT_ID` as an environment variable and
+`FORGINGALPHA_RELEASE_APP_PRIVATE_KEY` as an environment secret. A pull-request
+merge ref must not satisfy that deployment-branch rule.
+The protected release App must have only repository metadata read, contents
+write, and pull-request write permission. Token creation must remain scoped to
+the current repository. The agent/authoring App must not receive the release
+credential or a ruleset bypass.
+
+For every enrolled persistent branch, require the authorized human's code-owner
+review, dismiss stale approvals when the pull-request diff or merge base
+changes, require the approved `CI` check, and require the branch to be current
+with its target before merge. Restrict branch updates to the operator and
+narrowly scoped protected automation. Give `forgingalpha-release`
+pull-request-only bypass authority, never always-allow authority, and prohibit
+admin-bypass merge commands in the protected workflow.
+
+The auto-activation path intentionally follows GitHub's privilege-separation
+pattern. `approval-signal.yml` runs in the pull-request context with no token
+permissions, secrets, checkout, or executable pull-request content. Its
+completion triggers `approved-auto-activation.yml` through `workflow_run`, so
+the privileged caller and reusable workflow are loaded from the default branch.
+The privileged job obtains the release key only through the default-branch-only
+`release-automation` environment; this blocks a pull-request workflow from
+requesting the key even when the pull request comes from a same-repository task
+branch.
+The protected workflow treats the associated pull-request number as untrusted
+passive data, re-queries GitHub, and requires the authorized human's latest
+authoritative review to be `APPROVED` on the current full head SHA before it
+invokes GitHub native auto-merge with `--match-head-commit`. GitHub rulesets,
+not a parallel custom state machine, remain responsible for current approvals,
+required checks, merge-base freshness, and branch-update restrictions.
+The environment grants secret access without recording a deployment because
+activation is a merge-control operation, not an environment deployment.
+
+Roll out `approval-signal.yml` and a repository-owned
+`approved-auto-activation.yml` caller to each consumer with that repository's
+complete persistent-branch list. The consumer caller must invoke the central
+`ForgingAlpha/.github/.github/workflows/approved-automerge.yml@v1` reusable;
+only the `.github` control repository uses the local
+`./.github/workflows/approved-automerge.yml` path during bootstrap. Do not copy
+the reusable implementation into consumers. The first
+workflow pull request is a manual bootstrap because its default branch does not
+yet contain the privileged `workflow_run` caller. After it merges, use a
+harmless same-repository probe to prove that an unchanged approved revision is
+merged only by `forgingalpha-release`, while a draft, changed revision, stale or
+dismissed approval, fork head, and undeclared target remain unmerged. Do not add
+a merge queue until branch traffic justifies its additional `merge_group` CI
+surface.
+
+Approval is the routine activation decision, so exceptional operations must be
+held before approval. Delay approval for coordinated launches, and use the
+operation's separately governed environment or workflow approval for
+destructive, non-repeatable, legal, or business-timed effects. Do not add a
+generic post-approval merge click or a label-based revocation race.
+
 Then merge `ForgingAlpha/.github` while rollout remains disabled. Confirm the
 new workflows exist on `main` and `v1` did not move. Before moving `v1`, add the
 canonical CODEOWNERS contract to every active consumer and control-plane
