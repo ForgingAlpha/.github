@@ -17,10 +17,10 @@ on:
         required: false
         type: string
         default: merge
-      pull_request_number:
-        description: Pull request associated with the completed read-only approval signal.
+      approval_head_sha:
+        description: Head SHA from the completed read-only approval signal.
         required: true
-        type: number
+        type: string
       release_environment:
         description: Default-branch-only environment that holds the release App private key.
         required: false
@@ -28,7 +28,6 @@ on:
         default: release-automation
 
 permissions:
-  contents: read
   pull-requests: read
 
 jobs:
@@ -39,16 +38,55 @@ jobs:
       github.event.workflow_run.event == 'pull_request_review' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      inputs.pull_request_number > 0
+      inputs.approval_head_sha != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
       name: ${{ inputs.release_environment }}
       deployment: false
     concurrency:
-      group: approved-auto-activation-${{ github.repository }}-${{ inputs.pull_request_number }}
+      group: approved-auto-activation-${{ github.repository }}-${{ inputs.approval_head_sha }}
       cancel-in-progress: false
     steps:
+      - name: Resolve unique open pull request
+        id: resolver
+        shell: bash
+        env:
+          APPROVAL_HEAD_SHA: ${{ inputs.approval_head_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "✗ $1" >&2
+            echo "  WHY: $2" >&2
+            echo "  HOW: $3" >&2
+            exit 1
+          }
+
+          [[ "${APPROVAL_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]] \
+            || fail "Invalid approval-signal head" "GitHub event data must identify one full commit SHA" "inspect the approval-signal run"
+
+          associated="$(gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/commits/${APPROVAL_HEAD_SHA}/pulls?per_page=100")"
+          candidates="$(jq -c \
+            --arg head "${APPROVAL_HEAD_SHA}" \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            '[.[][] | select(
+              .state == "open" and
+              .head.sha == $head and
+              .head.repo.full_name == $repo
+            )]' \
+            <<<"${associated}")"
+          candidate_count="$(jq -r 'length' <<<"${candidates}")"
+          [ "${candidate_count}" = "1" ] \
+            || fail "Approval signal does not identify one open pull request" "found ${candidate_count} same-repository open pull requests at ${APPROVAL_HEAD_SHA}" "close duplicate proposals or submit a fresh approval on one current revision"
+
+          pr_number="$(jq -r '.[0].number' <<<"${candidates}")"
+          [[ "${pr_number}" =~ ^[1-9][0-9]*$ ]] \
+            || fail "Resolved pull-request number is invalid" "GitHub association data must remain passive input" "inspect the approval-signal run"
+          echo "pull_request_number=${pr_number}" >> "${GITHUB_OUTPUT}"
+
       - name: Mint protected release token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -65,7 +103,8 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           MERGE_METHOD: ${{ inputs.merge_method }}
           PERSISTENT_BRANCHES: ${{ inputs.persistent_branches }}
-          PR_NUMBER: ${{ inputs.pull_request_number }}
+          PR_NUMBER: ${{ steps.resolver.outputs.pull_request_number }}
+          APPROVAL_HEAD_SHA: ${{ inputs.approval_head_sha }}
         run: |
           set -euo pipefail
 
@@ -78,8 +117,10 @@ jobs:
 
           [[ "${AUTHORIZED_APPROVER}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] \
             || fail "Invalid authorized approver" "identity matching must be exact" "pass one GitHub login"
+          [[ "${APPROVAL_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]] \
+            || fail "Invalid approval-signal head" "activation must bind to GitHub's completed approval run" "inspect the approval-signal run"
           [[ "${PR_NUMBER}" =~ ^[1-9][0-9]*$ ]] \
-            || fail "Invalid pull-request number" "untrusted workflow data must be treated as passive input" "inspect the approval-signal run"
+            || fail "Invalid pull-request number" "resolved association data must be treated as passive input" "inspect the approval-signal run"
           case "${MERGE_METHOD}" in
             merge|squash|rebase) ;;
             *) fail "Unsupported merge method '${MERGE_METHOD}'" "activation must use a declared GitHub merge method" "use merge, squash, or rebase" ;;
@@ -100,6 +141,8 @@ jobs:
             || fail "Pull request head is outside the protected repository" "fork content cannot receive activation authority" "use an authorized same-repository task branch"
           [[ "${head_sha}" =~ ^[0-9a-f]{40}$ ]] \
             || fail "Pull-request head is not a full SHA" "activation must bind to one immutable revision" "inspect the pull request"
+          [ "${head_sha}" = "${APPROVAL_HEAD_SHA}" ] \
+            || fail "Pull-request head no longer matches the approval signal" "activation was signaled for ${APPROVAL_HEAD_SHA}, not ${head_sha}" "submit a fresh approval on the current revision"
 
           branch_allowed=false
           IFS=',' read -r -a branches <<<"${PERSISTENT_BRANCHES}"
