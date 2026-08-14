@@ -44,8 +44,8 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
   intended release App.
 - Confirm the legacy release writer no longer exists on the merged branch.
 
-Before enabling approved auto-activation, confirm `Allow auto-merge` is enabled
-in each participating repository. In every enrolled repository, create a
+Approved auto-activation does not depend on the repository's `Allow auto-merge`
+setting. In every enrolled repository, create a
 `release-automation` environment, restrict its deployment branches to that
 repository's exact default branch, add no required reviewer, and store
 `FORGINGALPHA_RELEASE_APP_CLIENT_ID` as an environment variable and
@@ -59,10 +59,14 @@ credential or a ruleset bypass.
 For every enrolled persistent branch, require the authorized human's code-owner
 review, dismiss stale approvals when the pull-request diff or merge base
 changes, require the approved `CI` check, and require the branch to be current
-with its target before merge. Restrict branch updates to the operator and
-narrowly scoped protected automation. Give `forgingalpha-release`
-pull-request-only bypass authority, never always-allow authority, and prohibit
-admin-bypass merge commands in the protected workflow.
+with its target before merge. Put review, code-owner, latest-push, thread,
+status-check, scanning, deletion, and non-fast-forward protections in rulesets
+where `forgingalpha-release` has no bypass. Put `Restrict updates` alone in a
+separate updater-authority ruleset where only the operator and
+`forgingalpha-release` have always-allow authority. Ruleset-local bypass keeps
+the App able to update the protected ref without letting it bypass any quality
+or human-authority rule. Prohibit direct pushes and `--admin` merge commands in
+the protected workflow.
 
 The auto-activation path intentionally follows GitHub's privilege-separation
 pattern. `approval-signal.yml` runs in the pull-request context with no token
@@ -80,9 +84,11 @@ event data, not as authorization. Before minting a write-capable token, it uses
 that SHA to resolve exactly one same-repository open pull request and fails
 closed on zero or multiple matches. It then re-queries GitHub and requires the authorized human's latest
 authoritative review to be `APPROVED` on the current full head SHA before it
-invokes GitHub native auto-merge with `--match-head-commit`. GitHub rulesets,
-not a parallel custom state machine, remain responsible for current approvals,
-required checks, merge-base freshness, and branch-update restrictions.
+invokes a direct protected pull-request merge with `--match-head-commit` as the
+release App. The command uses neither `--auto` nor `--admin`; GitHub atomically
+rejects it if an independent review, check, scanning, merge-base, or ref rule
+is no longer satisfied. GitHub rulesets, not a parallel custom state machine,
+remain responsible for those protections.
 The environment grants secret access without recording a deployment because
 activation is a merge-control operation, not an environment deployment.
 
