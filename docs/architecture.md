@@ -31,6 +31,15 @@ single required job named `CI`. Consumers call internal actions at
 `ForgingAlpha/.github/actions/<action>@v1`. Self-CI uses local paths so a pull
 request validates its proposed implementation.
 
+Routine approval activation uses a repository-owned `workflow_run` job. The
+local job statically owns the default-branch-only `release-automation`
+environment and invokes the centrally versioned `approved-automerge@v1`
+composite. The composite resolves one exact open revision before minting the
+short-lived release App token, then revalidates the current human approval and
+head before requesting native auto-merge. Privileged activation never checks
+out or executes pull-request code, and environment credentials never traverse
+a called reusable-workflow boundary.
+
 ## Current-Channel Rollout
 
 `v1` is a mutable current channel. A trusted release gate observes successful

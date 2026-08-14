@@ -14,9 +14,21 @@ jobs:
       github.event.workflow_run.event == 'pull_request_review' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
-    uses: ./.github/workflows/approved-automerge.yml
-    with:
-      authorized_approver: leosmigel
-      persistent_branches: main
-      merge_method: merge
-      approval_head_sha: ${{ github.event.workflow_run.head_sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: release-automation
+      deployment: false
+    concurrency:
+      group: approved-auto-activation-${{ github.repository }}-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+    steps:
+      - name: Revalidate and activate approved revision
+        uses: ForgingAlpha/.github/actions/approved-automerge@v1
+        with:
+          authorized-approver: leosmigel
+          persistent-branches: main
+          merge-method: merge
+          approval-head-sha: ${{ github.event.workflow_run.head_sha }}
+          release-app-client-id: ${{ vars.FORGINGALPHA_RELEASE_APP_CLIENT_ID }}
+          release-app-private-key: ${{ secrets.FORGINGALPHA_RELEASE_APP_PRIVATE_KEY }}
