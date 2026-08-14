@@ -152,8 +152,15 @@ runs:
         [ "${current_head}" = "${head_sha}" ] \
           || fail "Pull-request head changed during revalidation" "activation is bound to ${head_sha}" "approve the current revision"
 
-        gh pr merge "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
-          --match-head-commit "${head_sha}" "--${MERGE_METHOD}"
+        merge_payload="$(jq -cn \
+          --arg sha "${head_sha}" \
+          --arg merge_method "${MERGE_METHOD}" \
+          '{sha: $sha, merge_method: $merge_method}')"
+        merge_result="$(gh api --method PUT \
+          "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/merge" \
+          --input - <<<"${merge_payload}")"
+        jq -e '.merged == true' <<<"${merge_result}" >/dev/null \
+          || fail "GitHub did not merge the approved pull request" "the synchronous merge endpoint returned a non-merge result" "inspect repository rulesets and the release App authority"
 
         result="$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
           --json state,headRefOid)"

@@ -125,7 +125,8 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
             '.state == "APPROVED"',
             ".commit_id == $head",
             'head_sha}" = "${APPROVAL_HEAD_SHA}',
-            "--match-head-commit",
+            "pulls/${PR_NUMBER}/merge",
+            "{sha: $sha, merge_method: $merge_method}",
         ):
             self.assertIn(required, text)
 
@@ -294,6 +295,7 @@ class ApprovedAutoActivationBehaviorTest(unittest.TestCase):
         draft=False,
         base_branch="dev",
         merge_rejected=False,
+        merged_false=False,
     ):
         current_head = current_head or self.HEAD
         approved_head = approved_head or self.HEAD
@@ -322,6 +324,7 @@ class ApprovedAutoActivationBehaviorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             fake_gh = Path(temp_dir) / "gh"
             calls = Path(temp_dir) / "calls"
+            merge_body = Path(temp_dir) / "merge-body"
             summary = Path(temp_dir) / "summary"
             fake_gh.write_text(
                 """#!/usr/bin/env python3
@@ -334,9 +337,18 @@ with open(os.environ["FAKE_GH_CALLS"], "a", encoding="utf-8") as handle:
     handle.write(" ".join(args) + "\\n")
 
 if args[:1] == ["api"]:
-    endpoint = args[-1]
+    endpoint = next((arg for arg in args if arg.startswith("repos/")), "")
     if "/pulls/7/reviews?per_page=100" in endpoint:
         print(os.environ["FAKE_REVIEWS_JSON"])
+    elif "/pulls/7/merge" in endpoint:
+        if os.environ["FAKE_MERGE_REJECTED"] == "true":
+            raise SystemExit("protected branch rules are not satisfied")
+        with open(os.environ["FAKE_MERGE_BODY"], "w", encoding="utf-8") as handle:
+            handle.write(sys.stdin.read())
+        if os.environ["FAKE_MERGED_FALSE"] == "true":
+            print(json.dumps({"merged": False, "message": "merge refused"}))
+        else:
+            print(json.dumps({"merged": True, "sha": "d" * 40}))
     elif "/pulls/7" in endpoint:
         print(os.environ["FAKE_PR_JSON"])
     else:
@@ -352,11 +364,6 @@ elif args[:2] == ["pr", "view"]:
         }))
     else:
         raise SystemExit(f"unexpected pr view: {args}")
-elif args[:2] == ["pr", "merge"]:
-    if "--admin" in args:
-        raise SystemExit("admin bypass forbidden")
-    if os.environ["FAKE_MERGE_REJECTED"] == "true":
-        raise SystemExit("protected branch rules are not satisfied")
 else:
     raise SystemExit(f"unexpected gh call: {args}")
 """,
@@ -371,7 +378,9 @@ else:
                     "APPROVAL_HEAD_SHA": self.HEAD,
                     "FAKE_CURRENT_HEAD": current_head,
                     "FAKE_GH_CALLS": str(calls),
+                    "FAKE_MERGE_BODY": str(merge_body),
                     "FAKE_MERGE_REJECTED": str(merge_rejected).lower(),
+                    "FAKE_MERGED_FALSE": str(merged_false).lower(),
                     "FAKE_PR_JSON": json.dumps(pr),
                     "FAKE_REVIEWS_JSON": json.dumps(reviews),
                     "GH_TOKEN": "test-token",
@@ -391,46 +400,56 @@ else:
                 text=True,
             )
             call_text = calls.read_text(encoding="utf-8") if calls.exists() else ""
-            return result, call_text
+            merge_body_text = merge_body.read_text(encoding="utf-8") if merge_body.exists() else ""
+            return result, call_text, merge_body_text
 
-    def test_valid_exact_approval_merges_directly_without_admin_bypass(self):
-        result, calls = self.run_activation()
+    def test_valid_exact_approval_uses_synchronous_rest_merge(self):
+        result, calls, merge_body = self.run_activation()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("pr merge 7", calls)
-        self.assertIn(f"--match-head-commit {self.HEAD}", calls)
-        self.assertIn("--merge", calls)
+        self.assertIn("api --method PUT repos/ForgingAlpha/example/pulls/7/merge --input -", calls)
+        self.assertEqual(
+            json.loads(merge_body),
+            {"sha": self.HEAD, "merge_method": "merge"},
+        )
+        self.assertNotIn("pr merge", calls)
         self.assertNotIn("--auto", calls)
         self.assertNotIn("--admin", calls)
 
     def test_github_protection_rejection_fails_closed(self):
-        result, calls = self.run_activation(merge_rejected=True)
+        result, calls, _ = self.run_activation(merge_rejected=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("protected branch rules are not satisfied", result.stderr)
-        self.assertIn("pr merge 7", calls)
+        self.assertIn("pulls/7/merge", calls)
+
+    def test_github_non_merge_response_fails_closed(self):
+        result, calls, _ = self.run_activation(merged_false=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not merge the approved pull request", result.stderr)
+        self.assertIn("pulls/7/merge", calls)
 
     def test_changed_head_fails_before_merge(self):
-        result, calls = self.run_activation(current_head="c" * 40)
+        result, calls, _ = self.run_activation(current_head="c" * 40)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("no longer matches the approval signal", result.stderr)
-        self.assertNotIn("pr merge", calls)
+        self.assertNotIn("pulls/7/merge", calls)
 
     def test_latest_change_request_fails_before_merge(self):
-        result, calls = self.run_activation(latest_state="CHANGES_REQUESTED")
+        result, calls, _ = self.run_activation(latest_state="CHANGES_REQUESTED")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("exact-head human approval is absent", result.stderr)
-        self.assertNotIn("pr merge", calls)
+        self.assertNotIn("pulls/7/merge", calls)
 
     def test_draft_fails_before_merge(self):
-        result, calls = self.run_activation(draft=True)
+        result, calls, _ = self.run_activation(draft=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Pull request is a draft", result.stderr)
-        self.assertNotIn("pr merge", calls)
+        self.assertNotIn("pulls/7/merge", calls)
 
     def test_undeclared_branch_fails_before_merge(self):
-        result, calls = self.run_activation(base_branch="staging")
+        result, calls, _ = self.run_activation(base_branch="staging")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not eligible", result.stderr)
-        self.assertNotIn("pr merge", calls)
+        self.assertNotIn("pulls/7/merge", calls)
 
 
 if __name__ == "__main__":
