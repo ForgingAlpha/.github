@@ -41,6 +41,7 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository &&
       inputs.pull_request_number > 0
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     environment:
       name: ${{ inputs.release_environment }}
       deployment: false
