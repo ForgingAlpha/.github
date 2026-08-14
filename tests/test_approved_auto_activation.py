@@ -34,6 +34,7 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertNotIn("pull_request_target", combined)
         self.assertNotIn("actions/checkout", combined)
         self.assertNotIn("release_app_private_key", SIGNAL.read_text(encoding="utf-8"))
+        self.assertEqual(signal["jobs"]["signal"]["timeout-minutes"], 5)
 
     def test_reusable_requires_protected_release_identity(self):
         workflow = self.load(REUSABLE)
@@ -49,6 +50,7 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         environment = workflow["jobs"]["activation"]["environment"]
         self.assertEqual(environment["name"], "${{ inputs.release_environment }}")
         self.assertFalse(environment["deployment"])
+        self.assertEqual(workflow["jobs"]["activation"]["timeout-minutes"], 5)
 
         text = REUSABLE.read_text(encoding="utf-8")
         self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", text)
