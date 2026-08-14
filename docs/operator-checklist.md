@@ -44,6 +44,32 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
   intended release App.
 - Confirm the legacy release writer no longer exists on the merged branch.
 
+Before enabling approved auto-activation, confirm `Allow auto-merge` is enabled
+in each participating repository. Store `FORGINGALPHA_RELEASE_APP_ID` as an
+organization Actions variable and `FORGINGALPHA_RELEASE_APP_PRIVATE_KEY` as an
+organization Actions secret for only the enrolled repositories. The protected
+release App must have repository contents and pull-request write permission;
+the agent/authoring App must not receive its credential or a ruleset bypass.
+
+For every enrolled persistent branch, require the authorized human's code-owner
+review of the exact current revision, dismiss stale approvals, require the
+approved `CI` check, and require the branch to be current with its target before
+merge. Restrict branch updates to the operator and narrowly scoped protected
+automation. Give `forgingalpha-release` pull-request-only bypass authority; do
+not grant it an always-allow bypass for this path. Confirm `hold-activation` and
+`no-merge` labels exist. Exceptional timing must be disclosed by applying the
+hold before approval because activation may be immediate afterward. Applying a
+hold while activation is still pending withdraws it as defense in depth;
+removing a hold always requires a fresh exact-revision approval.
+
+Roll out `.github/workflows/approved-auto-activation.yml` to each consumer with
+that repository's complete persistent-branch list. The first workflow pull
+request is a manual bootstrap because its base branch does not yet contain the
+activation workflow. After it merges, use a harmless same-repository probe to
+prove that an unchanged approved revision is merged only by
+`forgingalpha-release`, while a draft, changed revision, moved target, stale or
+dismissed approval, fork head, and held proposal remain unmerged.
+
 Then merge `ForgingAlpha/.github` while rollout remains disabled. Confirm the
 new workflows exist on `main` and `v1` did not move. Before moving `v1`, add the
 canonical CODEOWNERS contract to every active consumer and control-plane

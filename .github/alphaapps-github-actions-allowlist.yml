@@ -1,4 +1,9 @@
 pull_request_target:
+  .github/workflows/approved-auto-activation.yml: >-
+    Trusted base-branch revocation path for changed, drafted, or held pull
+    requests. It never checks out or executes pull-request code, accepts no
+    pull-request-controlled command input, and can only disable an existing
+    exact-head activation through the protected release App.
   .github/workflows/dependabot-automerge.yml: >-
     Trusted default-branch metadata workflow for Dependabot only. It never
     checks out or executes pull-request code and uses a least-privilege App
