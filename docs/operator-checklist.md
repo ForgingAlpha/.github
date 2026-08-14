@@ -68,11 +68,13 @@ The auto-activation path intentionally follows GitHub's privilege-separation
 pattern. `approval-signal.yml` runs in the pull-request context with no token
 permissions, secrets, checkout, or executable pull-request content. Its
 completion triggers `approved-auto-activation.yml` through `workflow_run`, so
-the privileged caller and reusable workflow are loaded from the default branch.
-The privileged job obtains the release key only through the default-branch-only
-`release-automation` environment; this blocks a pull-request workflow from
-requesting the key even when the pull request comes from a same-repository task
-branch.
+the repository-owned privileged caller is loaded from the default branch. That
+normal job statically owns the default-branch-only `release-automation`
+environment and passes its protected release credential directly to the
+centrally versioned `approved-automerge` composite action. This keeps the
+environment boundary in the caller repository, blocks a pull-request workflow
+from requesting the key even for a same-repository task branch, and preserves
+one shared activation implementation without copying it into consumers.
 The protected workflow treats the approval run's head SHA as GitHub-authentic
 event data, not as authorization. Before minting a write-capable token, it uses
 that SHA to resolve exactly one same-repository open pull request and fails
@@ -86,11 +88,12 @@ activation is a merge-control operation, not an environment deployment.
 
 Roll out `approval-signal.yml` and a repository-owned
 `approved-auto-activation.yml` caller to each consumer with that repository's
-complete persistent-branch list. The consumer caller must invoke the central
-`ForgingAlpha/.github/.github/workflows/approved-automerge.yml@v1` reusable;
-only the `.github` control repository uses the local
-`./.github/workflows/approved-automerge.yml` path during bootstrap. Do not copy
-the reusable implementation into consumers. The first
+complete persistent-branch list. Each caller must be a normal job with exact
+read-only pull-request permission, a static `release-automation` environment,
+and one invocation of
+`ForgingAlpha/.github/actions/approved-automerge@v1`. Do not copy the composite
+implementation into consumers or pass its credential through a reusable
+workflow. The first
 workflow pull request is a manual bootstrap because its default branch does not
 yet contain the privileged `workflow_run` caller. After it merges, use a
 harmless same-repository probe to prove that an unchanged approved revision is
@@ -98,6 +101,11 @@ merged only by `forgingalpha-release`, while a draft, changed revision, stale or
 dismissed approval, fork head, and undeclared target remain unmerged. Do not add
 a merge queue until branch traffic justifies its additional `merge_group` CI
 surface.
+
+For the `.github` control-plane bootstrap, manually merge the reviewed repair,
+wait for exact-main `CI`, and advance `v1` to that exact green revision before
+retesting activation. The caller deliberately references the governed `@v1`
+action rather than executing an unreleased implementation from a task branch.
 
 Approval is the routine activation decision, so exceptional operations must be
 held before approval. Delay approval for coordinated launches, and use the

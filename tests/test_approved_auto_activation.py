@@ -10,9 +10,10 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REUSABLE = ROOT / ".github" / "workflows" / "approved-automerge.yml"
+ACTION = ROOT / "actions" / "approved-automerge" / "action.yml"
 CALLER = ROOT / ".github" / "workflows" / "approved-auto-activation.yml"
 SIGNAL = ROOT / ".github" / "workflows" / "approval-signal.yml"
+REMOVED_REUSABLE = ROOT / ".github" / "workflows" / "approved-automerge.yml"
 
 
 class ApprovedAutoActivationContractTest(unittest.TestCase):
@@ -36,33 +37,58 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertNotIn("release_app_private_key", SIGNAL.read_text(encoding="utf-8"))
         self.assertEqual(signal["jobs"]["signal"]["timeout-minutes"], 5)
 
-    def test_reusable_requires_protected_release_identity(self):
-        workflow = self.load(REUSABLE)
-        triggers = workflow.get("on", workflow.get(True))
-        call = triggers["workflow_call"]
-        self.assertNotIn("release_app_client_id", call["inputs"])
-        self.assertNotIn("pull_request_number", call["inputs"])
-        self.assertTrue(call["inputs"]["approval_head_sha"]["required"])
-        self.assertEqual(
-            call["inputs"]["release_environment"]["default"],
-            "release-automation",
-        )
-        self.assertNotIn("secrets", call)
-        environment = workflow["jobs"]["activation"]["environment"]
-        self.assertEqual(environment["name"], "${{ inputs.release_environment }}")
-        self.assertFalse(environment["deployment"])
-        self.assertEqual(workflow["jobs"]["activation"]["timeout-minutes"], 5)
+    def test_local_job_owns_environment_and_shared_action_owns_steps(self):
+        caller = self.load(CALLER)
+        job = caller["jobs"]["activate"]
+        self.assertEqual(caller["permissions"], {"pull-requests": "read"})
+        self.assertNotIn("permissions", job)
+        self.assertEqual(job["runs-on"], "ubuntu-latest")
+        self.assertEqual(job["timeout-minutes"], 5)
+        self.assertEqual(job["environment"]["name"], "release-automation")
+        self.assertFalse(job["environment"]["deployment"])
+        self.assertNotIn("${{", job["environment"]["name"])
 
-        text = REUSABLE.read_text(encoding="utf-8")
+        self.assertEqual(len(job["steps"]), 1)
+        activation = job["steps"][0]
+        self.assertEqual(
+            activation["uses"],
+            "ForgingAlpha/.github/actions/approved-automerge@v1",
+        )
+        self.assertEqual(
+            activation["with"]["release-app-client-id"],
+            "${{ vars.FORGINGALPHA_RELEASE_APP_CLIENT_ID }}",
+        )
+        self.assertEqual(
+            activation["with"]["release-app-private-key"],
+            "${{ secrets.FORGINGALPHA_RELEASE_APP_PRIVATE_KEY }}",
+        )
+        self.assertFalse(REMOVED_REUSABLE.exists())
+
+        action = self.load(ACTION)
+        self.assertEqual(action["runs"]["using"], "composite")
+        self.assertTrue(action["inputs"]["approval-head-sha"]["required"])
+        self.assertTrue(action["inputs"]["release-app-client-id"]["required"])
+        self.assertTrue(action["inputs"]["release-app-private-key"]["required"])
+        self.assertNotIn("release-environment", action["inputs"])
+
+        resolver = next(
+            step
+            for step in action["runs"]["steps"]
+            if step["name"] == "Resolve unique open pull request"
+        )
+        self.assertEqual(resolver["env"]["GH_TOKEN"], "${{ github.token }}")
+
+        text = ACTION.read_text(encoding="utf-8")
         self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", text)
         self.assertIn(
-            "client-id: ${{ vars.FORGINGALPHA_RELEASE_APP_CLIENT_ID }}",
+            "client-id: ${{ inputs.release-app-client-id }}",
             text,
         )
         self.assertIn(
-            "private-key: ${{ secrets.FORGINGALPHA_RELEASE_APP_PRIVATE_KEY }}",
+            "private-key: ${{ inputs.release-app-private-key }}",
             text,
         )
+        self.assertNotIn("secrets.", text)
         self.assertNotIn("app-id:", text)
         self.assertIn("permission-contents: write", text)
         self.assertIn("permission-pull-requests: write", text)
@@ -71,7 +97,7 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertNotIn("--admin", text)
         self.assertNotIn("actions/checkout", text)
 
-        steps = workflow["jobs"]["activation"]["steps"]
+        steps = action["runs"]["steps"]
         names = [step["name"] for step in steps]
         self.assertLess(
             names.index("Resolve unique open pull request"),
@@ -79,17 +105,16 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         )
 
     def test_privileged_run_revalidates_event_and_current_exact_approval(self):
-        workflow = self.load(REUSABLE)
-        job_if = workflow["jobs"]["activation"]["if"]
+        workflow = self.load(CALLER)
+        job_if = workflow["jobs"]["activate"]["if"]
         for required in (
-            "github.event_name == 'workflow_run'",
             "workflow_run.event == 'pull_request_review'",
             "workflow_run.conclusion == 'success'",
             "workflow_run.head_repository.full_name == github.repository",
         ):
             self.assertIn(required, job_if)
 
-        text = REUSABLE.read_text(encoding="utf-8")
+        text = ACTION.read_text(encoding="utf-8")
         for required in (
             ".head.repo.full_name",
             ".draft",
@@ -105,25 +130,24 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
             self.assertIn(required, text)
 
     def test_only_declared_persistent_branches_are_eligible(self):
-        workflow = self.load(REUSABLE)
-        triggers = workflow.get("on", workflow.get(True))
-        branch_input = triggers["workflow_call"]["inputs"]["persistent_branches"]
+        action = self.load(ACTION)
+        branch_input = action["inputs"]["persistent-branches"]
         self.assertTrue(branch_input["required"])
-        text = REUSABLE.read_text(encoding="utf-8")
+        text = ACTION.read_text(encoding="utf-8")
         self.assertIn("branch_allowed=false", text)
         self.assertIn("Target branch '${base_branch}' is not eligible", text)
 
     def test_caller_passes_signal_head_and_control_plane_branch(self):
         workflow = self.load(CALLER)
         job = workflow["jobs"]["activate"]
-        self.assertEqual(job["uses"], "./.github/workflows/approved-automerge.yml")
-        self.assertEqual(job["with"]["persistent_branches"], "main")
-        self.assertEqual(job["with"]["authorized_approver"], "leosmigel")
+        activation = job["steps"][0]
+        self.assertEqual(activation["with"]["persistent-branches"], "main")
+        self.assertEqual(activation["with"]["authorized-approver"], "leosmigel")
         self.assertIn(
             "github.event.workflow_run.head_sha",
-            job["with"]["approval_head_sha"],
+            activation["with"]["approval-head-sha"],
         )
-        self.assertNotIn("pull_request_number", job["with"])
+        self.assertNotIn("pull-request-number", activation["with"])
         self.assertNotIn("pull_requests[0]", CALLER.read_text(encoding="utf-8"))
 
 
@@ -131,10 +155,10 @@ class PullRequestResolverBehaviorTest(unittest.TestCase):
     HEAD = "a" * 40
 
     def setUp(self):
-        workflow = yaml.safe_load(REUSABLE.read_text(encoding="utf-8"))
+        action = yaml.safe_load(ACTION.read_text(encoding="utf-8"))
         self.script = next(
             step["run"]
-            for step in workflow["jobs"]["activation"]["steps"]
+            for step in action["runs"]["steps"]
             if step["name"] == "Resolve unique open pull request"
         )
 
@@ -243,10 +267,10 @@ class ApprovedAutoActivationBehaviorTest(unittest.TestCase):
     HEAD = "a" * 40
 
     def setUp(self):
-        workflow = yaml.safe_load(REUSABLE.read_text(encoding="utf-8"))
+        action = yaml.safe_load(ACTION.read_text(encoding="utf-8"))
         self.script = next(
             step["run"]
-            for step in workflow["jobs"]["activation"]["steps"]
+            for step in action["runs"]["steps"]
             if step["name"] == "Revalidate exact approval and activate"
         )
 
