@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       authorized_approver:
-        description: GitHub login whose exact-revision approval authorizes activation.
+        description: GitHub login whose current exact-head approval authorizes activation.
         required: false
         type: string
         default: leosmigel
@@ -17,15 +17,14 @@ on:
         required: false
         type: string
         default: merge
-      hold_labels:
-        description: Comma-separated labels that suspend activation and require a fresh approval after removal.
-        required: false
-        type: string
-        default: hold-activation,no-merge
-      release_app_id:
-        description: GitHub App ID for the protected release identity.
+      release_app_client_id:
+        description: GitHub App client ID for the protected release identity.
         required: true
         type: string
+      pull_request_number:
+        description: Pull request associated with the completed read-only approval signal.
+        required: true
+        type: number
     secrets:
       release_app_private_key:
         description: GitHub App private key for the protected release identity.
@@ -38,144 +37,34 @@ permissions:
 jobs:
   activation:
     name: Revalidate and activate approved revision
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request_review' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      inputs.pull_request_number > 0
     runs-on: ubuntu-latest
     concurrency:
-      group: approved-auto-activation-${{ github.repository }}-${{ github.event.pull_request.number }}
+      group: approved-auto-activation-${{ github.repository }}-${{ inputs.pull_request_number }}
       cancel-in-progress: false
     steps:
-      - name: Classify event
-        id: event
-        shell: bash
-        env:
-          AUTHORIZED_APPROVER: ${{ inputs.authorized_approver }}
-          EVENT_ACTION: ${{ github.event.action }}
-          EVENT_LABEL: ${{ github.event.label.name }}
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_REVIEWER: ${{ github.event.review.user.login }}
-          EVENT_REVIEW_STATE: ${{ github.event.review.state }}
-          HOLD_LABELS: ${{ inputs.hold_labels }}
-        run: |
-          set -euo pipefail
-
-          mode=noop
-          reason="event does not affect activation authority"
-
-          if [ "${EVENT_NAME}" = "pull_request_review" ]; then
-            if [ "${EVENT_REVIEWER}" != "${AUTHORIZED_APPROVER}" ]; then
-              reason="review is not from the authorized human"
-            elif [ "${EVENT_ACTION}" = "submitted" ] && [ "${EVENT_REVIEW_STATE}" = "approved" ]; then
-              mode=arm
-              reason="authorized human approved the exact pull-request revision"
-            elif [ "${EVENT_ACTION}" = "submitted" ] || [ "${EVENT_ACTION}" = "dismissed" ]; then
-              mode=disarm
-              reason="authorized human approval is absent, changed, or dismissed"
-            fi
-          elif [ "${EVENT_NAME}" = "pull_request_target" ]; then
-            case "${EVENT_ACTION}" in
-              synchronize|converted_to_draft)
-                mode=disarm
-                reason="pull-request revision or readiness changed"
-                ;;
-              labeled)
-                IFS=',' read -r -a labels <<<"${HOLD_LABELS}"
-                for raw_label in "${labels[@]}"; do
-                  label="${raw_label//[[:space:]]/}"
-                  if [ -n "${label}" ] && [ "${EVENT_LABEL}" = "${label}" ]; then
-                    mode=disarm
-                    reason="activation hold label was applied"
-                    break
-                  fi
-                done
-                ;;
-            esac
-          fi
-
-          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
-          echo "reason=${reason}" >> "${GITHUB_OUTPUT}"
-          echo "mode=${mode}: ${reason}"
-
       - name: Mint protected release token
-        if: ${{ steps.event.outputs.mode != 'noop' }}
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ inputs.release_app_id }}
+          client-id: ${{ inputs.release_app_client_id }}
           private-key: ${{ secrets.release_app_private_key }}
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Withdraw stale or suspended activation
-        if: ${{ steps.event.outputs.mode == 'disarm' }}
-        shell: bash
-        env:
-          AUTHORIZED_APPROVER: ${{ inputs.authorized_approver }}
-          EVENT_ACTION: ${{ github.event.action }}
-          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EVENT_REVIEW_ID: ${{ github.event.review.id }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-
-          pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          current_head="$(jq -r '.head.sha' <<<"${pr}")"
-          if [ "${current_head}" != "${EVENT_HEAD_SHA}" ]; then
-            echo "A later pull-request revision exists; this stale event cannot change activation state."
-            exit 0
-          fi
-
-          if [ "${EVENT_ACTION}" = "synchronize" ]; then
-            reviews="$(gh api --paginate --slurp \
-              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100")"
-            if jq -e \
-              --arg approver "${AUTHORIZED_APPROVER}" \
-              --arg head "${current_head}" \
-              'any(.[][]; .user.login == $approver and .state == "APPROVED" and .commit_id == $head)' \
-              <<<"${reviews}" >/dev/null; then
-              echo "A later exact-head approval already exists; leaving its activation state unchanged."
-              exit 0
-            fi
-          elif [[ "${EVENT_REVIEW_ID}" =~ ^[1-9][0-9]*$ ]]; then
-            reviews="$(gh api --paginate --slurp \
-              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100")"
-            if jq -e \
-              --arg approver "${AUTHORIZED_APPROVER}" \
-              --arg head "${current_head}" \
-              --argjson event_review_id "${EVENT_REVIEW_ID}" \
-              'any(.[][];
-                .user.login == $approver and
-                .state == "APPROVED" and
-                .commit_id == $head and
-                .id > $event_review_id)' \
-              <<<"${reviews}" >/dev/null; then
-              echo "A later exact-head approval already exists; leaving its activation state unchanged."
-              exit 0
-            fi
-          fi
-
-          auto_merge="$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
-            --json autoMergeRequest --jq '.autoMergeRequest != null')"
-          if [ "${auto_merge}" = "true" ]; then
-            gh pr merge "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --disable-auto
-            echo "✓ Withdrawn stale or suspended activation."
-          else
-            echo "✓ No armed activation to withdraw."
-          fi
-
       - name: Revalidate exact approval and activate
-        if: ${{ steps.event.outputs.mode == 'arm' }}
         shell: bash
         env:
           AUTHORIZED_APPROVER: ${{ inputs.authorized_approver }}
-          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          EVENT_HEAD_SHA: ${{ github.event.review.commit_id }}
-          EVENT_REVIEW_ID: ${{ github.event.review.id }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          HOLD_LABELS: ${{ inputs.hold_labels }}
           MERGE_METHOD: ${{ inputs.merge_method }}
           PERSISTENT_BRANCHES: ${{ inputs.persistent_branches }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
         run: |
           set -euo pipefail
 
@@ -188,12 +77,8 @@ jobs:
 
           [[ "${AUTHORIZED_APPROVER}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] \
             || fail "Invalid authorized approver" "identity matching must be exact" "pass one GitHub login"
-          [[ "${EVENT_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]] \
-            || fail "Approval is not bound to a full head SHA" "mutable approvals cannot authorize activation" "submit a new review on the current revision"
-          [[ "${EVENT_BASE_SHA}" =~ ^[0-9a-f]{40}$ ]] \
-            || fail "Approval event is not bound to a full base SHA" "the protected target state is ambiguous" "submit a new review against the current target"
-          [[ "${EVENT_REVIEW_ID}" =~ ^[1-9][0-9]*$ ]] \
-            || fail "Approval event has no immutable review ID" "the approval cannot be revalidated" "submit a new GitHub review"
+          [[ "${PR_NUMBER}" =~ ^[1-9][0-9]*$ ]] \
+            || fail "Invalid pull-request number" "untrusted workflow data must be treated as passive input" "inspect the approval-signal run"
           case "${MERGE_METHOD}" in
             merge|squash|rebase) ;;
             *) fail "Unsupported merge method '${MERGE_METHOD}'" "activation must use a declared GitHub merge method" "use merge, squash, or rebase" ;;
@@ -205,18 +90,15 @@ jobs:
           head_sha="$(jq -r '.head.sha' <<<"${pr}")"
           head_repo="$(jq -r '.head.repo.full_name // ""' <<<"${pr}")"
           base_branch="$(jq -r '.base.ref' <<<"${pr}")"
-          base_sha="$(jq -r '.base.sha' <<<"${pr}")"
 
           [ "${state}" = "open" ] \
             || fail "Pull request is not open" "closed proposals cannot authorize a branch change" "open a current pull request"
           [ "${draft}" = "false" ] \
             || fail "Pull request is a draft" "draft review is not activation authority" "mark it ready and submit a fresh approval"
           [ "${head_repo}" = "${GITHUB_REPOSITORY}" ] \
-            || fail "Pull request head is outside the protected repository" "fork content cannot receive a write-capable activation token" "use an authorized same-repository task branch"
-          [ "${head_sha}" = "${EVENT_HEAD_SHA}" ] \
-            || fail "Pull-request head moved after approval" "approval applies only to ${EVENT_HEAD_SHA}" "review and approve the new revision"
-          [ "${base_sha}" = "${EVENT_BASE_SHA}" ] \
-            || fail "Target branch moved after approval" "approval was granted against ${EVENT_BASE_SHA}" "revalidate the proposal and submit a fresh approval"
+            || fail "Pull request head is outside the protected repository" "fork content cannot receive activation authority" "use an authorized same-repository task branch"
+          [[ "${head_sha}" =~ ^[0-9a-f]{40}$ ]] \
+            || fail "Pull-request head is not a full SHA" "activation must bind to one immutable revision" "inspect the pull request"
 
           branch_allowed=false
           IFS=',' read -r -a branches <<<"${PERSISTENT_BRANCHES}"
@@ -231,38 +113,22 @@ jobs:
           [ "${branch_allowed}" = "true" ] \
             || fail "Target branch '${base_branch}' is not eligible" "automation may change only declared persistent branches" "use the repository's governed promotion flow"
 
-          IFS=',' read -r -a labels <<<"${HOLD_LABELS}"
-          for raw_label in "${labels[@]}"; do
-            label="${raw_label//[[:space:]]/}"
-            [ -n "${label}" ] || continue
-            if jq -e --arg label "${label}" 'any(.labels[]?; .name == $label)' <<<"${pr}" >/dev/null; then
-              fail "Activation is suspended by '${label}'" "exceptional timing requires separate authorization" "remove the hold and submit a fresh exact-revision approval"
-            fi
-          done
-
-          review="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews/${EVENT_REVIEW_ID}")"
-          jq -e \
+          reviews="$(gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews?per_page=100")"
+          latest_authority="$(jq -c \
             --arg approver "${AUTHORIZED_APPROVER}" \
+            '[.[][] | select(.user.login == $approver and .state != "COMMENTED")]
+             | if length == 0 then null else max_by(.id) end' \
+            <<<"${reviews}")"
+          jq -e \
             --arg head "${head_sha}" \
-            '.user.login == $approver and .state == "APPROVED" and .commit_id == $head' \
-            <<<"${review}" >/dev/null \
-            || fail "Exact authorized approval is no longer valid" "the review identity, state, or revision changed" "submit a fresh approval on the current revision"
-
-          current_base="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${base_branch}" --jq '.object.sha')"
-          [ "${current_base}" = "${base_sha}" ] \
-            || fail "Target branch changed during revalidation" "activation is bound to the reviewed target state" "revalidate and approve against the current target"
-
-          if [ "$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
-            --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
-            gh pr merge "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --disable-auto
-          fi
+            '.state == "APPROVED" and .commit_id == $head' \
+            <<<"${latest_authority}" >/dev/null \
+            || fail "Current exact-head human approval is absent" "only ${AUTHORIZED_APPROVER}'s latest authoritative review may activate ${head_sha}" "submit a fresh approval on the current revision"
 
           current_head="$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json headRefOid --jq '.headRefOid')"
           [ "${current_head}" = "${head_sha}" ] \
-            || fail "Pull-request head changed before activation" "the release token may act only on the approved revision" "approve the current revision"
-          current_base="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${base_branch}" --jq '.object.sha')"
-          [ "${current_base}" = "${base_sha}" ] \
-            || fail "Target branch changed before activation" "the reviewed target lease is stale" "revalidate and approve against the current target"
+            || fail "Pull-request head changed during revalidation" "activation is bound to ${head_sha}" "approve the current revision"
 
           gh pr merge "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
             --auto --match-head-commit "${head_sha}" "--${MERGE_METHOD}"
@@ -273,14 +139,14 @@ jobs:
             '(.state == "MERGED") or
              (.state == "OPEN" and .headRefOid == $head and .autoMergeRequest != null)' \
             <<<"${result}" >/dev/null \
-            || fail "GitHub did not arm or complete exact-head activation" "the protected merge request was not recorded" "inspect repository auto-merge settings and rulesets"
+            || fail "GitHub did not arm or complete exact-head activation" "the native auto-merge request was not recorded" "inspect repository auto-merge settings and rulesets"
 
           {
             echo "## Exact approval activated"
             echo
             echo "- pull request: \`#${PR_NUMBER}\`"
             echo "- approved head: \`${head_sha}\`"
-            echo "- reviewed target: \`${base_branch}@${base_sha}\`"
+            echo "- target branch: \`${base_branch}\`"
             echo "- authorized approver: \`${AUTHORIZED_APPROVER}\`"
             echo "- result: \`$(jq -r '.state' <<<"${result}")\`"
           } >> "${GITHUB_STEP_SUMMARY}"

@@ -12,42 +12,67 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 REUSABLE = ROOT / ".github" / "workflows" / "approved-automerge.yml"
 CALLER = ROOT / ".github" / "workflows" / "approved-auto-activation.yml"
+SIGNAL = ROOT / ".github" / "workflows" / "approval-signal.yml"
 
 
 class ApprovedAutoActivationContractTest(unittest.TestCase):
     def load(self, path):
         return yaml.safe_load(path.read_text(encoding="utf-8"))
 
-    def test_reusable_workflow_requires_protected_release_identity(self):
+    def test_privilege_is_separated_from_pull_request_code(self):
+        signal = self.load(SIGNAL)
+        signal_triggers = signal.get("on", signal.get(True))
+        self.assertEqual(signal_triggers["pull_request_review"]["types"], ["submitted"])
+        self.assertEqual(signal["permissions"], {})
+
+        caller = self.load(CALLER)
+        caller_triggers = caller.get("on", caller.get(True))
+        self.assertEqual(caller_triggers["workflow_run"]["workflows"], ["Approval Signal"])
+        self.assertEqual(caller_triggers["workflow_run"]["types"], ["completed"])
+
+        combined = SIGNAL.read_text(encoding="utf-8") + CALLER.read_text(encoding="utf-8")
+        self.assertNotIn("pull_request_target", combined)
+        self.assertNotIn("actions/checkout", combined)
+        self.assertNotIn("release_app_private_key", SIGNAL.read_text(encoding="utf-8"))
+
+    def test_reusable_requires_protected_release_identity(self):
         workflow = self.load(REUSABLE)
         triggers = workflow.get("on", workflow.get(True))
         call = triggers["workflow_call"]
-        self.assertTrue(call["inputs"]["release_app_id"]["required"])
+        self.assertTrue(call["inputs"]["release_app_client_id"]["required"])
+        self.assertTrue(call["inputs"]["pull_request_number"]["required"])
         self.assertTrue(call["secrets"]["release_app_private_key"]["required"])
 
         text = REUSABLE.read_text(encoding="utf-8")
         self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", text)
+        self.assertIn("client-id: ${{ inputs.release_app_client_id }}", text)
+        self.assertNotIn("app-id:", text)
         self.assertIn("permission-contents: write", text)
         self.assertIn("permission-pull-requests: write", text)
-        self.assertIn(
-            "github.event.pull_request.head.repo.full_name == github.repository",
-            workflow["jobs"]["activation"]["if"],
-        )
+        self.assertNotIn("owner:", text)
+        self.assertNotIn("repositories:", text)
         self.assertNotIn("--admin", text)
+        self.assertNotIn("actions/checkout", text)
 
-    def test_approval_is_bound_to_human_head_base_and_review(self):
+    def test_privileged_run_revalidates_event_and_current_exact_approval(self):
+        workflow = self.load(REUSABLE)
+        job_if = workflow["jobs"]["activation"]["if"]
+        for required in (
+            "github.event_name == 'workflow_run'",
+            "workflow_run.event == 'pull_request_review'",
+            "workflow_run.conclusion == 'success'",
+            "workflow_run.head_repository.full_name == github.repository",
+        ):
+            self.assertIn(required, job_if)
+
         text = REUSABLE.read_text(encoding="utf-8")
         for required in (
-            "github.event.review.user.login",
-            "github.event.review.commit_id",
-            "github.event.pull_request.base.sha",
-            "github.event.review.id",
             ".head.repo.full_name",
             ".draft",
-            "reviews/${EVENT_REVIEW_ID}",
+            "reviews?per_page=100",
+            "max_by(.id)",
             '.state == "APPROVED"',
             ".commit_id == $head",
-            "git/ref/heads/${base_branch}",
             "--match-head-commit",
         ):
             self.assertIn(required, text)
@@ -58,42 +83,23 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         branch_input = triggers["workflow_call"]["inputs"]["persistent_branches"]
         self.assertTrue(branch_input["required"])
         text = REUSABLE.read_text(encoding="utf-8")
-        self.assertIn('branch_allowed=false', text)
-        self.assertIn('Target branch \'${base_branch}\' is not eligible', text)
+        self.assertIn("branch_allowed=false", text)
+        self.assertIn("Target branch '${base_branch}' is not eligible", text)
 
-    def test_exception_labels_and_changed_authority_disarm(self):
-        workflow = self.load(REUSABLE)
-        triggers = workflow.get("on", workflow.get(True))
-        self.assertEqual(
-            triggers["workflow_call"]["inputs"]["hold_labels"]["default"],
-            "hold-activation,no-merge",
-        )
-        text = REUSABLE.read_text(encoding="utf-8")
-        for required in (
-            "synchronize|converted_to_draft",
-            "activation hold label was applied",
-            "--disable-auto",
-            "submit a fresh exact-revision approval",
-        ):
-            self.assertIn(required, text)
-
-    def test_control_plane_caller_covers_approval_and_revocation_events(self):
+    def test_caller_passes_passive_pr_number_and_control_plane_branch(self):
         workflow = self.load(CALLER)
-        triggers = workflow.get("on", workflow.get(True))
-        self.assertEqual(triggers["pull_request_review"]["types"], ["submitted", "dismissed"])
-        self.assertEqual(
-            triggers["pull_request_target"]["types"],
-            ["synchronize", "converted_to_draft", "labeled"],
-        )
         job = workflow["jobs"]["activate"]
         self.assertEqual(job["uses"], "./.github/workflows/approved-automerge.yml")
         self.assertEqual(job["with"]["persistent_branches"], "main")
         self.assertEqual(job["with"]["authorized_approver"], "leosmigel")
+        self.assertIn(
+            "github.event.workflow_run.pull_requests[0].number",
+            job["with"]["pull_request_number"],
+        )
 
 
 class ApprovedAutoActivationBehaviorTest(unittest.TestCase):
     HEAD = "a" * 40
-    BASE = "b" * 40
 
     def setUp(self):
         workflow = yaml.safe_load(REUSABLE.read_text(encoding="utf-8"))
@@ -106,33 +112,36 @@ class ApprovedAutoActivationBehaviorTest(unittest.TestCase):
     def run_activation(
         self,
         *,
-        event_head=None,
-        event_base=None,
         current_head=None,
-        current_base=None,
-        review_state="APPROVED",
-        labels=None,
+        approved_head=None,
+        latest_state="APPROVED",
         head_repo="ForgingAlpha/example",
         draft=False,
+        base_branch="dev",
     ):
-        event_head = event_head or self.HEAD
-        event_base = event_base or self.BASE
         current_head = current_head or self.HEAD
-        current_base = current_base or self.BASE
-        labels = labels or []
+        approved_head = approved_head or self.HEAD
 
         pr = {
             "state": "open",
             "draft": draft,
             "head": {"sha": current_head, "repo": {"full_name": head_repo}},
-            "base": {"ref": "dev", "sha": current_base},
-            "labels": [{"name": label} for label in labels],
+            "base": {"ref": base_branch, "sha": "b" * 40},
         }
-        review = {
-            "user": {"login": "leosmigel"},
-            "state": review_state,
-            "commit_id": current_head,
-        }
+        reviews = [[
+            {
+                "id": 40,
+                "user": {"login": "leosmigel"},
+                "state": "COMMENTED",
+                "commit_id": approved_head,
+            },
+            {
+                "id": 44,
+                "user": {"login": "leosmigel"},
+                "state": latest_state,
+                "commit_id": approved_head,
+            },
+        ]]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             fake_gh = Path(temp_dir) / "gh"
@@ -145,25 +154,20 @@ import os
 import sys
 
 args = sys.argv[1:]
-calls = os.environ["FAKE_GH_CALLS"]
-with open(calls, "a", encoding="utf-8") as handle:
+with open(os.environ["FAKE_GH_CALLS"], "a", encoding="utf-8") as handle:
     handle.write(" ".join(args) + "\\n")
 
 if args[:1] == ["api"]:
-    endpoint = args[1]
-    if "/pulls/7/reviews/44" in endpoint:
-        print(os.environ["FAKE_REVIEW_JSON"])
+    endpoint = args[-1]
+    if "/pulls/7/reviews?per_page=100" in endpoint:
+        print(os.environ["FAKE_REVIEWS_JSON"])
     elif "/pulls/7" in endpoint:
         print(os.environ["FAKE_PR_JSON"])
-    elif "/git/ref/heads/dev" in endpoint:
-        print(os.environ["FAKE_CURRENT_BASE"])
     else:
         raise SystemExit(f"unexpected api call: {args}")
 elif args[:2] == ["pr", "view"]:
     joined = " ".join(args)
-    if "--json autoMergeRequest" in joined:
-        print("false")
-    elif "--json headRefOid" in joined:
+    if "--json headRefOid" in joined:
         print(os.environ["FAKE_CURRENT_HEAD"])
     elif "--json state,headRefOid,autoMergeRequest" in joined:
         print(json.dumps({
@@ -187,18 +191,13 @@ else:
             env.update(
                 {
                     "AUTHORIZED_APPROVER": "leosmigel",
-                    "EVENT_BASE_SHA": event_base,
-                    "EVENT_HEAD_SHA": event_head,
-                    "EVENT_REVIEW_ID": "44",
-                    "FAKE_CURRENT_BASE": current_base,
                     "FAKE_CURRENT_HEAD": current_head,
                     "FAKE_GH_CALLS": str(calls),
                     "FAKE_PR_JSON": json.dumps(pr),
-                    "FAKE_REVIEW_JSON": json.dumps(review),
+                    "FAKE_REVIEWS_JSON": json.dumps(reviews),
                     "GH_TOKEN": "test-token",
                     "GITHUB_REPOSITORY": "ForgingAlpha/example",
                     "GITHUB_STEP_SUMMARY": str(summary),
-                    "HOLD_LABELS": "hold-activation,no-merge",
                     "MERGE_METHOD": "merge",
                     "PATH": f"{temp_dir}:{env['PATH']}",
                     "PERSISTENT_BRANCHES": "dev,main",
@@ -215,7 +214,7 @@ else:
             call_text = calls.read_text(encoding="utf-8") if calls.exists() else ""
             return result, call_text
 
-    def test_valid_exact_approval_arms_without_admin_bypass(self):
+    def test_valid_exact_approval_arms_native_auto_merge_without_bypass(self):
         result, calls = self.run_activation()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("pr merge 7", calls)
@@ -226,26 +225,25 @@ else:
     def test_changed_head_fails_before_merge(self):
         result, calls = self.run_activation(current_head="c" * 40)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("head moved after approval", result.stderr)
+        self.assertIn("exact-head human approval is absent", result.stderr)
         self.assertNotIn("pr merge", calls)
 
-    def test_changed_target_fails_before_merge(self):
-        result, calls = self.run_activation(current_base="d" * 40)
+    def test_latest_change_request_fails_before_merge(self):
+        result, calls = self.run_activation(latest_state="CHANGES_REQUESTED")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Target branch moved after approval", result.stderr)
+        self.assertIn("exact-head human approval is absent", result.stderr)
         self.assertNotIn("pr merge", calls)
 
-    def test_hold_requires_fresh_approval(self):
-        result, calls = self.run_activation(labels=["hold-activation"])
+    def test_draft_fails_before_merge(self):
+        result, calls = self.run_activation(draft=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Activation is suspended", result.stderr)
-        self.assertIn("fresh exact-revision approval", result.stderr)
+        self.assertIn("Pull request is a draft", result.stderr)
         self.assertNotIn("pr merge", calls)
 
-    def test_dismissed_review_fails_before_merge(self):
-        result, calls = self.run_activation(review_state="DISMISSED")
+    def test_undeclared_branch_fails_before_merge(self):
+        result, calls = self.run_activation(base_branch="staging")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("approval is no longer valid", result.stderr)
+        self.assertIn("not eligible", result.stderr)
         self.assertNotIn("pr merge", calls)
 
 
