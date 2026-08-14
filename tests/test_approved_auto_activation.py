@@ -150,6 +150,20 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertNotIn("pull-request-number", activation["with"])
         self.assertNotIn("pull_requests[0]", CALLER.read_text(encoding="utf-8"))
 
+    def test_pre_authority_path_is_exactly_read_only(self):
+        caller = self.load(CALLER)
+        reusable = self.load(REUSABLE)
+        self.assertEqual(caller["permissions"], {"pull-requests": "read"})
+        self.assertEqual(reusable["permissions"], {"pull-requests": "read"})
+
+        steps = reusable["jobs"]["activation"]["steps"]
+        resolver = next(
+            step for step in steps
+            if step["name"] == "Resolve unique open pull request"
+        )
+        self.assertEqual(resolver["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertNotIn("permissions", resolver)
+
 
 class PullRequestResolverBehaviorTest(unittest.TestCase):
     HEAD = "a" * 40
