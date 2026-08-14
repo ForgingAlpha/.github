@@ -82,8 +82,13 @@ required checks, merge-base freshness, and branch-update restrictions.
 The environment grants secret access without recording a deployment because
 activation is a merge-control operation, not an environment deployment.
 
-Roll out `approval-signal.yml` and `approved-auto-activation.yml` to each
-consumer with that repository's complete persistent-branch list. The first
+Roll out `approval-signal.yml` and a repository-owned
+`approved-auto-activation.yml` caller to each consumer with that repository's
+complete persistent-branch list. The consumer caller must invoke the central
+`ForgingAlpha/.github/.github/workflows/approved-automerge.yml@v1` reusable;
+only the `.github` control repository uses the local
+`./.github/workflows/approved-automerge.yml` path during bootstrap. Do not copy
+the reusable implementation into consumers. The first
 workflow pull request is a manual bootstrap because its default branch does not
 yet contain the privileged `workflow_run` caller. After it merges, use a
 harmless same-repository probe to prove that an unchanged approved revision is
