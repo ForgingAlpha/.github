@@ -283,6 +283,7 @@ class ApprovedAutoActivationBehaviorTest(unittest.TestCase):
         head_repo="ForgingAlpha/example",
         draft=False,
         base_branch="dev",
+        merge_rejected=False,
     ):
         current_head = current_head or self.HEAD
         approved_head = approved_head or self.HEAD
@@ -334,17 +335,18 @@ elif args[:2] == ["pr", "view"]:
     joined = " ".join(args)
     if "--json headRefOid" in joined:
         print(os.environ["FAKE_CURRENT_HEAD"])
-    elif "--json state,headRefOid,autoMergeRequest" in joined:
+    elif "--json state,headRefOid" in joined:
         print(json.dumps({
-            "state": "OPEN",
+            "state": "MERGED",
             "headRefOid": os.environ["FAKE_CURRENT_HEAD"],
-            "autoMergeRequest": {"mergeMethod": "MERGE"},
         }))
     else:
         raise SystemExit(f"unexpected pr view: {args}")
 elif args[:2] == ["pr", "merge"]:
     if "--admin" in args:
         raise SystemExit("admin bypass forbidden")
+    if os.environ["FAKE_MERGE_REJECTED"] == "true":
+        raise SystemExit("protected branch rules are not satisfied")
 else:
     raise SystemExit(f"unexpected gh call: {args}")
 """,
@@ -359,6 +361,7 @@ else:
                     "APPROVAL_HEAD_SHA": self.HEAD,
                     "FAKE_CURRENT_HEAD": current_head,
                     "FAKE_GH_CALLS": str(calls),
+                    "FAKE_MERGE_REJECTED": str(merge_rejected).lower(),
                     "FAKE_PR_JSON": json.dumps(pr),
                     "FAKE_REVIEWS_JSON": json.dumps(reviews),
                     "GH_TOKEN": "test-token",
@@ -380,13 +383,20 @@ else:
             call_text = calls.read_text(encoding="utf-8") if calls.exists() else ""
             return result, call_text
 
-    def test_valid_exact_approval_arms_native_auto_merge_without_bypass(self):
+    def test_valid_exact_approval_merges_directly_without_admin_bypass(self):
         result, calls = self.run_activation()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("pr merge 7", calls)
-        self.assertIn("--auto", calls)
         self.assertIn(f"--match-head-commit {self.HEAD}", calls)
+        self.assertIn("--merge", calls)
+        self.assertNotIn("--auto", calls)
         self.assertNotIn("--admin", calls)
+
+    def test_github_protection_rejection_fails_closed(self):
+        result, calls = self.run_activation(merge_rejected=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("protected branch rules are not satisfied", result.stderr)
+        self.assertIn("pr merge 7", calls)
 
     def test_changed_head_fails_before_merge(self):
         result, calls = self.run_activation(current_head="c" * 40)
