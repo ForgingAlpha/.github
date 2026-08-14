@@ -1,5 +1,5 @@
 name: Approved Auto-activation
-description: Revalidate one exact human-approved revision and arm protected native auto-merge.
+description: Revalidate and merge one exact human-approved revision through the protected release App.
 
 inputs:
   authorized-approver:
@@ -153,15 +153,14 @@ runs:
           || fail "Pull-request head changed during revalidation" "activation is bound to ${head_sha}" "approve the current revision"
 
         gh pr merge "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
-          --auto --match-head-commit "${head_sha}" "--${MERGE_METHOD}"
+          --match-head-commit "${head_sha}" "--${MERGE_METHOD}"
 
         result="$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
-          --json state,headRefOid,autoMergeRequest)"
+          --json state,headRefOid)"
         jq -e --arg head "${head_sha}" \
-          '(.state == "MERGED") or
-           (.state == "OPEN" and .headRefOid == $head and .autoMergeRequest != null)' \
+          '.state == "MERGED" and .headRefOid == $head' \
           <<<"${result}" >/dev/null \
-          || fail "GitHub did not arm or complete exact-head activation" "the native auto-merge request was not recorded" "inspect repository auto-merge settings and rulesets"
+          || fail "GitHub did not complete exact-head activation" "the protected merge did not record the approved head" "inspect repository rulesets and the release App authority"
 
         {
           echo "## Exact approval activated"
