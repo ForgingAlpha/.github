@@ -35,9 +35,13 @@ Routine approval activation uses a repository-owned `workflow_run` job. The
 local job statically owns the default-branch-only `release-automation`
 environment and invokes the centrally versioned `approved-automerge@v1`
 composite. The composite resolves one exact open revision before minting the
-short-lived release App token, then revalidates the current human approval and
-head before calling GitHub's synchronous REST pull-request merge endpoint as
-that App, with the approved head SHA and governed merge method in the request.
+short-lived release App token. It validates GitHub's workflow-run pull-request
+pointer against the live open same-repository pull request and exact signal
+head; when GitHub supplies no pointer, it requires a unique live commit
+association instead. Neither pointer is authorization. The composite then
+revalidates the current human approval and head before calling GitHub's
+synchronous REST pull-request merge endpoint as that App, with the approved
+head SHA and governed merge method in the request.
 An update-only ruleset authorizes the release App to update the persistent
 branch through pull requests only, while independent protection rulesets give
 it no bypass from review, code-owner, latest-push, thread, CI, CodeQL, or
