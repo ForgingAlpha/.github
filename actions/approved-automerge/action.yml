@@ -31,6 +31,7 @@ runs:
       shell: bash
       env:
         APPROVAL_HEAD_SHA: ${{ inputs.approval-head-sha }}
+        APPROVAL_PULL_REQUESTS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
@@ -45,24 +46,56 @@ runs:
         [[ "${APPROVAL_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]] \
           || fail "Invalid approval-signal head" "GitHub event data must identify one full commit SHA" "inspect the approval-signal run"
 
-        associated="$(gh api --paginate --slurp \
-          "repos/${GITHUB_REPOSITORY}/commits/${APPROVAL_HEAD_SHA}/pulls?per_page=100")"
-        candidates="$(jq -c \
-          --arg head "${APPROVAL_HEAD_SHA}" \
-          --arg repo "${GITHUB_REPOSITORY}" \
-          '[.[][] | select(
-            .state == "open" and
-            .head.sha == $head and
-            .head.repo.full_name == $repo
-          )]' \
-          <<<"${associated}")"
-        candidate_count="$(jq -r 'length' <<<"${candidates}")"
-        [ "${candidate_count}" = "1" ] \
-          || fail "Approval signal does not identify one open pull request" "found ${candidate_count} same-repository open pull requests at ${APPROVAL_HEAD_SHA}" "close duplicate proposals or submit a fresh approval on one current revision"
+        raw_pull_requests="${APPROVAL_PULL_REQUESTS:-}"
+        if [ -z "${raw_pull_requests//[[:space:]]/}" ]; then
+          event_pull_requests='[]'
+        else
+          event_pull_requests="$(jq -ce \
+            'if . == null then [] elif type == "array" then . else error("not an array") end' \
+            <<<"${raw_pull_requests}")" \
+            || fail "Malformed approval-signal pull-request pointers" "GitHub workflow-run event data must be an array" "inspect the approval-signal run"
+        fi
 
-        pr_number="$(jq -r '.[0].number' <<<"${candidates}")"
+        event_candidate_count="$(jq -r 'length' <<<"${event_pull_requests}")"
+        [ "${event_candidate_count}" -le 1 ] \
+          || fail "Approval signal identifies multiple pull requests" "GitHub workflow-run event data contains ${event_candidate_count} pull-request pointers" "submit a fresh approval on one unambiguous revision"
+
+        if [ "${event_candidate_count}" = "1" ]; then
+          jq -e '.[0].number | type == "number" and . > 0 and floor == .' \
+            <<<"${event_pull_requests}" >/dev/null \
+            || fail "Approval-signal pull-request number is invalid" "GitHub workflow-run event data must identify one positive integer" "inspect the approval-signal run"
+          pr_number="$(jq -r '.[0].number' <<<"${event_pull_requests}")"
+          live_pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+          jq -e \
+            --argjson number "${pr_number}" \
+            --arg head "${APPROVAL_HEAD_SHA}" \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            '.number == $number and
+             .state == "open" and
+             .head.sha == $head and
+             .head.repo.full_name == $repo' \
+            <<<"${live_pr}" >/dev/null \
+            || fail "Approval-signal pull-request pointer is stale or invalid" "the live pull request must be open, same-repository, and at ${APPROVAL_HEAD_SHA}" "submit a fresh approval on the current revision"
+        else
+          associated="$(gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/commits/${APPROVAL_HEAD_SHA}/pulls?per_page=100")"
+          candidates="$(jq -c \
+            --arg head "${APPROVAL_HEAD_SHA}" \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            '[.[][] | select(
+              .state == "open" and
+              .head.sha == $head and
+              .head.repo.full_name == $repo
+            )]' \
+            <<<"${associated}")"
+          candidate_count="$(jq -r 'length' <<<"${candidates}")"
+          [ "${candidate_count}" = "1" ] \
+            || fail "Approval signal does not identify one open pull request" "found ${candidate_count} same-repository open pull requests at ${APPROVAL_HEAD_SHA}" "close duplicate proposals or submit a fresh approval on one current revision"
+          pr_number="$(jq -r '.[0].number' <<<"${candidates}")"
+        fi
+
         [[ "${pr_number}" =~ ^[1-9][0-9]*$ ]] \
-          || fail "Resolved pull-request number is invalid" "GitHub association data must remain passive input" "inspect the approval-signal run"
+          || fail "Resolved pull-request number is invalid" "GitHub event and association data must remain passive input" "inspect the approval-signal run"
         echo "pull_request_number=${pr_number}" >> "${GITHUB_OUTPUT}"
 
     - name: Mint protected release token

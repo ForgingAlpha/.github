@@ -77,6 +77,10 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
             if step["name"] == "Resolve unique open pull request"
         )
         self.assertEqual(resolver["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertEqual(
+            resolver["env"]["APPROVAL_PULL_REQUESTS"],
+            "${{ toJSON(github.event.workflow_run.pull_requests) }}",
+        )
 
         text = ACTION.read_text(encoding="utf-8")
         self.assertIn("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", text)
@@ -118,6 +122,8 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         for required in (
             ".head.repo.full_name",
             ".draft",
+            "APPROVAL_PULL_REQUESTS",
+            'repos/${GITHUB_REPOSITORY}/pulls/${pr_number}',
             "commits/${APPROVAL_HEAD_SHA}/pulls?per_page=100",
             'candidate_count}" = "1"',
             "reviews?per_page=100",
@@ -190,7 +196,14 @@ class PullRequestResolverBehaviorTest(unittest.TestCase):
             },
         }
 
-    def run_resolver(self, pages, *, approval_head=None):
+    def run_resolver(
+        self,
+        pages,
+        *,
+        approval_head=None,
+        approval_pull_requests="[]",
+        direct_pr=None,
+    ):
         with tempfile.TemporaryDirectory() as temp_dir:
             fake_gh = Path(temp_dir) / "gh"
             calls = Path(temp_dir) / "calls"
@@ -204,8 +217,14 @@ args = sys.argv[1:]
 with open(os.environ["FAKE_GH_CALLS"], "a", encoding="utf-8") as handle:
     handle.write(" ".join(args) + "\\n")
 
-if args[:1] == ["api"] and "/commits/" in args[-1] and "/pulls?per_page=100" in args[-1]:
-    print(os.environ["FAKE_ASSOCIATED_PRS_JSON"])
+if args[:1] == ["api"]:
+    endpoint = next((arg for arg in args if arg.startswith("repos/")), "")
+    if "/commits/" in endpoint and "/pulls?per_page=100" in endpoint:
+        print(os.environ["FAKE_ASSOCIATED_PRS_JSON"])
+    elif endpoint.endswith("/pulls/7"):
+        print(os.environ["FAKE_DIRECT_PR_JSON"])
+    else:
+        raise SystemExit(f"unexpected api call: {args}")
 else:
     raise SystemExit(f"unexpected gh call: {args}")
 """,
@@ -217,7 +236,11 @@ else:
             env.update(
                 {
                     "APPROVAL_HEAD_SHA": approval_head or self.HEAD,
+                    "APPROVAL_PULL_REQUESTS": approval_pull_requests,
                     "FAKE_ASSOCIATED_PRS_JSON": json.dumps(pages),
+                    "FAKE_DIRECT_PR_JSON": json.dumps(
+                        direct_pr or self.candidate()
+                    ),
                     "FAKE_GH_CALLS": str(calls),
                     "GH_TOKEN": "read-only-test-token",
                     "GITHUB_OUTPUT": str(output),
@@ -236,13 +259,72 @@ else:
             output_text = output.read_text(encoding="utf-8") if output.exists() else ""
             return result, call_text, output_text
 
-    def test_unique_open_same_repo_exact_head_resolves(self):
-        result, calls, output = self.run_resolver([[self.candidate()]])
+    def test_event_pointer_resolves_default_branch_pr_without_association_lookup(self):
+        result, calls, output = self.run_resolver(
+            [[]],
+            approval_pull_requests=json.dumps([{"number": 7}]),
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(f"commits/{self.HEAD}/pulls?per_page=100", calls)
+        self.assertIn("repos/ForgingAlpha/example/pulls/7", calls)
+        self.assertNotIn("/commits/", calls)
         self.assertEqual(output.strip(), "pull_request_number=7")
 
-    def test_resolver_fails_closed_for_zero_or_multiple_candidates(self):
+    def test_empty_event_pointer_forms_use_unique_association_fallback(self):
+        for name, payload in {
+            "empty": "",
+            "null": "null",
+            "array": "[]",
+        }.items():
+            with self.subTest(name=name):
+                result, calls, output = self.run_resolver(
+                    [[self.candidate()]],
+                    approval_pull_requests=payload,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"commits/{self.HEAD}/pulls?per_page=100", calls)
+                self.assertEqual(output.strip(), "pull_request_number=7")
+
+    def test_event_pointer_fails_closed_for_ambiguous_or_malformed_data(self):
+        cases = {
+            "multiple": json.dumps([{"number": 7}, {"number": 8}]),
+            "object": json.dumps({"number": 7}),
+            "malformed": "not-json",
+            "missing number": json.dumps([{}]),
+            "string number": json.dumps([{"number": "7"}]),
+            "zero": json.dumps([{"number": 0}]),
+            "fraction": json.dumps([{"number": 7.5}]),
+        }
+        for name, payload in cases.items():
+            with self.subTest(name=name):
+                result, calls, output = self.run_resolver(
+                    [[]],
+                    approval_pull_requests=payload,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(calls, "")
+                self.assertEqual(output, "")
+
+    def test_event_pointer_live_pr_must_match_exact_open_same_repo_revision(self):
+        cases = {
+            "wrong number": self.candidate(number=8),
+            "closed": self.candidate(state="closed"),
+            "fork": self.candidate(repo="Other/example"),
+            "head mismatch": self.candidate(head="b" * 40),
+        }
+        for name, direct_pr in cases.items():
+            with self.subTest(name=name):
+                result, calls, output = self.run_resolver(
+                    [[]],
+                    approval_pull_requests=json.dumps([{"number": 7}]),
+                    direct_pr=direct_pr,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("pointer is stale or invalid", result.stderr)
+                self.assertIn("repos/ForgingAlpha/example/pulls/7", calls)
+                self.assertNotIn("/commits/", calls)
+                self.assertEqual(output, "")
+
+    def test_association_fallback_fails_closed_for_zero_or_multiple_candidates(self):
         cases = {
             "zero": [[]],
             "multiple": [[self.candidate(), self.candidate(number=8)]],
@@ -252,22 +334,32 @@ else:
         }
         for name, pages in cases.items():
             with self.subTest(name=name):
-                result, _, output = self.run_resolver(pages)
+                result, _, output = self.run_resolver(
+                    pages,
+                    approval_pull_requests="[]",
+                )
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("does not identify one open pull request", result.stderr)
                 self.assertEqual(output, "")
 
-    def test_paginated_results_are_flattened_before_unique_match(self):
+    def test_association_fallback_flattens_paginated_results(self):
         pages = [
             [self.candidate(number=5, state="closed")],
             [self.candidate(number=7)],
         ]
-        result, _, output = self.run_resolver(pages)
+        result, _, output = self.run_resolver(
+            pages,
+            approval_pull_requests="[]",
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(output.strip(), "pull_request_number=7")
 
     def test_invalid_signal_head_fails_before_api_call(self):
-        result, calls, output = self.run_resolver([[]], approval_head="not-a-sha")
+        result, calls, output = self.run_resolver(
+            [[]],
+            approval_head="not-a-sha",
+            approval_pull_requests=json.dumps([{"number": 7}]),
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Invalid approval-signal head", result.stderr)
         self.assertEqual(calls, "")

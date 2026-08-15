@@ -82,10 +82,13 @@ from requesting the key even for a same-repository task branch, and preserves
 one shared activation implementation without copying it into consumers.
 The protected workflow treats the approval run's head SHA as GitHub-authentic
 event data, not as authorization. Before minting a write-capable token, it uses
-that SHA to resolve exactly one same-repository open pull request and fails
-closed on zero or multiple matches. It then re-queries GitHub and requires the authorized human's latest
-authoritative review to be `APPROVED` on the current full head SHA before it
-calls GitHub's synchronous REST pull-request merge endpoint as the release App.
+GitHub's workflow-run pull-request pointer first, validates that pointer against
+the live open same-repository pull request and exact signal head, and fails
+closed on malformed or multiple pointers. When GitHub supplies no pointer, it
+falls back to requiring one unique live commit association. Neither resolution
+path is authorization. It then re-queries GitHub and requires the authorized
+human's latest authoritative review to be `APPROVED` on the current full head
+SHA before it calls GitHub's synchronous REST pull-request merge endpoint as the release App.
 The request supplies that exact SHA and the governed merge method; it uses
 neither deferred auto-merge nor an administrative bypass. GitHub atomically
 rejects it if an independent review, check, scanning, merge-base, or ref rule
