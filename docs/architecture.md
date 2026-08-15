@@ -143,18 +143,26 @@ failed, cancelled, or skipped.
 
 ## Runtime And Cache Model
 
-`mise.toml` declares supported runtime families and `mise.lock` records exact
-resolutions. CI installs with a SHA-pinned mise Action, an exact mise version,
-and locked mode. Workflow YAML does not duplicate language runtime versions.
+Current enforcement is transitional: each consumer repository's exact
+`mise.toml` and integrity-bearing `mise.lock` are the executable source used by
+local development and CI, and runtime changes require a governed exact-head
+repository pull request. There is not yet a central runtime-profile catalog,
+assignment validator, or projection writer, so central version enforcement is
+not yet active.
 
-The Renovate plan's Phase 5 is the target runtime-update flow. Renovate proposes
-normal runtime changes; a credential-free resolver runs the exact trusted mise
-version in safe mode and emits the refreshed lock. A separate metadata-only
-writer verifies the Renovate identity, exact pull-request head, and allowlisted
-`mise.toml`/`mise.lock` diff before committing the lock result. The writer uses
-a unique Git author that the central preset explicitly recognizes through
-`gitIgnoredAuthors`; every Renovate rebase triggers an idempotent refresh. The
-resulting head reruns complete locked-mode CI.
+The Renovate plan's runtime phase establishes the target model as one coherent
+cutover. `.github` will own a versioned, machine-verifiable profile catalog with
+approved compatible tuples, repository assignments, integrity requirements,
+rollout state, and exact time-bounded exceptions. Each consumer will continue
+to commit `mise.toml` and `mise.lock` as the reproducible local projection of
+its assignment. Shared CI will validate that projection before installing only
+locked bytes; workflow YAML will not duplicate language runtime versions.
+
+Normal runtime changes will originate in the central profile and produce exact
+consumer projections through constrained automation. The catalog, assignment
+schema, validator, resolver, writer, canary, and rollout gate must land and be
+proven together. Publishing an unenforced catalog would create a misleading
+second source of truth and is therefore prohibited.
 
 Runtime, dependency/build, and Dialyzer caches are keyed by operating system,
 architecture, exact resolved runtimes, dependency locks, and relevant build
@@ -174,10 +182,12 @@ repository never has two owners or a bot-less interval.
 
 At target state, the organization Renovate preset lives in `.github`;
 repository-local Renovate configuration extends it and selects the repository
-class. Native managers own package manifests, lockfiles, mise runtimes,
-external Actions, and active image references. Narrow annotated custom managers
-own irreducible version literals. Exact ranges and digests remain pinned.
-Renovate vulnerability remediation is disabled.
+class. Native managers own ordinary package manifests and locks, external
+Actions, and active non-runtime image references. The central runtime-profile
+catalog owns governed runtime version declarations; constrained projection
+automation owns the derived consumer mise declaration and lock. Narrow
+annotated custom managers own irreducible version literals. Exact ranges and
+digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
 after three, seven, and thirty days respectively, then auto-merge through a
