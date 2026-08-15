@@ -29,6 +29,12 @@ runs:
         echo "  WHY: dependency review compares dependency changes introduced by pull requests."
         echo "  HOW: run this action from a pull_request workflow to enforce dependency review."
 
+    - name: Load central commercial license policy
+      id: license-policy
+      if: ${{ github.event_name == 'pull_request' }}
+      shell: bash
+      run: python3 "$GITHUB_ACTION_PATH/scripts/license_policy.py" >> "$GITHUB_OUTPUT"
+
     - name: Dependency Review
       id: review
       if: ${{ github.event_name == 'pull_request' }}
@@ -36,11 +42,12 @@ runs:
       with:
         fail-on-severity: low
         fail-on-scopes: runtime,development,unknown
-        allow-licenses: 0BSD,Apache-2.0,BSD-2-Clause,BSD-3-Clause,BlueOak-1.0.0,BSL-1.0,CC0-1.0,ISC,MIT,MIT-0,PostgreSQL,Python-2.0,Unicode-3.0,Unicode-DFS-2016,Unlicense,Zlib
+        allow-licenses: ${{ steps.license-policy.outputs.allow_licenses }}
 
     - name: Reject missing license evidence
       if: ${{ github.event_name == 'pull_request' && always() }}
       shell: bash
       env:
         DEPENDENCY_CHANGES: ${{ steps.review.outputs.dependency-changes }}
+        GITHUB_LICENSE_TOKEN: ${{ github.token }}
       run: python3 "$GITHUB_ACTION_PATH/scripts/validate_license_evidence.py"

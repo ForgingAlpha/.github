@@ -103,9 +103,18 @@ there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
 low-or-higher vulnerabilities and licenses outside a centrally owned permissive
 commercial-use SPDX allowlist. A following fail-closed check inspects the
-official dependency-change output and rejects introduced or updated packages
-whose license is null or empty. Package-specific license exceptions require a
-reviewed control-plane policy change rather than a consumer input.
+official dependency-change output. Recognized licenses need no additional
+network lookup. Null or empty licenses still fail except for GitHub Actions
+whose package URL names an exact 40-character commit SHA and whose canonical
+GitHub source identity matches that package URL. For only that constrained
+case, the checker constructs GitHub's repository-license API endpoint itself,
+queries the license at the exact immutable SHA with the caller's read-only
+GitHub token, and accepts only an SPDX identifier from the same central
+allowlist. It never follows a dependency-supplied URL. Lookups have a fixed
+timeout, are deduplicated, and are capped at 20 unique revisions per pull
+request; every identity, API, schema, or policy error fails closed.
+Package-specific license exceptions require a reviewed control-plane policy
+change rather than a consumer input.
 Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.
 
