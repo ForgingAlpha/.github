@@ -176,3 +176,17 @@ in order.
   runtime, and control-plane automation only after the plan's corresponding
   go/no-go evidence passes.
 - Do not enroll obsolete deployment integrations in Renovate; remove them.
+
+### Runtime Profile Cutover
+
+- Until the profile catalog, repository assignments, projection validator,
+  constrained writer, canary, and rollout gate are active together, treat each
+  repository's exact `mise.toml`/`mise.lock` as the enforced executable source;
+  do not claim central runtime enforcement.
+- Introduce the central profile and consumer-projection machinery as one
+  governed canary change. Do not publish an unenforced catalog or hand-edit a
+  consumer version as an independent authority.
+- Require every impacted consumer to validate the same exact candidate profile
+  and its locked projection before declaring the runtime rollout complete.
+- Record any temporary deviation centrally with exact scope, accountable owner,
+  approval revision, and expiration.

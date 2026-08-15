@@ -84,8 +84,10 @@ Acceptance:
    record. Remove only integrations proven unreferenced by the current release
    path; if none qualify, record that explicitly.
 2. Remove floating `latest` references.
-3. Make repository `mise.toml`/`mise.lock` the runtime source of truth and
-   eliminate duplicated runtime defaults.
+3. Inventory every runtime tuple and duplicated runtime default, designate
+   `.github` as the target profile authority, and keep each repository's exact
+   `mise.toml`/`mise.lock` as the enforced source until the coherent runtime
+   cutover in Phase 5.
 4. Move command-line tools into exact manifests or a single integrity-bearing
    catalog when practical.
 5. Single-source versions that are currently duplicated between implementation
@@ -97,6 +99,9 @@ Acceptance:
 Acceptance:
 
 - every remaining version literal has one authoritative declaration;
+- every participating repository's current runtime tuple and intended profile
+  assignment are inventoried, and any temporary deviation records a reason,
+  owner, and expiration;
 - no test asserts a separately copied version string;
 - the inventory names every active integration and owner, explicitly records
   when no other inactive integration exists, and gives inactive integrations no
@@ -147,7 +152,11 @@ Create a versioned preset in `.github` with:
 - narrowly documented custom managers.
 
 Each repository adds a thin configuration extending the preset. Code
-repositories target `dev`; `.github` and `alphaapps-docs` target `main`.
+repositories target `dev`; `.github` and `alphaapps-docs` target `main`. The
+catalog schema, repository assignments, projection validator, resolver, writer,
+canary, and rollout gate land together in Phase 5. Before that coherent cutover,
+repository mise locks remain the enforced executable source; an unenforced
+catalog is not published as if central enforcement were active.
 
 Acceptance:
 
@@ -179,23 +188,29 @@ Acceptance:
 
 ## Phase 5 - Automate Safe Lock Refresh
 
-For Renovate runtime changes:
+For centrally governed runtime changes:
 
-1. trigger only for an allowlisted Renovate-authored runtime pull request;
-2. run the exact trusted mise version without write credentials and in safe
+1. introduce the `.github` profile catalog, repository assignments, validation,
+   and fan-out machinery together, then accept version-tuple changes only
+   through that central profile;
+2. create synchronized pull requests for every assigned consumer;
+3. trigger consumer lock refresh only for an allowlisted update pull request
+   projecting that exact approved profile tuple;
+4. run the exact trusted mise version without write credentials and in safe
    mode;
-3. emit the proposed lock as an artifact;
-4. have a separate writer verify actor, exact head, source-version change, and
-   allowlisted output paths;
-5. reject unrelated lock changes;
-6. commit only expected source and lock artifacts;
-7. configure Renovate to ignore only the unique writer Git author;
-8. rerun the resolver idempotently after every Renovate rebase and run full
+5. emit the proposed lock as an artifact;
+6. have a separate writer verify actor, assigned profile, exact head,
+   source-version change, and allowlisted output paths;
+7. reject unrelated lock changes;
+8. commit only expected source and lock artifacts;
+9. configure Renovate to ignore only the unique writer Git author;
+10. rerun the resolver idempotently after every update rebase and run full
    locked-mode CI on the new exact head.
 
 Acceptance:
 
-- one runtime update completes end-to-end into a protected canary `dev`;
+- one central runtime-profile update completes end-to-end into a protected
+  canary `dev` and exposes the rollout state of every assigned repository;
 - the same runtime update survives one forced Renovate rebase, regenerates the
   expected lock, and remains managed;
 - malicious configuration, changed head, unexpected path, or incomplete lock

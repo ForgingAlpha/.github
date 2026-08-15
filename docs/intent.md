@@ -38,8 +38,11 @@ automation without copying workflow logic between repositories.
 - Application security promotion carries the complete already-green,
   unreleased `dev` range so deployed code is always a real branch state.
 - Static and cross-cutting checks run once; parallel test lanes remain lean.
-- Runtime versions are repository-owned, exactly locked, and reproducible
-  locally and in CI.
+- Organization runtime profiles and compatible version tuples have one
+  control-plane owner. Every consumer commits an exact, integrity-bearing mise
+  projection of its assigned approved profile so local and CI execution remain
+  reproducible, and required CI rejects unapproved or internally inconsistent
+  projections.
 - External automation dependencies are immutable and integrity-verifiable.
 - Required CI, rather than diagnostics or human memory, is merge authority.
 - Every introduced or updated third-party package has license evidence approved
@@ -53,13 +56,17 @@ organization Renovate preset, security-only Dependabot policy, update-ownership
 validation, release mechanics, templates, and public-safe cross-repository
 enforcement.
 
-Consumer repositories own product behavior, services, runtime commands,
-deployment configuration, secrets, and data. Agents never receive operator SSH
-keys or personal credentials. The general-purpose agent/authoring identity
-cannot approve or merge trust-surface or control-plane changes. Separately
-scoped updater, security, and release identities may perform only the exact,
-pre-authorized operations defined by their governing contracts. Privileged
-automation never executes untrusted pull-request code.
+`.github` owns approved runtime profiles, compatibility tuples,
+artifact-integrity requirements, upgrade policy, repository assignments, and
+bounded exceptions. Consumer repositories own product behavior, services,
+runtime commands, deployment configuration, secrets, data, and the committed
+`mise.toml`/`mise.lock` projection used to execute their assigned profile; they
+do not independently choose governed runtime versions. Agents never receive
+operator SSH keys or personal credentials. The general-purpose
+agent/authoring identity cannot approve or merge trust-surface or control-plane
+changes. Separately scoped updater, security, and release identities may
+perform only the exact, pre-authorized operations defined by their governing
+contracts. Privileged automation never executes untrusted pull-request code.
 
 ## Invariants And Tradeoffs
 

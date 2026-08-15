@@ -94,13 +94,17 @@ exception.
 
 ## Runtime And Dependencies
 
-### REQ-010 - Repository-Owned Exact Runtime
+### REQ-010 - Centrally Governed Exact Runtime
 
-Application runtime versions SHALL come from the repository's committed exact
-lock and SHALL NOT be duplicated in workflow inputs.
+Application runtime version choices SHALL come from a versioned runtime profile
+owned by `.github`. Each consumer repository SHALL commit an exact
+`mise.toml`/`mise.lock` projection of its assigned profile for local and CI use,
+and SHALL NOT duplicate runtime versions in workflow inputs. Any temporary
+deviation SHALL be centrally recorded with its reason, owner, and expiration.
 
 **Fit:** CI fails before compilation when the lock is missing, stale,
-incomplete, or inconsistent with the active runtime.
+incomplete, inconsistent with the assigned central profile, or covered only by
+an absent or expired exception.
 
 ### REQ-011 - Complete Update Coverage
 
@@ -110,7 +114,9 @@ container image, and installed external plugin it contains.
 
 **Fit:** Deterministic validation reports any manifest, nested Action directory,
 runtime declaration, lock, or version literal without supported management or a
-narrow documented exception.
+narrow documented exception. The central runtime-profile declaration is the
+sole update-owned runtime source; consumer mise declarations and locks are
+derived projections rather than independent owners.
 
 ### REQ-012 - Normal Update Cooldown
 
