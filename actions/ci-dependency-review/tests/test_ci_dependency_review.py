@@ -18,6 +18,8 @@ SCRIPT = ROOT / "actions" / "ci-dependency-review" / "scripts" / "validate_licen
 POLICY = ROOT / "actions" / "ci-dependency-review" / "scripts" / "license_policy.py"
 OFFICIAL_ACTION = "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294"
 CHECKOUT_SHA = "d23441a48e516b6c34aea4fa41551a30e30af803"
+FIRST_PARTY_COMMIT = "a" * 40
+FIRST_PARTY_BLOB = "b" * 40
 
 sys.path.insert(0, str(SCRIPT.parent))
 validator_spec = importlib.util.spec_from_file_location("license_evidence_validator", SCRIPT)
@@ -56,6 +58,38 @@ class CiDependencyReviewTest(unittest.TestCase):
         ):
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 return validator.main(), stdout.getvalue(), stderr.getvalue()
+
+    def first_party_change(self, action="approved-automerge", source=...):
+        change = {
+            "change_type": "added",
+            "ecosystem": "actions",
+            "name": f"ForgingAlpha/.github/actions/{action}",
+            "version": "1.*.*",
+            "package_url": (
+                f"pkg:githubactions/ForgingAlpha/.github/actions/{action}@1.%2A.%2A"
+            ),
+            "license": None,
+        }
+        if source is not ...:
+            change["source_repository_url"] = source
+        return change
+
+    def first_party_api_responses(self, paths=("actions/approved-automerge/action.yml",)):
+        ref = {
+            "ref": "refs/tags/v1",
+            "object": {"type": "commit", "sha": FIRST_PARTY_COMMIT},
+        }
+        tree = {
+            "truncated": False,
+            "tree": [
+                {"path": path, "type": "blob", "sha": FIRST_PARTY_BLOB, "size": 123}
+                for path in paths
+            ],
+        }
+        return [
+            io.BytesIO(json.dumps(ref).encode()),
+            io.BytesIO(json.dumps(tree).encode()),
+        ]
 
     def test_contract_has_no_caller_bypass_or_license_override(self):
         action = self.load_action()
@@ -123,9 +157,12 @@ class CiDependencyReviewTest(unittest.TestCase):
 
     def test_recognized_license_does_not_use_fallback_or_require_token(self):
         changes = [{"change_type": "added", "package_url": "pkg:npm/good@1", "license": "MIT"}]
-        with mock.patch.object(validator, "fetch_github_license") as fetch:
+        with mock.patch.object(validator, "fetch_github_license") as fetch, mock.patch.object(
+            validator, "fetch_first_party_release_tree"
+        ) as first_party_fetch:
             validator.validate_changes(changes)
         fetch.assert_not_called()
+        first_party_fetch.assert_not_called()
 
     def test_exact_github_action_uses_revision_bound_approved_license(self):
         changes = [
@@ -146,6 +183,174 @@ class CiDependencyReviewTest(unittest.TestCase):
         self.assertEqual(identity.repository, "checkout")
         self.assertEqual(identity.sha, CHECKOUT_SHA)
         self.assertEqual(token, "test-token")
+
+    def test_first_party_action_uses_fixed_v1_commit_and_tree(self):
+        changes = [
+            self.first_party_change(source=None),
+            self.first_party_change("ci-dependency-review"),
+        ]
+        paths = (
+            "actions/approved-automerge/action.yml",
+            "actions/ci-dependency-review/action.yml",
+        )
+        with mock.patch.object(
+            validator.urllib.request,
+            "urlopen",
+            side_effect=self.first_party_api_responses(paths),
+        ) as urlopen:
+            returncode, stdout, stderr = self.run_main(changes)
+
+        self.assertEqual(returncode, 0, stderr)
+        self.assertEqual(urlopen.call_count, 2)
+        ref_request = urlopen.call_args_list[0].args[0]
+        tree_request = urlopen.call_args_list[1].args[0]
+        self.assertEqual(ref_request.full_url, validator.FIRST_PARTY_REF_ENDPOINT)
+        self.assertEqual(
+            tree_request.full_url,
+            "https://api.github.com/repos/ForgingAlpha/.github/git/trees/"
+            f"{FIRST_PARTY_COMMIT}?recursive=1",
+        )
+        for call in urlopen.call_args_list:
+            request = call.args[0]
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+            self.assertEqual(request.get_header("Accept"), "application/vnd.github+json")
+            self.assertEqual(
+                request.get_header("X-github-api-version"),
+                validator.GITHUB_API_VERSION,
+            )
+            self.assertEqual(
+                call.kwargs["timeout"],
+                validator.LICENSE_LOOKUP_TIMEOUT_SECONDS,
+            )
+        self.assertEqual(stdout.count("Verified first-party provenance"), 2)
+
+    def test_first_party_identity_requires_exact_record_and_fixed_family(self):
+        valid_missing_source = self.first_party_change()
+        valid_null_source = self.first_party_change(source=None)
+        valid_canonical_source = self.first_party_change(source=validator.FIRST_PARTY_SOURCE_URL)
+        self.assertIsNotNone(validator.parse_first_party_action_identity(valid_missing_source))
+        self.assertIsNotNone(validator.parse_first_party_action_identity(valid_null_source))
+        self.assertIsNotNone(validator.parse_first_party_action_identity(valid_canonical_source))
+
+        invalid = []
+        for field, value in (
+            ("ecosystem", "github-actions"),
+            ("name", "ForgingAlpha/.github/actions/other"),
+            ("version", "v1"),
+            ("source_repository_url", "https://github.com/ForgingAlpha/other"),
+        ):
+            change = self.first_party_change()
+            change[field] = value
+            invalid.append(change)
+        for package_url in (
+            "pkg:githubactions/ForgingAlpha/.github/actions/nested/path@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/approved_automerge@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/approved-automerge@2.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/approved-automerge@1.*.*",
+            "pkg:githubactions/forgingalpha/.github/actions/approved-automerge@1.%2A.%2A",
+        ):
+            change = self.first_party_change()
+            change["package_url"] = package_url
+            invalid.append(change)
+
+        for change in invalid:
+            with self.subTest(change=change), mock.patch.object(
+                validator.urllib.request, "urlopen"
+            ) as urlopen:
+                returncode, _, stderr = self.run_main([change])
+            self.assertNotEqual(returncode, 0)
+            self.assertIn("WHAT:", stderr)
+            urlopen.assert_not_called()
+
+    def test_first_party_ref_and_tree_fail_closed(self):
+        bad_ref_payloads = (
+            {},
+            {"ref": "refs/tags/v2", "object": {"type": "commit", "sha": FIRST_PARTY_COMMIT}},
+            {"ref": "refs/tags/v1", "object": {"type": "tag", "sha": FIRST_PARTY_COMMIT}},
+            {"ref": "refs/tags/v1", "object": {"type": "commit", "sha": "ABC"}},
+        )
+        for payload in bad_ref_payloads:
+            with self.subTest(payload=payload), mock.patch.object(
+                validator.urllib.request,
+                "urlopen",
+                return_value=io.BytesIO(json.dumps(payload).encode()),
+            ):
+                with self.assertRaises(validator.EvidenceError):
+                    validator.fetch_first_party_release_tree("read-token")
+
+        valid_ref = self.first_party_api_responses()[0]
+        bad_tree_payloads = (
+            {},
+            {"truncated": True, "tree": []},
+            {"truncated": False, "tree": None},
+            {"truncated": False, "tree": [None]},
+            {
+                "truncated": False,
+                "tree": [{"path": "actions/x/action.yml", "type": "blob", "sha": "bad"}],
+            },
+        )
+        for payload in bad_tree_payloads:
+            with self.subTest(payload=payload), mock.patch.object(
+                validator.urllib.request,
+                "urlopen",
+                side_effect=[
+                    io.BytesIO(valid_ref.getvalue()),
+                    io.BytesIO(json.dumps(payload).encode()),
+                ],
+            ):
+                with self.assertRaises(validator.EvidenceError):
+                    validator.fetch_first_party_release_tree("read-token")
+
+    def test_first_party_action_path_must_be_one_exact_blob(self):
+        identity = validator.FirstPartyActionIdentity(
+            "approved-automerge",
+            "pkg:githubactions/ForgingAlpha/.github/actions/approved-automerge@1.%2A.%2A",
+        )
+        wrong_entries = (
+            (),
+            (
+                {"path": identity.action_path, "type": "tree", "sha": FIRST_PARTY_BLOB},
+            ),
+            (
+                {
+                    "path": identity.action_path,
+                    "type": "blob",
+                    "sha": FIRST_PARTY_BLOB,
+                    "size": 0,
+                },
+            ),
+            (
+                {"path": identity.action_path, "type": "blob", "sha": FIRST_PARTY_BLOB},
+                {"path": identity.action_path, "type": "blob", "sha": "c" * 40},
+            ),
+        )
+        for entries in wrong_entries:
+            with self.subTest(entries=entries), mock.patch.object(
+                validator,
+                "fetch_first_party_release_tree",
+                return_value=(FIRST_PARTY_COMMIT, entries),
+            ):
+                with self.assertRaises(validator.EvidenceError):
+                    validator.verify_first_party_actions(
+                        {identity.action_directory: identity}, "read-token"
+                    )
+
+    def test_first_party_tree_allows_unrelated_zero_byte_blob(self):
+        ref, tree = self.first_party_api_responses()
+        tree_payload = json.loads(tree.getvalue())
+        tree_payload["tree"].append(
+            {"path": "empty-marker", "type": "blob", "sha": "c" * 40, "size": 0}
+        )
+        with mock.patch.object(
+            validator.urllib.request,
+            "urlopen",
+            side_effect=[ref, io.BytesIO(json.dumps(tree_payload).encode())],
+        ):
+            commit_sha, entries = validator.fetch_first_party_release_tree("read-token")
+
+        self.assertEqual(commit_sha, FIRST_PARTY_COMMIT)
+        self.assertEqual(len(entries), 2)
 
     def test_license_lookup_uses_only_constructed_exact_ref_endpoint(self):
         identity = validator.GitHubActionIdentity(

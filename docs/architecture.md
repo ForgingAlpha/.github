@@ -104,15 +104,27 @@ requests and has no caller disable switch. The SHA-pinned official action blocks
 low-or-higher vulnerabilities and licenses outside a centrally owned permissive
 commercial-use SPDX allowlist. A following fail-closed check inspects the
 official dependency-change output. Recognized licenses need no additional
-network lookup. Null or empty licenses still fail except for GitHub Actions
-whose package URL names an exact 40-character commit SHA and whose canonical
-GitHub source identity matches that package URL. For only that constrained
-case, the checker constructs GitHub's repository-license API endpoint itself,
-queries the license at the exact immutable SHA with the caller's read-only
-GitHub token, and accepts only an SPDX identifier from the same central
-allowlist. It never follows a dependency-supplied URL. Lookups have a fixed
-timeout, are deduplicated, and are capped at 20 unique revisions per pull
-request; every identity, API, schema, or policy error fails closed.
+network lookup. Null or empty third-party licenses still fail except for GitHub
+Actions whose package URL names an exact 40-character commit SHA and whose
+canonical GitHub source identity matches that package URL. For only that
+constrained case, the checker constructs GitHub's repository-license API
+endpoint itself, queries the license at the exact immutable SHA with the
+caller's read-only GitHub token, and accepts only an SPDX identifier from the
+same central allowlist. External lookups have a fixed timeout, are deduplicated,
+and are capped at 20 unique revisions per pull request.
+
+The separate first-party evidence class is fixed in central code to
+`ForgingAlpha/.github/actions/<action>@v1`; callers cannot select an owner,
+repository, channel, or exception. The checker requires the dependency record
+to match that family exactly, resolves the protected lightweight `v1` tag
+directly to a commit, fetches that exact commit's tree once, rejects truncated
+or malformed evidence, and requires exactly one blob at the named action path.
+The fixed repository, channel, commit, and path prove first-party ownership and
+released-source provenance. The API lookup does not independently re-prove the
+governed release ceremony; it composes with the protected `v1` rollout. All
+endpoints are constructed internally rather than taken from dependency data,
+both first-party requests are cached per validation, and every identity, API,
+schema, tree, or policy error fails closed.
 Package-specific license exceptions require a reviewed control-plane policy
 change rather than a consumer input.
 Private organization repositories must have GitHub's dependency-review feature

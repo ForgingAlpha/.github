@@ -233,17 +233,25 @@ Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
 commercial-use allowlist; callers SHALL NOT disable the review, substitute a
 denylist, or exempt individual packages. Missing, unknown, or custom license
-evidence SHALL fail closed. When GitHub omits license metadata for a GitHub
-Action pinned to an exact commit SHA, the central gate MAY resolve the
-repository license at that exact revision through GitHub's official license
-API and SHALL accept only an SPDX identifier already present in the same
-central allowlist.
+evidence SHALL fail closed for third-party dependencies. When GitHub omits
+license metadata for a third-party GitHub Action pinned to an exact commit SHA,
+the central gate MAY resolve the repository license at that exact revision
+through GitHub's official license API and SHALL accept only an SPDX identifier
+already present in the same central allowlist. A centrally fixed
+`ForgingAlpha/.github/actions/*@v1` first-party action MAY instead satisfy the
+gate through strict ownership and release provenance: the evidence record
+SHALL match the fixed repository and major channel exactly, the protected `v1`
+reference SHALL resolve directly to a commit, and that exact commit SHALL
+contain the named action. Callers SHALL NOT select or broaden this first-party
+evidence class.
 
-**Fit:** Approved SPDX evidence passes; non-approved evidence fails; null or
-empty data for packages other than exactly pinned GitHub Actions fails with
-WHAT-WHY-HOW remediation; the constrained exact-revision resolver fails closed
-on malformed identity, unavailable evidence, or a disallowed SPDX identifier;
-and non-pull-request events report that the diff-only check is not applicable.
+**Fit:** Approved third-party SPDX evidence passes; non-approved evidence
+fails; the exact-revision third-party resolver fails closed on malformed
+identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
+first-party resolver fails closed on any schema, repository, channel, commit,
+tree, or action-path mismatch; unknown evidence classes fail with WHAT-WHY-HOW
+remediation; and non-pull-request events report that the diff-only check is not
+applicable.
 
 ### REQ-024 - Human Trust-Surface Approval
 
