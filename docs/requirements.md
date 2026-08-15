@@ -233,11 +233,17 @@ Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
 commercial-use allowlist; callers SHALL NOT disable the review, substitute a
 denylist, or exempt individual packages. Missing, unknown, or custom license
-evidence SHALL fail closed.
+evidence SHALL fail closed. When GitHub omits license metadata for a GitHub
+Action pinned to an exact commit SHA, the central gate MAY resolve the
+repository license at that exact revision through GitHub's official license
+API and SHALL accept only an SPDX identifier already present in the same
+central allowlist.
 
-**Fit:** Approved SPDX evidence passes, non-approved evidence fails, null or
-empty license data fails with WHAT-WHY-HOW remediation, and non-pull-request
-events report that the diff-only check is not applicable.
+**Fit:** Approved SPDX evidence passes; non-approved evidence fails; null or
+empty data for packages other than exactly pinned GitHub Actions fails with
+WHAT-WHY-HOW remediation; the constrained exact-revision resolver fails closed
+on malformed identity, unavailable evidence, or a disallowed SPDX identifier;
+and non-pull-request events report that the diff-only check is not applicable.
 
 ### REQ-024 - Human Trust-Surface Approval
 
