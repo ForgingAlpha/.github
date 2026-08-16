@@ -1,0 +1,14 @@
+name: CI Update Ownership
+description: Validate the sole normal-update owner and the Renovate/Dependabot cutover contract.
+
+runs:
+  using: composite
+  steps:
+    - name: Validate update ownership
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_ACTION_PATH/scripts/validate_update_ownership.py" \
+          --policy .github/update-policy.json \
+          --renovate renovate.json \
+          --dependabot .github/dependabot.yml

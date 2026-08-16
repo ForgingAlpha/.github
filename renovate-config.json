@@ -1,0 +1,53 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "ForgingAlpha normal dependency update policy",
+  "extends": ["config:recommended"],
+  "dependencyDashboard": true,
+  "timezone": "America/New_York",
+  "schedule": ["at any time"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "behind-base-branch",
+  "rangeStrategy": "pin",
+  "pinDigests": true,
+  "internalChecksFilter": "strict",
+  "semanticCommits": "enabled",
+  "vulnerabilityAlerts": {
+    "enabled": false
+  },
+  "osvVulnerabilityAlerts": false,
+  "lockFileMaintenance": {
+    "enabled": false
+  },
+  "packageRules": [
+    {
+      "description": "Keep centrally governed mise projections read-only until the constrained writer is active",
+      "matchManagers": ["mise"],
+      "enabled": false
+    },
+    {
+      "description": "Patch updates become eligible after three days",
+      "matchUpdateTypes": ["patch"],
+      "minimumReleaseAge": "3 days",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Minor updates become eligible after seven days",
+      "matchUpdateTypes": ["minor"],
+      "minimumReleaseAge": "7 days",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Major updates become eligible after thirty days",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "30 days",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    }
+  ]
+}

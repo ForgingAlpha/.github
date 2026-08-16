@@ -153,10 +153,12 @@ Create a versioned preset in `.github` with:
 
 Each repository adds a thin configuration extending the preset. Code
 repositories target `dev`; `.github` and `alphaapps-docs` target `main`. The
-catalog schema, repository assignments, projection validator, resolver, writer,
-canary, and rollout gate land together in Phase 5. Before that coherent cutover,
-repository mise locks remain the enforced executable source; an unenforced
-catalog is not published as if central enforcement were active.
+initial site canary may add a catalog assignment and required exact-projection
+validator in read-only mode while direct Renovate mise updates and generic lock
+maintenance remain disabled. Repository mise locks remain the executable source,
+and the canary gate proves that source is the exact assigned tuple. Automated
+runtime updates still require the resolver, writer, canary, and rollout gate in
+Phase 5; the read-only catalog must not be described as that complete authority.
 
 Acceptance:
 
@@ -190,9 +192,9 @@ Acceptance:
 
 For centrally governed runtime changes:
 
-1. introduce the `.github` profile catalog, repository assignments, validation,
-   and fan-out machinery together, then accept version-tuple changes only
-   through that central profile;
+1. extend the proven read-only `.github` profile catalog and assignments with
+   the resolver, constrained writer, and fan-out machinery, then accept
+   version-tuple changes only through that central profile;
 2. create synchronized pull requests for every assigned consumer;
 3. trigger consumer lock refresh only for an allowlisted update pull request
    projecting that exact approved profile tuple;

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "node-24-site": {
+      "description": "Static-site Node.js 24 runtime",
+      "approved_tuples": [
+        {
+          "id": "node-24.18.0",
+          "state": "current",
+          "tools": {
+            "node": {
+              "version": "24.18.0",
+              "required_platforms": [
+                "linux-x64",
+                "macos-arm64",
+                "macos-x64"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "assignments": {
+    "ForgingAlpha/alphaapps-site": {
+      "profile": "node-24-site",
+      "status": "active"
+    }
+  }
+}

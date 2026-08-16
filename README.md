@@ -40,6 +40,8 @@ Application repositories use feature/worktree pull requests into protected
 | `ci-markdown` | Pinned validation of every tracked Markdown file |
 | `ci-github-actions` | Actionlint, immutable refs, permissions, and trigger safety |
 | `ci-dependabot-coverage` | Current pre-cutover update coverage; replaced by the updater-neutral gate in the Renovate plan |
+| `ci-update-ownership` | Sole normal-updater ownership and security-only Dependabot cutover |
+| `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central commercial-license allowlist |
 | `ci-merge-flow` | Feature → `dev` and tested `dev` → `main` flow |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
@@ -65,7 +67,7 @@ parallel `test` jobs, and one required `CI` fan-in.
 Runtime versions come from committed `mise.toml` and `mise.lock`; workflow YAML
 does not duplicate Elixir, OTP, Node, or npm versions.
 
-## Target Dependency Automation
+## Dependency Automation Rollout
 
 The approved target architecture makes Renovate the owner of normal version
 updates through one organization preset and a thin repository-local
@@ -73,8 +75,17 @@ configuration. Dependabot remains enabled only for security updates with
 official GitHub vulnerability-alert association. The implementation is tracked
 in
 [`docs/plans/renovate-normal-dependency-automation.md`](docs/plans/renovate-normal-dependency-automation.md).
-When the cutover is complete, required CI rejects missing coverage, overlapping
-ownership, and unmanaged version literals.
+The first implementation tranche publishes the central Renovate preset, the
+updater-ownership gate, and a read-only runtime-profile canary for
+`alphaapps-site`. Renovate's mise manager and generic lock maintenance remain
+disabled until the constrained writer is available. Required CI on the canary
+rejects overlapping update ownership and a runtime declaration or lock that is
+not the exact assigned projection.
+
+Installing the hosted Renovate App and changing ruleset bypass actors are
+operator actions, not consequences of publishing this repository. Until those
+actions are separately approved and verified, Renovate may propose eligible
+normal updates but cannot complete unattended protected merges.
 
 | Update | Minimum age | Merge policy |
 | --- | ---: | --- |
