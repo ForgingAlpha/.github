@@ -147,6 +147,13 @@ blob and mode. The writer SHALL apply only the source post-fix blobs and modes;
 it SHALL NOT merge or cherry-pick the `dev` branch, resolve conflicts, regenerate
 a lock, or include unrelated files.
 
+The immutable released control-plane policy SHALL pin the no-bypass security
+automation App's public GitHub App ID for both source classification and
+projection writing. A consumer variable, workflow input, label, branch name, or
+pull-request field SHALL NOT select or override that trust identity. Each
+trusted check's current App slug SHALL match the corresponding merge or
+pull-request bot actor.
+
 The immutable source preimage SHALL be the first parent of the recorded `dev`
 security merge and SHALL equal the source base bound by classification. Each
 enrollment SHALL declare and verify its supported source merge shape; the

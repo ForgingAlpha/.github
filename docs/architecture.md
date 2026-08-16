@@ -240,7 +240,13 @@ merge, cherry-pick, conflict resolution, or lock regeneration.
 The no-bypass projection writer creates one same-repository branch and pull
 request and records provenance bound to the repository, source PR, source base
 and head, `dev` merge, production base, complete GHSA set, projected head, and
-resulting tree. Labels, titles, bodies, and branch names are routing hints only.
+resulting tree. The released control-plane policy pins the no-bypass security
+automation App's public ID as the identity trust anchor for both source
+classification and projection writing; consumers install that App but cannot
+select or override which App the policy trusts. The App's current slug is derived
+from each trusted check and must match the corresponding merge or pull-request
+bot actor. Labels,
+titles, bodies, and branch names are routing hints only.
 Any divergent preimage, unsupported file type, extra path, ambiguous API result,
 concurrent lock change, or moved base stops or rebuilds the projection from the
 new production base after the same exact checks.
