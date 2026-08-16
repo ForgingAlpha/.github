@@ -2,9 +2,13 @@
 
 ## Overview
 
-Adopt Renovate as ForgingAlpha's single owner for normal dependency, runtime,
-tool, Action, and active image updates while retaining Dependabot exclusively
-for GitHub-native security remediation. Preserve exact pins, reproducible locks,
+Adopt Renovate as ForgingAlpha's single owner for normal external package,
+tool, Action, image, and annotated-literal updates while retaining Dependabot
+exclusively for GitHub-native security remediation. The same cutover establishes
+the central runtime-profile catalog as the runtime-version owner and later adds
+constrained automation for exact consumer mise projections. Preserve the
+protected control-plane rollout as the owner of internal
+`ForgingAlpha/.github@v1` movement, plus exact pins, reproducible locks,
 three/seven/thirty-day cooldowns, exact-head CI, and exact-SHA security
 promotion.
 
@@ -25,7 +29,10 @@ to deployed `main`.
 ## Desired End State
 
 - Every versioned input maps to exactly one update owner.
-- Renovate creates every normal version-update pull request.
+- Renovate creates every normal external package, tool, Action, image, and
+  annotated-literal update pull request; the runtime profile and protected
+  control-plane rollout remain the sole owners of runtime projections and
+  internal `ForgingAlpha/.github@v1` movement respectively.
 - Dependabot creates security-remediation pull requests only.
 - Normal patch, minor, and major updates wait at least three, seven, and thirty
   days respectively.
@@ -44,8 +51,10 @@ to deployed `main`.
 In scope:
 
 - central Renovate configuration and validation;
-- npm, Mix, nested pip requirements, GitHub Actions, mise, and active container
-  dependencies;
+- npm, Mix, nested pip requirements, external GitHub Actions, and active
+  container dependencies;
+- detection and read-only validation of consumer mise projection surfaces while
+  direct Renovate mise updates remain disabled;
 - annotated custom managers for irreducible version literals;
 - security-only Dependabot configuration;
 - safe generated-lock refresh;
@@ -124,7 +133,8 @@ Replace `ci-dependabot-coverage` with updater-neutral coverage that:
 6. permits a mode change only when the proposed head completely satisfies the
    destination mode;
 7. rejects floating external refs and unannotated version literals;
-8. permits internal `@v1` only through the reviewed allowlist.
+8. permits internal `@v1` only through the reviewed allowlist and rejects any
+   Renovate ownership of `ForgingAlpha/.github` Actions.
 
 Acceptance:
 
@@ -148,6 +158,9 @@ Create a versioned preset in `.github` with:
 - dependency dashboard and bounded grouping;
 - majors kept separate from patches and minors;
 - Renovate vulnerability remediation disabled;
+- external Actions remain Renovate-owned and digest-pinned, while
+  `ForgingAlpha/.github` Actions are disabled in Renovate because the protected
+  `@v1` rollout owns their movement;
 - native managers for actual supported ecosystems;
 - narrowly documented custom managers.
 
@@ -163,10 +176,18 @@ Phase 5; the read-only catalog must not be described as that complete authority.
 Acceptance:
 
 - configuration validation passes centrally and in every repository;
+- seeded validation proves the first-party Action exclusion is unique,
+  disabled, and the final package rule so a later match cannot re-enable it;
 - after the transition-capable coverage gate and preset pass, the operator
-  installs the hosted App on the canary in silent lookup mode;
-- hosted dry-run logs report the intended managers, base branch, cooldown, and
-  ownership without creating branches or pull requests.
+  installs the hosted App on the canary while the canonical consumer config is
+  still unmerged;
+- Renovate's generated onboarding PR and job log prove App access, manager
+  discovery, and the default branch without activating the competing generated
+  config;
+- after the generated onboarding PR is closed and the canonical reviewed config
+  is merged, the first hosted job proves the resolved central preset, cooldowns,
+  ownership split, disabled vulnerability/mise lanes, and first-party Action
+  exclusion before the canary is expanded.
 
 ## Phase 4 - Prepare Dependabot Security-Only Mode
 

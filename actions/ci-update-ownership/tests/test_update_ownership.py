@@ -100,6 +100,43 @@ class UpdateOwnershipTest(unittest.TestCase):
         self.assertIs(mise_rule["enabled"], False)
         self.assertEqual(config["lockFileMaintenance"], {"enabled": False})
 
+    def test_central_preset_keeps_first_party_actions_on_v1_rollout(self):
+        valid = update_ownership.load_json(PRESET)
+        matching = [
+            rule
+            for rule in valid["packageRules"]
+            if rule.get("matchManagers") == ["github-actions"]
+            and rule.get("matchPackageNames") == ["ForgingAlpha/.github"]
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertIs(matching[0]["enabled"], False)
+
+        mutations = []
+        enabled = copy.deepcopy(valid)
+        enabled["packageRules"][-1]["enabled"] = True
+        mutations.append(enabled)
+        missing = copy.deepcopy(valid)
+        missing["packageRules"].pop()
+        mutations.append(missing)
+        duplicate = copy.deepcopy(valid)
+        duplicate["packageRules"].append(copy.deepcopy(duplicate["packageRules"][-1]))
+        mutations.append(duplicate)
+        early = copy.deepcopy(valid)
+        early["packageRules"].insert(0, early["packageRules"].pop())
+        mutations.append(early)
+        later_override = copy.deepcopy(valid)
+        later_override["packageRules"].append(
+            {
+                "matchManagers": ["github-actions"],
+                "enabled": True,
+            }
+        )
+        mutations.append(later_override)
+
+        for config in mutations:
+            with self.subTest(config=config), self.assertRaises(update_ownership.OwnershipError):
+                update_ownership.validate_central_preset(config)
+
     def test_central_preset_rejects_weakened_pinning_cadence_and_bounds(self):
         valid = update_ownership.load_json(PRESET)
         mutations = {

@@ -187,7 +187,10 @@ repository never has two owners or a bot-less interval.
 The organization Renovate preset now lives in `.github`;
 repository-local Renovate configuration extends it and selects the repository
 class. Native managers own ordinary package manifests and locks, external
-Actions, and active non-runtime image references. The central runtime-profile
+Actions, and active non-runtime image references. The preset excludes
+`ForgingAlpha/.github` Actions so their internal `@v1` references remain owned
+by the protected control-plane rollout instead of being pinned to one release
+commit or proposed for a new major. The central runtime-profile
 catalog owns governed runtime version declarations; constrained projection
 automation owns the derived consumer mise declaration and lock. Narrow
 annotated custom managers own irreducible version literals. Exact ranges and

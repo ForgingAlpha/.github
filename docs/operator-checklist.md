@@ -166,10 +166,13 @@ in order.
   `alphaapps-site` consumer projection PR are green but still unmerged, install
   the free hosted Renovate GitHub App on only that site canary. App installation
   is a separate sensitive operator action. Inspect Renovate's generated
-  onboarding PR and job log for the intended managers, default `dev` base,
-  central preset, cooldowns, and disabled vulnerability/mise lanes. Close that
-  generated onboarding PR without merging its competing config; then merge the
-  already-reviewed canonical consumer PR to perform the manual onboarding.
+  onboarding PR and job log only for App access, intended manager discovery,
+  and the default `dev` branch. Close that generated onboarding PR without
+  merging its competing config; then merge the already-reviewed canonical
+  consumer PR to perform the manual onboarding. Inspect the first hosted job
+  after that merge for the resolved central preset, cooldowns, disabled
+  vulnerability/mise lanes, and the exact `ForgingAlpha/.github` package
+  identity excluded from GitHub Actions updates.
 - Keep Renovate vulnerability remediation disabled and retain GitHub Dependabot
   alerts and security updates.
 - For each repository, convert Dependabot to security-only in the same protected

@@ -50,8 +50,10 @@ Application repositories use feature/worktree pull requests into protected
 | `ci-typescript` | Format, lint, type checking, and tests |
 | `ci-shell` | ShellCheck at style severity and Bash syntax |
 
-External Actions use immutable full SHAs with adjacent release comments.
-Internal shared Actions use `@v1`, the current approved control-plane channel.
+External Actions are Renovate-owned and use immutable full SHAs with adjacent
+release comments. Internal `ForgingAlpha/.github` shared Actions are excluded
+from Renovate and use `@v1`, the current approved control-plane rollout
+channel.
 
 ## Elixir Profiles
 
@@ -93,9 +95,13 @@ actions are separately approved and verified, Renovate may propose eligible
 normal updates but cannot complete unattended protected merges.
 
 For the first canary, install the App while the canonical consumer config PR is
-green but unmerged. Inspect and close Renovate's generated onboarding PR, then
-merge the canonical reviewed config to activate proposal creation. Merging the
-config first would skip the onboarding safety gate.
+green but unmerged. Use Renovate's generated onboarding PR and job log to prove
+App access, the default branch, and manager discovery, then close that generated
+PR. Merge the canonical reviewed config to activate proposal creation. Inspect
+the first post-merge hosted job for the resolved central preset, cooldowns,
+disabled vulnerability/mise lanes, and first-party Action exclusion. Merging
+the canonical config before App installation would skip the onboarding safety
+gate.
 
 | Update | Minimum age | Merge policy |
 | --- | ---: | --- |

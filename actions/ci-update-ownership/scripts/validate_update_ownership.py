@@ -170,6 +170,17 @@ def validate_central_preset(config: dict[str, Any]) -> None:
     mise_rules = [rule for rule in rules if isinstance(rule, dict) and rule.get("matchManagers") == ["mise"]]
     if len(mise_rules) != 1 or mise_rules[0].get("enabled") is not False:
         raise OwnershipError("central Renovate preset must disable direct mise projection updates")
+    first_party_action_rules = [
+        rule
+        for rule in rules
+        if isinstance(rule, dict)
+        and rule.get("matchManagers") == ["github-actions"]
+        and rule.get("matchPackageNames") == ["ForgingAlpha/.github"]
+    ]
+    if len(first_party_action_rules) != 1 or first_party_action_rules[0].get("enabled") is not False:
+        raise OwnershipError(
+            "central Renovate preset must disable first-party ForgingAlpha/.github Action updates"
+        )
     expected = {"patch": "3 days", "minor": "7 days", "major": "30 days"}
     observed: dict[str, str] = {}
     for rule in rules:
@@ -184,6 +195,8 @@ def validate_central_preset(config: dict[str, Any]) -> None:
             raise OwnershipError(f"central {update_type} rule must use protected pull-request automerge")
     if observed != expected:
         raise OwnershipError(f"central cooldown rules must be exactly {expected}, found {observed}")
+    if rules.index(first_party_action_rules[0]) != len(rules) - 1:
+        raise OwnershipError("first-party Action exclusion must be the final package rule")
 
 
 def parse_args() -> argparse.Namespace:

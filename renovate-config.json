@@ -48,6 +48,12 @@
       "automerge": true,
       "automergeType": "pr",
       "platformAutomerge": true
+    },
+    {
+      "description": "Keep first-party shared Actions on the governed v1 rollout channel",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["ForgingAlpha/.github"],
+      "enabled": false
     }
   ]
 }
