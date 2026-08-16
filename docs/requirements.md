@@ -137,7 +137,16 @@ check bound to its exact source base, exact current head, complete associated
 OPEN or FIXED GHSA set, and approved manifest-and-lock change SHALL be treated
 as an automatically promotable security update. Eligible security updates
 SHALL bypass normal cooldown and SHALL automatically merge into protected
-`dev` only after that exact head passes complete required `CI`.
+`dev` only after that exact head passes complete required `CI` and CodeQL. A
+successful unprivileged `pull_request` CI run MAY wake the default-branch
+classifier through `workflow_run`; no Dependabot-triggered workflow receives
+an Actions secret or privileged token. Before any App token is minted, the
+classifier SHALL bind the exact CI workflow path, run, repository, pull request,
+base, and head, then wait only a bounded interval for the latest trusted
+exact-head CI and CodeQL results. Missing, stale, ambiguous, failed, or
+wrong-App results fail closed. Source classification SHALL use non-cancelling
+repository-and-head concurrency and SHALL recheck that its trusted exact-head
+classification is unique after every create or update.
 
 After the exact Dependabot revision merges into `dev`, a no-bypass projection
 writer MAY open a production pull request only by reconstructing that exact
@@ -157,14 +166,16 @@ pull-request bot actor.
 The immutable source preimage SHALL be the first parent of the recorded `dev`
 security merge and SHALL equal the source base bound by classification. Each
 enrollment SHALL declare and verify its supported source merge shape; the
-initial site profile accepts only a one-parent squash merge whose resulting
-tree equals the classified source head. Later movement of `dev` SHALL NOT
+initial site profile accepts only a normal two-parent merge whose ordered
+parents are the classified source base and source head and whose resulting tree
+equals the classified source-head tree. Later movement of `dev` SHALL NOT
 invalidate that captured source chain. The initial root npm profile SHALL
 compare the pre-fix blobs and modes for both `package.json` and
 `package-lock.json` against current `main`, even when a transitive-only fix
 changes only the lock.
 
-**Fit:** Every synchronization clears stale auto-merge state and routing labels.
+**Fit:** Stale native auto-merge state and retired security routing labels are
+ineligible and fail closed.
 A changed source head, untrusted merge identity, incomplete or changed GHSA set,
 maintainer modification, disallowed path or file type, mismatched preimage,
 rename, binary, symlink, submodule, conflict, ambiguous API result, changed
@@ -207,13 +218,15 @@ deployment refs, and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
 
 **Fit:** Independent no-bypass rules enforce required CI, CodeQL, current-base
-state, merge shape, deletion, and non-fast-forward protection. Human review is
-enforced separately; the dedicated security activator is the only automation
-actor with pull-request-only bypass in that ruleset. GitHub scopes this bypass
-to the actor and ruleset, so the protected workflow and environment—not the
-ruleset—confine its use to a re-proved REQ-013/REQ-014 projection. Update
-authority is also pull-request-only. The projection writer has no bypass, and
-neither identity can directly push a persistent branch.
+state, merge shape, deletion, and non-fast-forward protection. Human review and
+UPDATE authority are branch-specific separate rules. On `dev`, only the fixed
+security automation App has pull-request-only bypass for the exact classified
+source merge. On `main`, that App has no bypass; only the dedicated security
+activator may later receive pull-request-only review and UPDATE bypass for the
+exact production projection. GitHub scopes bypass to an actor and ruleset, so
+the protected workflow and environment—not the ruleset—confine each use to a
+re-proved REQ-013/REQ-014 change. Neither identity can directly push a
+persistent branch.
 
 ### REQ-016 - Operator Boundary
 

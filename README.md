@@ -51,6 +51,9 @@ described below and never carries unrelated `dev` work.
 | `ci-astro` | Format, lint, Astro type checking, and build |
 | `ci-typescript` | Format, lint, type checking, and tests |
 | `ci-shell` | ShellCheck at style severity and Bash syntax |
+| `security-patch-source` | Dependabot-safe read-only proof and exact protected `dev` source merge |
+| `security-patch-projection` | Exact manifest/lock patch reconstruction on current `main` |
+| `security-patch-activation` | Independent production re-proof and exact-SHA protected merge |
 
 External Actions are Renovate-owned and use immutable full SHAs with adjacent
 release comments. Internal `ForgingAlpha/.github` shared Actions are excluded

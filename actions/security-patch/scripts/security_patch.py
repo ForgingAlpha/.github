@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from typing import Any, Iterable
 from urllib.parse import quote
@@ -29,6 +30,11 @@ MAX_BLOB_BYTES = 20 * 1024 * 1024
 # Public GitHub App identity owned by the released control-plane policy. This
 # is a trust anchor, not a credential. Consumers cannot select or override it.
 TRUSTED_SECURITY_AUTOMATION_APP_ID = 4249954
+TRUSTED_CI_APP_ID = 15368
+TRUSTED_CODEQL_APP_ID = 57789
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
+CI_CHECK = "CI"
+CODEQL_CHECK = "CodeQL"
 
 
 class PolicyError(RuntimeError):
@@ -121,6 +127,9 @@ class GhApi:
     def put(self, path: str, payload: Any) -> Any:
         return self._run(["--method", "PUT", path, "--input", "-"], payload)
 
+    def patch(self, path: str, payload: Any) -> Any:
+        return self._run(["--method", "PATCH", path, "--input", "-"], payload)
+
     def security_ghsas(self, repository: str, pull_request: int) -> tuple[str, ...]:
         owner, name = repository.split("/", 1)
         query = (
@@ -189,6 +198,29 @@ class SourceEvidence:
 
 
 @dataclass(frozen=True)
+class SourceCandidate:
+    repository: str
+    workflow_run: int
+    pull_request: int
+    source_base: str
+    source_head: str
+    source_tree: str
+    ghsa_set: tuple[str, ...]
+    changed_paths: tuple[str, ...]
+
+    def attestation(self) -> dict[str, Any]:
+        return {
+            "schema": SOURCE_SCHEMA,
+            "repository": self.repository,
+            "pull_request": self.pull_request,
+            "source_base_sha": self.source_base,
+            "source_head_sha": self.source_head,
+            "ghsa_set": list(self.ghsa_set),
+            "profile": PROFILE,
+        }
+
+
+@dataclass(frozen=True)
 class ProjectionEvidence:
     repository: str
     source_pull_request: int
@@ -222,8 +254,12 @@ class ProjectionEvidence:
         }
 
 
-def check_runs(api: GhApi, repository: str, sha: str) -> list[dict[str, Any]]:
-    pages = api.pages(f"repos/{repository}/commits/{sha}/check-runs?per_page=100")
+def check_runs(api: GhApi, repository: str, sha: str, fresh: bool = False) -> list[dict[str, Any]]:
+    suffix = "?filter=latest&per_page=100" if fresh else "?per_page=100"
+    pages = api.pages(
+        f"repos/{repository}/commits/{sha}/check-runs{suffix}",
+        fresh=fresh,
+    )
     require(isinstance(pages, list), "check-run pagination must be a list")
     result: list[dict[str, Any]] = []
     for page in pages:
@@ -346,6 +382,352 @@ def pull_files(api: GhApi, repository: str, pull_request: int) -> list[dict[str,
     return files
 
 
+def require_dependabot_commit(commit: dict[str, Any]) -> None:
+    require(commit.get("author", {}).get("login") == "dependabot[bot]", "source contains a non-Dependabot author")
+    require(commit.get("committer", {}).get("login") == "web-flow", "source commit was not committed by GitHub")
+    raw = commit.get("commit")
+    require(isinstance(raw, dict), "source commit payload is invalid")
+    require(
+        raw.get("author", {}).get("name") == "dependabot[bot]"
+        and raw.get("author", {}).get("email") == "49699333+dependabot[bot]@users.noreply.github.com",
+        "source commit Git author is not the canonical Dependabot identity",
+    )
+    require(
+        raw.get("committer", {}).get("name") == "GitHub"
+        and raw.get("committer", {}).get("email") == "noreply@github.com",
+        "source commit Git committer is not GitHub",
+    )
+    verification = raw.get("verification")
+    require(
+        isinstance(verification, dict)
+        and verification.get("verified") is True
+        and verification.get("reason") == "valid",
+        "source contains a commit without a valid GitHub verification",
+    )
+
+
+def resolve_source_pointer(
+    api: GhApi,
+    repository: str,
+    workflow_run: int,
+    source_branch: str,
+    expected_pull_request: int | None = None,
+    expected_head: str | None = None,
+    expected_base: str | None = None,
+) -> tuple[dict[str, Any], int, str, str]:
+    repository = require_repository(repository)
+    workflow_run = require_pr_number(workflow_run, "workflow run")
+    run = api.get(f"repos/{repository}/actions/runs/{workflow_run}", fresh=True)
+    require(isinstance(run, dict), "CI workflow-run response must be an object")
+    require(run.get("id") == workflow_run, "CI workflow-run ID mismatch")
+    require(run.get("name") == CI_CHECK, "workflow-run name is not CI")
+    require(run.get("path") == CI_WORKFLOW_PATH, "workflow-run path is not the governed CI caller")
+    require(run.get("event") == "pull_request", "CI workflow run was not triggered by pull_request")
+    require(run.get("status") == "completed", "CI workflow run is not complete")
+    require(run.get("conclusion") == "success", "CI workflow run did not succeed")
+    require(run.get("repository", {}).get("full_name") == repository, "CI workflow-run repository mismatch")
+    require(run.get("head_repository", {}).get("full_name") == repository, "CI workflow-run head is not same-repository")
+    require(run.get("actor", {}).get("login") == "dependabot[bot]", "CI workflow run was not initiated by Dependabot")
+    run_head = require_sha(str(run.get("head_sha")), "CI workflow-run head")
+
+    pointers = run.get("pull_requests")
+    require(isinstance(pointers, list), "CI workflow-run pull-request pointers must be a list")
+    require(len(pointers) <= 1, "CI workflow run identifies multiple pull requests")
+    if pointers:
+        pull_request = require_pr_number(pointers[0].get("number"), "CI workflow-run pull request")
+    else:
+        associated = flatten_pages(
+            api.pages(f"repos/{repository}/commits/{run_head}/pulls?per_page=100", fresh=True),
+            "CI head associations",
+        )
+        candidates = [
+            item
+            for item in associated
+            if isinstance(item, dict)
+            and item.get("state") == "open"
+            and item.get("user", {}).get("login") == "dependabot[bot]"
+            and item.get("base", {}).get("ref") == source_branch
+            and item.get("head", {}).get("repo", {}).get("full_name") == repository
+        ]
+        require(len(candidates) == 1, f"CI head identifies {len(candidates)} eligible Dependabot pull requests")
+        pull_request = require_pr_number(candidates[0].get("number"), "associated pull request")
+
+    if expected_pull_request is not None:
+        require(pull_request == expected_pull_request, "source pull-request number moved after preflight")
+    pr = api.get(f"repos/{repository}/pulls/{pull_request}", fresh=True)
+    require(isinstance(pr, dict), "source pull-request response must be an object")
+    require(pr.get("number") == pull_request, "source pull-request number mismatch")
+    require(pr.get("state") == "open", "source pull request is not open")
+    require(pr.get("draft") is False, "source pull request is draft")
+    require(pr.get("user", {}).get("login") == "dependabot[bot]", "source pull request is not Dependabot-authored")
+    require(pr.get("base", {}).get("ref") == source_branch, "source pull-request base branch mismatch")
+    require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "source pull-request head is not same-repository")
+    require(pr.get("auto_merge") is None, "source pull request retains stale native auto-merge state")
+    labels = pr.get("labels")
+    require(isinstance(labels, list), "source pull-request labels must be a list")
+    require(
+        not any(isinstance(label, dict) and label.get("name") == "security-autopromote" for label in labels),
+        "source pull request retains the retired security-autopromote label",
+    )
+    source_head = require_sha(str(pr.get("head", {}).get("sha")), "source head")
+    source_base = require_sha(str(pr.get("base", {}).get("sha")), "source base")
+    if expected_head is not None:
+        require(source_head == expected_head, "source pull-request head moved after preflight")
+    if expected_base is not None:
+        require(source_base == expected_base, "source pull-request base moved after preflight")
+    merge_candidate = pr.get("merge_commit_sha")
+    allowed_run_heads = {source_head}
+    if isinstance(merge_candidate, str) and SHA_RE.fullmatch(merge_candidate):
+        allowed_run_heads.add(merge_candidate)
+    require(run_head in allowed_run_heads, "CI workflow run is not bound to the live source head")
+    require(ref_sha(api, repository, source_branch, fresh=True) == source_base, "source branch moved after CI")
+    return pr, pull_request, source_head, source_base
+
+
+def latest_check_state(
+    api: GhApi,
+    repository: str,
+    head: str,
+    name: str,
+    app_id: int,
+) -> str:
+    named = [run for run in check_runs(api, repository, head, fresh=True) if run.get("name") == name]
+    trusted = [run for run in named if run.get("app", {}).get("id") == app_id]
+    if not trusted:
+        require(not named, f"required check {name!r} is reported only by an untrusted App")
+        return "pending"
+    require(len(trusted) == 1, f"expected one latest trusted {name!r} check, found {len(trusted)}")
+    run = trusted[0]
+    require(run.get("head_sha") == head, f"required check {name!r} head mismatch")
+    status = run.get("status")
+    if status != "completed":
+        require(status in {"queued", "in_progress", "pending", "waiting", "requested"}, f"required check {name!r} has invalid status")
+        return "pending"
+    require(run.get("conclusion") == "success", f"required check {name!r} completed without success")
+    return "success"
+
+
+def build_source_candidate(
+    api: GhApi,
+    repository: str,
+    workflow_run: int,
+    source_branch: str,
+    manifest_path: str,
+    lock_path: str,
+    expected_pull_request: int | None = None,
+    expected_head: str | None = None,
+    expected_base: str | None = None,
+    verify_alerts: bool = True,
+) -> SourceCandidate:
+    pr, pull_request, source_head, source_base = resolve_source_pointer(
+        api,
+        repository,
+        workflow_run,
+        source_branch,
+        expected_pull_request,
+        expected_head,
+        expected_base,
+    )
+    commits = flatten_pages(
+        api.pages(f"repos/{repository}/pulls/{pull_request}/commits?per_page=100", fresh=True),
+        "source commits",
+    )
+    require(bool(commits), "source pull request has no commits")
+    for commit in commits:
+        require(isinstance(commit, dict), "source commit entry must be an object")
+        require_dependabot_commit(commit)
+    _, pre = load_pair(api, repository, source_base, manifest_path, lock_path)
+    source_tree, post = load_pair(api, repository, source_head, manifest_path, lock_path)
+    changed_paths = validate_pair_diff(
+        pull_files(api, repository, pull_request),
+        pre,
+        post,
+        manifest_path,
+        lock_path,
+    )
+    merge_candidate = require_sha(str(pr.get("merge_commit_sha")), "source test merge")
+    candidate = git_commit(api, repository, merge_candidate)
+    require(
+        [parent["sha"] for parent in candidate["parents"]] == [source_base, source_head],
+        "source test merge parents do not equal current dev and source head",
+    )
+    require(candidate["tree"]["sha"] == source_tree, "source test merge tree does not equal source head tree")
+    return SourceCandidate(
+        repository=repository,
+        workflow_run=workflow_run,
+        pull_request=pull_request,
+        source_base=source_base,
+        source_head=source_head,
+        source_tree=source_tree,
+        ghsa_set=api.security_ghsas(repository, pull_request) if verify_alerts else (),
+        changed_paths=changed_paths,
+    )
+
+
+def wait_for_source_candidate(
+    api: GhApi,
+    repository: str,
+    workflow_run: int,
+    source_branch: str,
+    manifest_path: str,
+    lock_path: str,
+    wait_seconds: int,
+    poll_seconds: int = 10,
+    expected_pull_request: int | None = None,
+    expected_head: str | None = None,
+    expected_base: str | None = None,
+    verify_alerts: bool = True,
+) -> SourceCandidate:
+    require(0 <= wait_seconds <= 300, "check wait must be between zero and 300 seconds")
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        _, pull_request, source_head, _ = resolve_source_pointer(
+            api,
+            repository,
+            workflow_run,
+            source_branch,
+            expected_pull_request,
+            expected_head,
+            expected_base,
+        )
+        ci_state = latest_check_state(api, repository, source_head, CI_CHECK, TRUSTED_CI_APP_ID)
+        codeql_state = latest_check_state(api, repository, source_head, CODEQL_CHECK, TRUSTED_CODEQL_APP_ID)
+        if ci_state == codeql_state == "success":
+            return build_source_candidate(
+                api,
+                repository,
+                workflow_run,
+                source_branch,
+                manifest_path,
+                lock_path,
+                expected_pull_request or pull_request,
+                expected_head or source_head,
+                expected_base,
+                verify_alerts,
+            )
+        if time.monotonic() >= deadline:
+            raise PolicyError("trusted CI and CodeQL did not both succeed before the bounded deadline")
+        time.sleep(min(poll_seconds, max(0.0, deadline - time.monotonic())))
+
+
+def upsert_source_classification(api: GhApi, candidate: SourceCandidate) -> str:
+    require(bool(candidate.ghsa_set), "source classification requires an official vulnerability-alert association")
+    external_id = f"{SOURCE_SCHEMA}:{candidate.pull_request}:{candidate.source_head}"
+    summary = canonical_json(candidate.attestation())
+    create_payload = {
+        "name": SOURCE_CHECK,
+        "head_sha": candidate.source_head,
+        "status": "completed",
+        "conclusion": "success",
+        "external_id": external_id,
+        "output": {
+            "title": "Official security association verified",
+            "summary": summary,
+        },
+    }
+    checks_path = f"repos/{candidate.repository}/commits/{candidate.source_head}/check-runs?filter=all&per_page=100"
+    pages = api.pages(checks_path, fresh=True)
+    existing: list[dict[str, Any]] = []
+    for page in pages:
+        require(isinstance(page, dict), "classification check-run page must be an object")
+        runs = page.get("check_runs")
+        require(isinstance(runs, list), "classification check-run page has no check_runs list")
+        existing.extend(
+            run
+            for run in runs
+            if run.get("name") == SOURCE_CHECK
+            and run.get("head_sha") == candidate.source_head
+            and run.get("app", {}).get("id") == TRUSTED_SECURITY_AUTOMATION_APP_ID
+        )
+    require(len(existing) <= 1, "multiple trusted source-classification checks already exist")
+    if existing:
+        require(existing[0].get("external_id") == external_id, "existing classification external identity conflicts")
+        check_id = require_pr_number(existing[0].get("id"), "source-classification check")
+        payload = dict(create_payload)
+        payload.pop("head_sha")
+        result = api.patch(f"repos/{candidate.repository}/check-runs/{check_id}", payload)
+    else:
+        result = api.post(f"repos/{candidate.repository}/check-runs", create_payload)
+    require(isinstance(result, dict), "source-classification check response must be an object")
+    require(result.get("head_sha") == candidate.source_head, "source-classification check head mismatch")
+    require(result.get("app", {}).get("id") == TRUSTED_SECURITY_AUTOMATION_APP_ID, "source classification was not written by the trusted App")
+    slug = result.get("app", {}).get("slug")
+    require(isinstance(slug, str) and slug, "source-classification App slug is missing")
+    result_id = require_pr_number(result.get("id"), "source-classification check")
+    post_write: list[dict[str, Any]] = []
+    for page in api.pages(checks_path, fresh=True):
+        require(isinstance(page, dict), "post-write classification page must be an object")
+        runs = page.get("check_runs")
+        require(isinstance(runs, list), "post-write classification page has no check_runs list")
+        post_write.extend(
+            run
+            for run in runs
+            if run.get("name") == SOURCE_CHECK
+            and run.get("head_sha") == candidate.source_head
+            and run.get("app", {}).get("id") == TRUSTED_SECURITY_AUTOMATION_APP_ID
+        )
+    require(len(post_write) == 1, "trusted source-classification check is not unique after write")
+    require(post_write[0].get("id") == result_id, "post-write source-classification check identity mismatch")
+    require(post_write[0].get("external_id") == external_id, "post-write classification external identity mismatch")
+    return slug
+
+
+def merge_source_candidate(
+    api: GhApi,
+    repository: str,
+    workflow_run: int,
+    source_branch: str,
+    manifest_path: str,
+    lock_path: str,
+    expected_pull_request: int,
+    expected_head: str,
+    expected_base: str,
+) -> str:
+    candidate = wait_for_source_candidate(
+        api,
+        repository,
+        workflow_run,
+        source_branch,
+        manifest_path,
+        lock_path,
+        0,
+        expected_pull_request=expected_pull_request,
+        expected_head=expected_head,
+        expected_base=expected_base,
+    )
+    app_slug = upsert_source_classification(api, candidate)
+    final = wait_for_source_candidate(
+        api,
+        repository,
+        workflow_run,
+        source_branch,
+        manifest_path,
+        lock_path,
+        0,
+        expected_pull_request=candidate.pull_request,
+        expected_head=candidate.source_head,
+        expected_base=candidate.source_base,
+    )
+    require(final == candidate, "source evidence changed after classification")
+    result = api.put(
+        f"repos/{repository}/pulls/{candidate.pull_request}/merge",
+        {"sha": candidate.source_head, "merge_method": "merge"},
+    )
+    require(isinstance(result, dict) and result.get("merged") is True, "GitHub did not merge the exact security source")
+    merge_sha = require_sha(str(result.get("sha")), "source merge result")
+    commit = git_commit(api, repository, merge_sha)
+    require(
+        [parent["sha"] for parent in commit["parents"]] == [candidate.source_base, candidate.source_head],
+        "source merge parents do not equal attested dev and source head",
+    )
+    require(commit["tree"]["sha"] == candidate.source_tree, "source merge tree does not equal source head tree")
+    merged_pr = api.get(f"repos/{repository}/pulls/{candidate.pull_request}", fresh=True)
+    require(merged_pr.get("merged_at") is not None, "source pull request is not recorded as merged")
+    require(merged_pr.get("merge_commit_sha") == merge_sha, "source pull-request merge SHA mismatch")
+    require(merged_pr.get("merged_by", {}).get("login") == f"{app_slug}[bot]", "source merge actor is not the classification App")
+    return merge_sha
+
+
 def validate_pair_diff(
     files: Iterable[dict[str, Any]],
     pre: dict[str, BlobEntry],
@@ -427,12 +809,13 @@ def build_source_evidence(
 
     merge_commit = git_commit(api, repository, source_merge)
     parents = merge_commit["parents"]
-    require(len(parents) == 1, "initial site profile requires a one-parent squash merge")
+    require(len(parents) == 2, "initial site profile requires a two-parent merge commit")
     source_base = parents[0]["sha"]
     require(source_base == attested_base, "source merge first parent does not match attested base")
+    require(parents[1]["sha"] == source_head, "source merge second parent does not match classified head")
     head_commit = git_commit(api, repository, source_head)
     source_tree = merge_commit["tree"]["sha"]
-    require(source_tree == head_commit["tree"]["sha"], "source squash merge tree does not equal source head tree")
+    require(source_tree == head_commit["tree"]["sha"], "source merge tree does not equal source head tree")
     require(pull.get("merged_by", {}).get("login") == f"{app_slug}[bot]", "source PR was not merged by the classification App")
 
     live_ghsas = api.security_ghsas(repository, pull_number)
@@ -462,9 +845,9 @@ def build_source_evidence(
     )
 
 
-def ref_sha(api: GhApi, repository: str, branch: str) -> str:
+def ref_sha(api: GhApi, repository: str, branch: str, *, fresh: bool = False) -> str:
     require(bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", branch)), "branch name is invalid")
-    ref = api.get(f"repos/{repository}/git/ref/heads/{quote(branch, safe='/')}")
+    ref = api.get(f"repos/{repository}/git/ref/heads/{quote(branch, safe='/')}", fresh=fresh)
     return require_sha(str(ref.get("object", {}).get("sha")), f"{branch} ref")
 
 
@@ -998,6 +1381,11 @@ def add_common_source_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--lock-path", default="package-lock.json")
 
 
+def add_source_run_args(parser: argparse.ArgumentParser) -> None:
+    add_common_source_args(parser)
+    parser.add_argument("--workflow-run-id", required=True)
+
+
 def cli(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1005,6 +1393,16 @@ def cli(argv: list[str] | None = None) -> int:
     source_parser = subparsers.add_parser("verify-source")
     add_common_source_args(source_parser)
     source_parser.add_argument("--source-merge-sha", required=True)
+
+    preflight_parser = subparsers.add_parser("preflight-source")
+    add_source_run_args(preflight_parser)
+    preflight_parser.add_argument("--wait-seconds", type=int, default=300)
+
+    merge_source_parser = subparsers.add_parser("merge-source")
+    add_source_run_args(merge_source_parser)
+    merge_source_parser.add_argument("--pull-request", required=True)
+    merge_source_parser.add_argument("--expected-head-sha", required=True)
+    merge_source_parser.add_argument("--expected-base-sha", required=True)
 
     project_parser = subparsers.add_parser("project")
     add_common_source_args(project_parser)
@@ -1038,12 +1436,48 @@ def cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     api = GhApi()
     try:
-        if args.command in {"verify-source", "project", "verify-projection"}:
+        if args.command in {
+            "verify-source",
+            "preflight-source",
+            "merge-source",
+            "project",
+            "verify-projection",
+        }:
             manifest_path = require_root_file(args.manifest_path, "manifest path")
             lock_path = require_root_file(args.lock_path, "lock path")
             require(manifest_path != lock_path, "manifest and lock paths must differ")
 
-        if args.command == "verify-source":
+        if args.command == "preflight-source":
+            candidate = wait_for_source_candidate(
+                api,
+                args.repository,
+                require_pr_number(args.workflow_run_id, "workflow run"),
+                args.source_branch,
+                manifest_path,
+                lock_path,
+                args.wait_seconds,
+                verify_alerts=False,
+            )
+            emit_output("verified", True)
+            emit_output("pull_request_number", candidate.pull_request)
+            emit_output("source_base_sha", candidate.source_base)
+            emit_output("source_head_sha", candidate.source_head)
+            emit_output("source_tree_sha", candidate.source_tree)
+        elif args.command == "merge-source":
+            merge_sha = merge_source_candidate(
+                api,
+                args.repository,
+                require_pr_number(args.workflow_run_id, "workflow run"),
+                args.source_branch,
+                manifest_path,
+                lock_path,
+                require_pr_number(args.pull_request),
+                require_sha(args.expected_head_sha, "expected source head"),
+                require_sha(args.expected_base_sha, "expected source base"),
+            )
+            emit_output("merged", True)
+            emit_output("source_merge_sha", merge_sha)
+        elif args.command == "verify-source":
             evidence = build_source_evidence(
                 api,
                 args.repository,
