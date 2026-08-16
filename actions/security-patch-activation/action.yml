@@ -1,0 +1,178 @@
+name: Exact Security Patch Activation
+description: Re-prove and merge one exact security projection through a dedicated protected App.
+
+inputs:
+  proof-token:
+    description: Narrow no-bypass App token with metadata, pull request, content, checks, Actions, and vulnerability-alert read.
+    required: true
+  pull-request-number:
+    description: Exact projected production pull request.
+    required: true
+  automation-app-id:
+    description: App ID that classified and merged the Dependabot source revision.
+    required: true
+  projection-app-id:
+    description: App ID that owns the exact projection attestation and pull request.
+    required: true
+  security-app-client-id:
+    description: Client ID for the protected security activation App.
+    required: false
+  security-app-private-key:
+    description: Environment-protected private key for the security activation App.
+    required: false
+  ci-app-id:
+    description: App ID trusted to report the required CI check.
+    required: true
+  codeql-app-id:
+    description: App ID trusted to report the required CodeQL check.
+    required: true
+  codeql-check-name:
+    description: Required CodeQL aggregate check name.
+    required: false
+    default: CodeQL
+  source-branch:
+    description: Protected integration branch.
+    required: false
+    default: dev
+  target-branch:
+    description: Protected production branch.
+    required: false
+    default: main
+  manifest-path:
+    description: Root npm manifest path for the initial site profile.
+    required: false
+    default: package.json
+  lock-path:
+    description: Root npm lock path for the initial site profile.
+    required: false
+    default: package-lock.json
+  merge-enabled:
+    description: When false, perform the complete observation proof without minting merge authority.
+    required: false
+    default: "false"
+
+outputs:
+  verified:
+    description: True when exact source, projection, and required checks pass.
+    value: ${{ steps.verify.outputs.verified }}
+  merge-sha:
+    description: Resulting main merge SHA when merge-enabled is true.
+    value: ${{ steps.merge.outputs.merge_sha }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate activation mode
+      shell: bash
+      env:
+        MERGE_ENABLED: ${{ inputs.merge-enabled }}
+      run: |
+        set -euo pipefail
+        case "${MERGE_ENABLED}" in
+          true|false) ;;
+          *) echo "✗ merge-enabled must be true or false" >&2; exit 1 ;;
+        esac
+
+    - name: Re-prove source, projection, and trusted checks without merge authority
+      id: verify
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.proof-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-projection \
+          --repository "${GITHUB_REPOSITORY}" \
+          --pull-request "${{ inputs.pull-request-number }}" \
+          --source-branch "${{ inputs.source-branch }}" \
+          --target-branch "${{ inputs.target-branch }}" \
+          --automation-app-id "${{ inputs.automation-app-id }}" \
+          --projection-app-id "${{ inputs.projection-app-id }}" \
+          --manifest-path "${{ inputs.manifest-path }}" \
+          --lock-path "${{ inputs.lock-path }}" \
+          --require-ready true \
+          --verify-checks true \
+          --ci-app-id "${{ inputs.ci-app-id }}" \
+          --codeql-app-id "${{ inputs.codeql-app-id }}" \
+          --codeql-check-name "${{ inputs.codeql-check-name }}"
+
+    - name: Validate protected merge credential inputs
+      if: ${{ inputs.merge-enabled == 'true' }}
+      shell: bash
+      env:
+        SECURITY_APP_CLIENT_ID: ${{ inputs.security-app-client-id }}
+        SECURITY_APP_PRIVATE_KEY: ${{ inputs.security-app-private-key }}
+      run: |
+        set -euo pipefail
+        [ -n "${SECURITY_APP_CLIENT_ID}" ] && [ -n "${SECURITY_APP_PRIVATE_KEY}" ] || {
+          echo "✗ Merge-enabled activation requires the protected security App credential." >&2
+          exit 1
+        }
+
+    - name: Mint protected security activation token
+      if: ${{ inputs.merge-enabled == 'true' }}
+      id: app-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        client-id: ${{ inputs.security-app-client-id }}
+        private-key: ${{ inputs.security-app-private-key }}
+        permission-contents: write
+        permission-pull-requests: write
+
+    - name: Re-prove immediately before protected merge
+      if: ${{ inputs.merge-enabled == 'true' }}
+      id: final-proof
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.proof-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-projection \
+          --repository "${GITHUB_REPOSITORY}" \
+          --pull-request "${{ inputs.pull-request-number }}" \
+          --source-branch "${{ inputs.source-branch }}" \
+          --target-branch "${{ inputs.target-branch }}" \
+          --automation-app-id "${{ inputs.automation-app-id }}" \
+          --projection-app-id "${{ inputs.projection-app-id }}" \
+          --manifest-path "${{ inputs.manifest-path }}" \
+          --lock-path "${{ inputs.lock-path }}" \
+          --require-ready true \
+          --verify-checks true \
+          --ci-app-id "${{ inputs.ci-app-id }}" \
+          --codeql-app-id "${{ inputs.codeql-app-id }}" \
+          --codeql-check-name "${{ inputs.codeql-check-name }}"
+
+    - name: Merge exact projection through GitHub
+      if: ${{ inputs.merge-enabled == 'true' }}
+      id: merge
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        PR_NUMBER: ${{ inputs.pull-request-number }}
+        PROJECTION_HEAD: ${{ steps.final-proof.outputs.projection_head_sha }}
+      run: |
+        set -euo pipefail
+        payload="$(jq -cn --arg sha "${PROJECTION_HEAD}" '{sha: $sha, merge_method: "merge"}')"
+        result="$(gh api --method PUT \
+          "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/merge" \
+          --input - <<<"${payload}")"
+        jq -e '.merged == true and (.sha | type == "string" and test("^[0-9a-f]{40}$"))' \
+          <<<"${result}" >/dev/null || {
+            echo "✗ GitHub did not return a successful exact projection merge." >&2
+            exit 1
+          }
+        echo "merge_sha=$(jq -r '.sha' <<<"${result}")" >> "${GITHUB_OUTPUT}"
+
+    - name: Verify resulting main revision and tree
+      if: ${{ inputs.merge-enabled == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.proof-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-post-merge \
+          --repository "${GITHUB_REPOSITORY}" \
+          --target-branch "${{ inputs.target-branch }}" \
+          --merge-sha "${{ steps.merge.outputs.merge_sha }}" \
+          --production-base "${{ steps.final-proof.outputs.production_base_sha }}" \
+          --projection-head "${{ steps.final-proof.outputs.projection_head_sha }}" \
+          --projection-tree "${{ steps.final-proof.outputs.projection_tree_sha }}"

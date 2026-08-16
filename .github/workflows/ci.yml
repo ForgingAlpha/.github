@@ -134,10 +134,10 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s actions/dependabot-automerge/tests
 
-      - name: Test security-merge identification action
+      - name: Test exact security-patch actions
         run: |
           set -euo pipefail
-          python3 -m unittest discover -s actions/identify-security-merge/tests
+          python3 -m unittest discover -s actions/security-patch/tests
 
       - name: Test Elixir CI profiles
         run: |

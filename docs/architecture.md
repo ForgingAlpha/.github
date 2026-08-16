@@ -250,13 +250,16 @@ open production projection touching the root npm lock; a second candidate or
 any other concurrent lock proposal fails closed rather than batching or
 choosing an order.
 
-Normal pull-request CI and CodeQL then execute against the current `main` merge
-candidate with no privileged credential. A protected default-branch workflow
+Normal pull-request CI and CodeQL then execute for the exact projected head in
+the current `main` context with no privileged credential. GitHub also exposes a
+live synthetic test merge for that exact head and base. A protected default-branch workflow
 first mints the no-bypass automation App token narrowed to metadata,
 pull-request, check, content, Actions, and vulnerability-alert read access. It
 uses that read-only token to independently reconstruct the expected tree,
-re-prove the full source and advisory chain, and verify the exact CI workflow
-path, run, repository, merge candidate, SHA, conclusion, and CodeQL provenance.
+re-prove the full source and advisory chain; verify the exact CI workflow path,
+run, repository, pull-request pointer, projected head, conclusion, and CodeQL
+provenance; and independently require the live test merge to have the attested
+production base and projected head as its parents and the expected projected tree.
 Only then may it enter the branch-restricted security environment,
 mint the dedicated merge-only security activation token, and request GitHub's
 synchronous pull-request merge with the exact projected head SHA.
