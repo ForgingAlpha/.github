@@ -30,18 +30,18 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
   dependency-change output.
 - Install the automation GitHub App with repository contents and pull-request
   write, issues write, checks write, and read-only Dependabot-alert permissions.
-  Store its ID
-  and private key as organization Dependabot secrets named
-  `ALPHAAPPS_AUTOMATION_APP_ID` and `ALPHAAPPS_AUTOMATION_PRIVATE_KEY`.
-  Also store the ID as the organization Actions variable
-  `ALPHAAPPS_AUTOMATION_APP_ID` and the private key as the organization Actions
-  secret `ALPHAAPPS_AUTOMATION_PRIVATE_KEY`; post-merge promotion workflows run
-  in the Actions context and require those stores.
+  The released control-plane policy pins its public App ID; do not duplicate or
+  override that identity in a consumer secret, variable, or workflow input.
+  Store only its private key as the organization Dependabot secret and the
+  organization Actions secret `ALPHAAPPS_AUTOMATION_PRIVATE_KEY`; post-merge
+  projection workflows run in the Actions context and require that second store.
 - Create the `security-autopromote` label in every participating repository,
   including `ForgingAlpha/.github` and each application repository.
-- Protect creation, update, and deletion of `prod-*` promotion tags in every
-  application repository. Confirm Turnkey's existing Integration bypass is the
-  intended release App.
+- Treat the existing whole-branch promotion workflow and `prod-*` tags as a
+  legacy caller contract only. Do not enroll a new security flow in that
+  workflow. Retain its protection until any verified live callers are migrated,
+  then remove the workflow, tags, and instructions through a separate reviewed
+  retirement.
 - Confirm the legacy release writer no longer exists on the merged branch.
 
 Approved auto-activation does not depend on the repository's `Allow auto-merge`
@@ -146,9 +146,44 @@ back SHA. Only then merge consumer branches that adopt new action inputs or
 profiles. Turnkey and Outliers remain blocked until their surfaced strict
 application findings are fixed; do not weaken CI to merge them.
 
-- Treat a security promotion that reports an outdated `dev` SHA as a manual
-  follow-up: another push won the race, so re-run the exact security change
-  through current `dev` and promote only after its required CI succeeds.
+- For exact security projection, confirm the writer App can create only a task
+  branch and pull request and has no persistent-branch bypass. Store no
+  activation credential in the writer workflow. Confirm its public App ID is
+  the exact source-classifier and writer identity pinned by the released
+  control-plane policy; do not add a consumer variable or workflow input that
+  can select a different automation App.
+- Before the first projection, upgrade source classification so its trusted
+  exact-head check also binds the source base and complete associated GHSA set;
+  the current head-only classification is not production-projection authority.
+- Create a `security-activation` environment restricted to the repository's
+  exact default branch. Store only the dedicated security activator's client ID
+  variable and private-key secret there; the activator has metadata read,
+  contents write, and pull-request write, but no vulnerability-alert, workflow,
+  check, status, deployment, or direct-push authority. The pre-token
+  proof uses a separately minted no-bypass automation App token narrowed to
+  metadata, pull-request, check, content, Actions, and vulnerability-alert read
+  access so the exact CI workflow path and run—not only a check name—are proven;
+  the merge-capable token is unavailable until that proof passes.
+- Split rulesets before unattended activation: keep strict pinned CI, CodeQL,
+  current-base, merge shape, deletion, and non-fast-forward rules in a no-bypass
+  requirements set; put human review in its own set with only the security
+  activator's pull-request bypass; put UPDATE alone in an authority set with the
+  same pull-request-only bypass. Give neither the projector nor Dependabot any
+  bypass.
+- Verify the production projection records and then independently re-proves the
+  exact source PR, base/head blobs and modes, App-owned classification, App
+  merge, complete GHSA set, production base, projected head, and result tree.
+  Labels and pull-request prose are never authority.
+- Keep the first `alphaapps-site` projection in observation mode. Require Leo's
+  existing exact-head approval for that projected `main` pull request, observe
+  the normal production deployment, and verify the resulting `main` and
+  deployed revision before installing unattended review bypass.
+- For an outdated source or production base, divergent manifest or lock,
+  conflict, concurrent lock update, unsupported path, incomplete API response,
+  failed trusted check, or deployment failure, stop visibly. Rebuild only from
+  the new production base after the exact preimages still match. Never promote
+  the whole `dev` range, regenerate a lock in the privileged workflow, or
+  automatically roll back to a vulnerable revision.
 
 Agents may prepare commands in `/tmp`; the operator performs ruleset changes,
 destructive pushes, rollout activation, and rollback execution.

@@ -30,7 +30,9 @@ jobs:
 
 Main-only control-plane repositories use `push` and `pull_request` on `main`.
 Application repositories use feature/worktree pull requests into protected
-`dev`; deployed `main` receives tested fast-forward promotions.
+`dev`; routine production releases use a separate governed `dev` to `main`
+pull request. Security remediation uses the narrower exact-patch projection
+described below and never carries unrelated `dev` work.
 
 ## Shared Actions
 
@@ -115,9 +117,14 @@ control-plane repositories use protected pull requests and their complete local
 gates. `.github` advances `v1` only after version-coherent consumer profiles
 pass on the exact candidate.
 
-Officially classified security updates do not wait for cooldown. They merge
-only after full exact-head CI and then promote the exact tested branch state to
-protected `main` and deployment.
+Officially classified security updates do not wait for cooldown and merge into
+`dev` only after full exact-head CI. The approved production target is to
+reconstruct only the verified dependency manifest-and-lock patch on current
+`main`, run fresh strict `main` CI and CodeQL, and use protected exact-SHA merge
+authority. That production path is not active until the central implementation
+and `alphaapps-site` observation canary complete. Any divergence, conflict,
+ambiguity, or unrelated path fails closed; the entire `dev` branch is never
+promoted by the security lane.
 
 ## `v1` Rollout
 

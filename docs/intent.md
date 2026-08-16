@@ -32,13 +32,15 @@ automation without copying workflow logic between repositories.
   annotated literals. Internal `ForgingAlpha/.github@v1` movement remains
   owned by the protected control-plane rollout. Cooled normal updates
   automatically integrate into code-repository `dev` after exact-head CI, but
-  only security updates auto-promote to `main`.
+  only exact security projections may activate into `main` without a human
+  approval.
 - Dependabot owns security remediation only so privileged promotion can prove
   GitHub's official vulnerability-alert-to-pull-request association.
 - Runtime and tool upgrades follow the same normal patch, minor, and major
   automation path while preserving exact committed locks and integrity data.
-- Application security promotion carries the complete already-green,
-  unreleased `dev` range so deployed code is always a real branch state.
+- Application security promotion projects only the exact independently
+  verified dependency patch from its merged `dev` security change onto the
+  current production base. It never carries unrelated unreleased `dev` work.
 - Static and cross-cutting checks run once; parallel test lanes remain lean.
 - Organization runtime profiles and compatible version tuples have one
   control-plane owner. Every consumer commits an exact, integrity-bearing mise
@@ -85,7 +87,8 @@ contracts. Privileged automation never executes untrusted pull-request code.
   remediate vulnerability alerts, and Dependabot does not create normal version
   updates.
 - Security urgency may bypass cooldown and release batching, never CI or
-  exact-SHA verification.
+  source provenance, exact-patch reconstruction, current-base verification,
+  CI, CodeQL, or exact-SHA activation.
 - Inactive deployment tooling is removed instead of receiving new update
   automation.
 - Fail closed when identity, classification, branch state, checks, or deployed
