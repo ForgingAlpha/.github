@@ -146,12 +146,14 @@ failed, cancelled, or skipped.
 Current enforcement is transitional: each consumer repository's exact
 `mise.toml` and integrity-bearing `mise.lock` are the executable source used by
 local development and CI, and runtime changes require a governed exact-head
-repository pull request. There is not yet a central runtime-profile catalog,
-assignment validator, or projection writer, so central version enforcement is
-not yet active.
+repository pull request. The control plane now contains the initial
+machine-readable catalog, assignment validator, and exact-projection gate for a
+single Node site canary. That assignment becomes authoritative only when the
+released gate is required by the assigned consumer. Other repositories remain
+under their existing exact-lock authority until explicitly enrolled.
 
-The Renovate plan's runtime phase establishes the target model as one coherent
-cutover. `.github` will own a versioned, machine-verifiable profile catalog with
+The Renovate plan's runtime phase establishes the target model through bounded,
+fail-closed enrollment. `.github` owns a versioned, machine-verifiable profile catalog with
 approved compatible tuples, repository assignments, integrity requirements,
 rollout state, and exact time-bounded exceptions. Each consumer will continue
 to commit `mise.toml` and `mise.lock` as the reproducible local projection of
@@ -159,10 +161,12 @@ its assignment. Shared CI will validate that projection before installing only
 locked bytes; workflow YAML will not duplicate language runtime versions.
 
 Normal runtime changes will originate in the central profile and produce exact
-consumer projections through constrained automation. The catalog, assignment
-schema, validator, resolver, writer, canary, and rollout gate must land and be
-proven together. Publishing an unenforced catalog would create a misleading
-second source of truth and is therefore prohibited.
+consumer projections through constrained automation. The initial canary is
+read-only: direct Renovate mise updates and generic lock maintenance are
+disabled, and the gate only proves an already-committed projection. A profile
+may not claim automated-update status until its resolver, constrained writer,
+consumer canary, and rollout gate are all proven. Publishing a catalog as an
+unenforced organization-wide update authority remains prohibited.
 
 Runtime, dependency/build, and Dialyzer caches are keyed by operating system,
 architecture, exact resolved runtimes, dependency locks, and relevant build
@@ -180,10 +184,13 @@ updater-coverage portions are target state implemented in Phases 2 through 7 of
 audited cutover, its declared normal-update owner remains Dependabot; the
 repository never has two owners or a bot-less interval.
 
-At target state, the organization Renovate preset lives in `.github`;
+The organization Renovate preset now lives in `.github`;
 repository-local Renovate configuration extends it and selects the repository
 class. Native managers own ordinary package manifests and locks, external
-Actions, and active non-runtime image references. The central runtime-profile
+Actions, and active non-runtime image references. The preset excludes
+`ForgingAlpha/.github` Actions so their internal `@v1` references remain owned
+by the protected control-plane rollout instead of being pinned to one release
+commit or proposed for a new major. The central runtime-profile
 catalog owns governed runtime version declarations; constrained projection
 automation owns the derived consumer mise declaration and lock. Narrow
 annotated custom managers own irreducible version literals. Exact ranges and
@@ -196,7 +203,7 @@ They do not auto-promote to `main`. Main-only control-plane updates target
 protected `main`; `.github` release remains independently gated by coherent
 consumer validation before `v1` moves.
 
-At target state, repository-local Dependabot entries remain only to customize
+For enrolled repositories, repository-local Dependabot entries remain only to customize
 security updates; normal version-update capacity is zero. During migration, the
 updater-coverage gate validates a machine-readable sole-owner mode per
 repository. It also validates the applicable central preset and local coverage,

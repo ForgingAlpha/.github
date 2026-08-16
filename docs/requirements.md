@@ -182,9 +182,11 @@ request is open.
 
 ### REQ-018 - Disjoint Update Authorities
 
-Renovate SHALL own normal version updates and SHALL NOT create vulnerability
-remediation pull requests. Dependabot SHALL own security remediation and SHALL
-NOT create normal version-update pull requests.
+Renovate SHALL own normal external version updates and SHALL NOT create
+vulnerability-remediation pull requests. Internal
+`ForgingAlpha/.github@v1` references SHALL remain excluded from Renovate and
+owned by the protected control-plane rollout. Dependabot SHALL own security
+remediation and SHALL NOT create normal version-update pull requests.
 
 **Fit:** Required CI validates the central Renovate preset, security-only
 Dependabot configuration, repository coverage, and absence of overlapping

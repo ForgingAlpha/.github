@@ -37,6 +37,19 @@ jobs:
       - name: Validate Dependabot coverage
         uses: ./actions/ci-dependabot-coverage
 
+      - name: Validate central Renovate preset
+        run: |
+          set -euo pipefail
+          python3 actions/ci-update-ownership/scripts/validate_update_ownership.py \
+            --central-preset renovate-config.json
+
+      - name: Validate runtime profile catalog
+        run: |
+          set -euo pipefail
+          python3 actions/ci-runtime-profile/scripts/validate_runtime_profile.py \
+            --catalog runtime-profiles/catalog.json \
+            --catalog-only
+
       - name: Validate Shell
         shell: bash
         run: |
@@ -105,6 +118,16 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s actions/ci-dependabot-coverage/tests
+
+      - name: Test update ownership action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-update-ownership/tests
+
+      - name: Test runtime profile action
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-runtime-profile/tests
 
       - name: Test Dependabot auto-merge action
         run: |

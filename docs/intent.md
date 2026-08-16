@@ -28,9 +28,11 @@ automation without copying workflow logic between repositories.
 - Every versioned dependency, runtime, tool, Action, image, and external plugin
   has exactly one discoverable update owner; unmanaged version literals fail
   required CI.
-- Renovate owns normal updates across supported manifests, locks, and annotated
-  literals. Cooled normal updates automatically integrate into code-repository
-  `dev` after exact-head CI, but only security updates auto-promote to `main`.
+- Renovate owns normal external updates across supported manifests, locks, and
+  annotated literals. Internal `ForgingAlpha/.github@v1` movement remains
+  owned by the protected control-plane rollout. Cooled normal updates
+  automatically integrate into code-repository `dev` after exact-head CI, but
+  only security updates auto-promote to `main`.
 - Dependabot owns security remediation only so privileged promotion can prove
   GitHub's official vulnerability-alert-to-pull-request association.
 - Runtime and tool upgrades follow the same normal patch, minor, and major

@@ -1,0 +1,18 @@
+name: CI Runtime Profile
+description: Validate a consumer's exact mise projection against its centrally assigned runtime profile.
+
+runs:
+  using: composite
+  steps:
+    - name: Validate assigned runtime profile
+      shell: bash
+      env:
+        RUNTIME_PROFILE_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_ACTION_PATH/scripts/validate_runtime_profile.py" \
+          --catalog "$GITHUB_ACTION_PATH/../../runtime-profiles/catalog.json" \
+          --repository "$RUNTIME_PROFILE_REPOSITORY" \
+          --update-policy .github/update-policy.json \
+          --mise-toml mise.toml \
+          --mise-lock mise.lock

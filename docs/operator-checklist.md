@@ -153,39 +153,50 @@ application findings are fixed; do not weaken CI to merge them.
 Agents may prepare commands in `/tmp`; the operator performs ruleset changes,
 destructive pushes, rollout activation, and rollback execution.
 
-## Later Renovate Cutover
+## Renovate Canary Activation
 
-Do not begin this cutover until the initial `v1` rollout and consumer automation
-rollout above are complete. Follow
+Follow
 [`plans/renovate-normal-dependency-automation.md`](plans/renovate-normal-dependency-automation.md)
 in order.
 
 - Confirm `dev` is the default branch in every participating application
   repository and that protected `dev` requires pull requests and `CI` without
   automation bypass.
-- After the transition-capable updater-neutral coverage gate and central preset
-  are green, install the free hosted Renovate GitHub App on the site canary in
-  silent lookup mode. Review its hosted dry-run logs before allowing it to
-  create branches or pull requests.
+- After the updater-ownership gate, central preset, runtime catalog, and
+  `alphaapps-site` consumer projection PR are green but still unmerged, install
+  the free hosted Renovate GitHub App on only that site canary. App installation
+  is a separate sensitive operator action. Inspect Renovate's generated
+  onboarding PR and job log only for App access, intended manager discovery,
+  and the default `dev` branch. Close that generated onboarding PR without
+  merging its competing config; then merge the already-reviewed canonical
+  consumer PR to perform the manual onboarding. Inspect the first hosted job
+  after that merge for the resolved central preset, cooldowns, disabled
+  vulnerability/mise lanes, and the exact `ForgingAlpha/.github` package
+  identity excluded from GitHub Actions updates.
 - Keep Renovate vulnerability remediation disabled and retain GitHub Dependabot
   alerts and security updates.
 - For each repository, convert Dependabot to security-only in the same protected
   change that flips its declared normal-update owner to active Renovate. The
   coverage gate must prove the complete destination mode on that exact head.
-- Enable patch auto-merge on one site canary first. Expand to minor, major,
+- Keep the Renovate App out of every ruleset bypass list during proposal-only
+  canarying. Before unattended merges, create the separately scoped updater
+  identity and decompose review authority from required CI and CodeQL so the
+  updater can bypass only the review rule for an already classified normal
+  update. Never grant it a bypass on quality rules.
+- Prove patch auto-merge on one site canary first. Expand to minor, major,
   runtime, and control-plane automation only after the plan's corresponding
   go/no-go evidence passes.
 - Do not enroll obsolete deployment integrations in Renovate; remove them.
 
 ### Runtime Profile Cutover
 
-- Until the profile catalog, repository assignments, projection validator,
-  constrained writer, canary, and rollout gate are active together, treat each
-  repository's exact `mise.toml`/`mise.lock` as the enforced executable source;
-  do not claim central runtime enforcement.
-- Introduce the central profile and consumer-projection machinery as one
-  governed canary change. Do not publish an unenforced catalog or hand-edit a
-  consumer version as an independent authority.
+- The initial Node canary may activate the catalog and projection validator in
+  read-only mode while direct Renovate mise updates and generic lock maintenance
+  remain disabled. The consumer's exact `mise.toml`/`mise.lock` remains the
+  executable source, but required CI proves it is the assigned central tuple.
+- Do not claim automated runtime updates until the constrained projection
+  writer is active. Do not hand-edit a consumer version as an independent
+  authority.
 - Require every impacted consumer to validate the same exact candidate profile
   and its locked projection before declaring the runtime rollout complete.
 - Record any temporary deviation centrally with exact scope, accountable owner,
