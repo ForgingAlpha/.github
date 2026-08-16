@@ -1,7 +1,8 @@
 # Composite action: Enforce merge flow policy.
 #
 # Fails the `CI` job when a pull request targets `main` or `staging` with
-# a source branch other than `dev`. Enforces the strict linear flow:
+# a source branch other than `dev`, except for a machine-attested exact
+# security projection admitted only to run required CI. Enforces:
 #
 #     feature → dev → {staging, main}
 #
@@ -27,7 +28,7 @@
 # `pull_request` via their callers' `ci.yml`.
 
 name: CI Merge Flow
-description: "Enforce that PRs into main or staging come from dev"
+description: "Enforce governed admission into main and staging"
 
 runs:
   using: composite
@@ -38,6 +39,7 @@ runs:
         GH_TOKEN: ${{ github.token }}
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
         BASE_REF: ${{ github.event.pull_request.base.ref }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       shell: bash
       run: |
         set -euo pipefail
@@ -63,6 +65,19 @@ runs:
         if [[ "$HEAD_REF" == "dev" ]]; then
           echo "✓ Allowed source branch: 'dev' → '${BASE_REF}'"
           exit 0
+        fi
+
+        if [[ "$BASE_REF" == "main" ]]; then
+          if python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" \
+            verify-ci-admission \
+            --repository "${GITHUB_REPOSITORY}" \
+            --pull-request "${PR_NUMBER}" \
+            --target-branch "${BASE_REF}"; then
+            echo "✓ Trusted exact security projection admitted to required CI"
+            exit 0
+          fi
+          echo "✗ Non-dev main proposal is not a valid exact security projection." >&2
+          exit 1
         fi
 
         echo "✗ PR source branch '${HEAD_REF}' may not merge directly into '${BASE_REF}'"

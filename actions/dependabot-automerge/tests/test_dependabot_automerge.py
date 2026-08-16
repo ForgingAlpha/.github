@@ -34,12 +34,29 @@ class DependabotAutomergeTest(unittest.TestCase):
     def test_security_classification_is_app_owned_and_head_bound(self):
         for fragment in (
             "AlphaApps Security Classification",
-            'external_id="security-pr-${PR_NUMBER}-${HEAD_SHA}"',
+            'external_id="alphaapps-security-source-v1:${PR_NUMBER}:${HEAD_SHA}"',
             'head_sha: $head_sha',
             'conclusion: "success"',
             '"repos/${GITHUB_REPOSITORY}/check-runs"',
+            'schema: "alphaapps-security-source-v1"',
+            "source_base_sha",
+            "source_head_sha",
+            "production_profile",
+            'if [ "${MERGE_METHOD}" = "squash" ]',
         ):
             self.assertIn(fragment, self.text)
+
+    def test_maintainer_change_state_fails_closed(self):
+        self.assertIn('[ "${MAINTAINER_CHANGES}" != "false" ]', self.text)
+
+    def test_security_classification_is_retry_safe_and_serialized(self):
+        workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("dependabot-automerge-${{ github.repository }}-${{ github.event.pull_request.number }}", workflow_text)
+        self.assertIn("cancel-in-progress: false", workflow_text)
+        self.assertIn("filter=all", self.text)
+        self.assertIn("--method PATCH", self.text)
+        self.assertIn("del(.head_sha)", self.text)
+        self.assertIn("Multiple exact security-classification checks already exist", self.text)
 
     def test_synchronize_clears_stale_auto_merge_and_label_before_reclassification(self):
         workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")

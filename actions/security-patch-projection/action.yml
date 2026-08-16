@@ -1,0 +1,63 @@
+name: Exact Security Patch Projection
+description: Reconstruct one verified Dependabot dependency patch on current production.
+
+inputs:
+  github-token:
+    description: No-bypass automation App token with repository write, checks write, and vulnerability-alert read.
+    required: true
+  source-merge-sha:
+    description: Exact merged dev security revision emitted by trusted push CI.
+    required: true
+  source-branch:
+    description: Protected integration branch.
+    required: false
+    default: dev
+  target-branch:
+    description: Protected production branch.
+    required: false
+    default: main
+  manifest-path:
+    description: Root npm manifest path for the initial site profile.
+    required: false
+    default: package.json
+  lock-path:
+    description: Root npm lock path for the initial site profile.
+    required: false
+    default: package-lock.json
+  draft:
+    description: Open the projected production pull request as a draft.
+    required: false
+    default: "true"
+
+outputs:
+  eligible:
+    description: True only after the exact projection pull request and attestation exist.
+    value: ${{ steps.project.outputs.eligible }}
+  pull-request-number:
+    description: Created production projection pull request.
+    value: ${{ steps.project.outputs.pull_request_number }}
+  projection-head-sha:
+    description: Exact projected production head.
+    value: ${{ steps.project.outputs.projection_head_sha }}
+  production-base-sha:
+    description: Exact production base used by the projection.
+    value: ${{ steps.project.outputs.production_base_sha }}
+
+runs:
+  using: composite
+  steps:
+    - name: Re-prove source and create exact production projection
+      id: project
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" project \
+          --repository "${GITHUB_REPOSITORY}" \
+          --source-merge-sha "${{ inputs.source-merge-sha }}" \
+          --source-branch "${{ inputs.source-branch }}" \
+          --target-branch "${{ inputs.target-branch }}" \
+          --manifest-path "${{ inputs.manifest-path }}" \
+          --lock-path "${{ inputs.lock-path }}" \
+          --draft "${{ inputs.draft }}"

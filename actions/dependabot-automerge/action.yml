@@ -50,8 +50,8 @@ runs:
       run: |
         set -euo pipefail
 
-        if [ "${MAINTAINER_CHANGES}" = "true" ]; then
-          echo "✗ Dependabot reports maintainer changes; refusing privileged auto-merge."
+        if [ "${MAINTAINER_CHANGES}" != "false" ]; then
+          echo "✗ Dependabot maintainer-change state is not exactly false; refusing privileged auto-merge."
           exit 1
         fi
 
@@ -85,6 +85,7 @@ runs:
       env:
         ALERT_STATE: ${{ steps.metadata.outputs.alert-state }}
         EVENT_BASE: ${{ github.event.pull_request.base.ref }}
+        EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         EVENT_ACTOR: ${{ github.actor }}
         EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         EVENT_LOGIN: ${{ github.event.pull_request.user.login }}
@@ -106,6 +107,10 @@ runs:
         }
         [[ "${EVENT_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
           echo "✗ Pull request head is not a full commit SHA."
+          exit 1
+        }
+        [[ "${EVENT_BASE_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
+          echo "✗ Pull request base is not a full commit SHA."
           exit 1
         }
         [ "${EVENT_BASE}" = "${METADATA_TARGET_BRANCH}" ] || {
@@ -145,6 +150,19 @@ runs:
           esac
         done < <(jq -r '.[][] | .filename' "${files_json}")
 
+        production_profile=""
+        if jq -e '
+          [ .[][] ] as $files
+          | ($files | length) > 0
+          and all($files[];
+            (.filename == "package.json" or .filename == "package-lock.json")
+            and .status == "modified"
+            and ((.previous_filename // "") == ""))
+          and any($files[]; .filename == "package-lock.json")
+        ' "${files_json}" >/dev/null; then
+          production_profile="root-npm-v1"
+        fi
+
         ghsa_set=""
         if [ "${SECURITY}" = "true" ]; then
           query='query($owner:String!,$name:String!,$endCursor:String){repository(owner:$owner,name:$name){vulnerabilityAlerts(first:100,after:$endCursor,states:OPEN){nodes{securityAdvisory{ghsaId severity cvss{score}}dependabotUpdate{pullRequest{number}}}pageInfo{hasNextPage endCursor}}}}'
@@ -170,7 +188,9 @@ runs:
         fi
 
         echo "head_sha=${EVENT_HEAD_SHA}" >> "${GITHUB_OUTPUT}"
+        echo "source_base_sha=${EVENT_BASE_SHA}" >> "${GITHUB_OUTPUT}"
         echo "ghsa_set=${ghsa_set}" >> "${GITHUB_OUTPUT}"
+        echo "production_profile=${production_profile}" >> "${GITHUB_OUTPUT}"
 
     - name: Validate merge method
       if: ${{ steps.eligibility.outputs.allowed == 'true' }}
@@ -217,12 +237,35 @@ runs:
         GH_TOKEN: ${{ inputs.github_token }}
         GHSA_SET: ${{ steps.validate.outputs.ghsa_set }}
         HEAD_SHA: ${{ steps.validate.outputs.head_sha }}
+        SOURCE_BASE_SHA: ${{ steps.validate.outputs.source_base_sha }}
+        PRODUCTION_PROFILE: ${{ steps.validate.outputs.production_profile }}
+        MERGE_METHOD: ${{ inputs.merge_method }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -euo pipefail
         check_name="AlphaApps Security Classification"
-        external_id="security-pr-${PR_NUMBER}-${HEAD_SHA}"
-        summary="Dependabot PR #${PR_NUMBER}; advisories: ${GHSA_SET}; exact head: ${HEAD_SHA}"
+        external_id="alphaapps-security-source-v1:${PR_NUMBER}:${HEAD_SHA}"
+        profile=""
+        if [ "${MERGE_METHOD}" = "squash" ]; then
+          profile="${PRODUCTION_PROFILE}"
+        fi
+        summary="$(jq -cn \
+          --arg repository "${GITHUB_REPOSITORY}" \
+          --argjson pull_request "${PR_NUMBER}" \
+          --arg source_base_sha "${SOURCE_BASE_SHA}" \
+          --arg source_head_sha "${HEAD_SHA}" \
+          --arg ghsa_set "${GHSA_SET}" \
+          --arg profile "${profile}" \
+          '{
+            schema: "alphaapps-security-source-v1",
+            repository: $repository,
+            pull_request: $pull_request,
+            source_base_sha: $source_base_sha,
+            source_head_sha: $source_head_sha,
+            ghsa_set: ($ghsa_set | split(",") | map(select(length > 0)) | unique | sort),
+            profile: $profile
+          }')"
+        check_payload="${RUNNER_TEMP:-/tmp}/security-classification-payload.json"
         jq -n \
           --arg name "${check_name}" \
           --arg head_sha "${HEAD_SHA}" \
@@ -238,9 +281,43 @@ runs:
               title: "Official security association verified",
               summary: $summary
             }
-          }' | gh api --method POST \
-            "repos/${GITHUB_REPOSITORY}/check-runs" --input - \
-            > "${RUNNER_TEMP:-/tmp}/security-classification-check.json"
+          }' > "${check_payload}"
+
+        existing="$(gh api --paginate --slurp \
+          "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?check_name=${check_name// /%20}&filter=all&per_page=100")"
+        matches="$(jq -c \
+          --arg name "${check_name}" \
+          --arg head "${HEAD_SHA}" \
+          --arg external_id "${external_id}" \
+          '[.[].check_runs[] | select(
+            .name == $name and .head_sha == $head and .external_id == $external_id
+          )]' <<<"${existing}")"
+        count="$(jq 'length' <<<"${matches}")"
+        case "${count}" in
+          0)
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/check-runs" \
+              --input "${check_payload}" \
+              > "${RUNNER_TEMP:-/tmp}/security-classification-check.json"
+            ;;
+          1)
+            check_id="$(jq -r '.[0].id' <<<"${matches}")"
+            [[ "${check_id}" =~ ^[1-9][0-9]*$ ]] || {
+              echo "✗ Existing security classification has no valid check-run ID."
+              exit 1
+            }
+            update_payload="${RUNNER_TEMP:-/tmp}/security-classification-update.json"
+            jq 'del(.head_sha)' "${check_payload}" > "${update_payload}"
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/check-runs/${check_id}" \
+              --input "${update_payload}" \
+              > "${RUNNER_TEMP:-/tmp}/security-classification-check.json"
+            ;;
+          *)
+            echo "✗ Multiple exact security-classification checks already exist."
+            exit 1
+            ;;
+        esac
 
     - name: Enable auto-merge
       if: ${{ steps.eligibility.outputs.allowed == 'true' }}
