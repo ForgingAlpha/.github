@@ -37,7 +37,6 @@ class UpdateOwnershipTest(unittest.TestCase):
                 {
                     "package-ecosystem": "npm",
                     "directory": "/",
-                    "target-branch": "dev",
                     "open-pull-requests-limit": 0,
                 }
             ],
@@ -48,6 +47,7 @@ class UpdateOwnershipTest(unittest.TestCase):
         action = ACTION.read_text(encoding="utf-8")
         self.assertIn(".github/update-policy.json", action)
         self.assertIn("--repository-root .", action)
+        self.assertIn("UPDATE_POLICY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}", action)
         self.assertIn("renovate.json", action)
         self.assertIn(".github/dependabot.yml", action)
         self.assertNotIn("github.token", action)
@@ -57,7 +57,7 @@ class UpdateOwnershipTest(unittest.TestCase):
         owner, base, profile = update_ownership.validate_policy(self.policy)
         self.assertEqual((owner, base, profile), ("renovate", "dev", "node-24-site"))
         update_ownership.validate_renovate(self.renovate, base)
-        update_ownership.validate_security_only_dependabot(self.dependabot, base)
+        update_ownership.validate_security_only_dependabot(self.dependabot)
 
     def test_local_renovate_policy_override_fails(self):
         config = copy.deepcopy(self.renovate)
@@ -74,28 +74,53 @@ class UpdateOwnershipTest(unittest.TestCase):
         config["baseBranchPatterns"] = ["main"]
         with self.assertRaisesRegex(update_ownership.OwnershipError, "baseBranchPatterns"):
             update_ownership.validate_renovate(config, "dev")
+        update_ownership.validate_default_branch("dev", "dev")
+        with self.assertRaisesRegex(update_ownership.OwnershipError, "must equal repository default branch"):
+            update_ownership.validate_default_branch("dev", "main")
 
-    def test_dependabot_normal_update_capacity_or_wrong_base_fails(self):
+    def test_dependabot_normal_update_capacity_or_explicit_target_fails(self):
         config = copy.deepcopy(self.dependabot)
         config["updates"][0]["open-pull-requests-limit"] = 1
         with self.assertRaisesRegex(update_ownership.OwnershipError, "must have open-pull-requests-limit: 0"):
-            update_ownership.validate_security_only_dependabot(config, "dev")
+            update_ownership.validate_security_only_dependabot(config)
         config = copy.deepcopy(self.dependabot)
-        config["updates"][0]["target-branch"] = "main"
-        with self.assertRaisesRegex(update_ownership.OwnershipError, "target branch"):
-            update_ownership.validate_security_only_dependabot(config, "dev")
+        config["updates"][0]["target-branch"] = "dev"
+        with self.assertRaisesRegex(update_ownership.OwnershipError, "must omit target-branch"):
+            update_ownership.validate_security_only_dependabot(config)
 
     def test_duplicate_dependabot_block_fails(self):
         config = copy.deepcopy(self.dependabot)
         config["updates"].append(copy.deepcopy(config["updates"][0]))
         with self.assertRaisesRegex(update_ownership.OwnershipError, "repeats update block"):
-            update_ownership.validate_security_only_dependabot(config, "dev")
+            update_ownership.validate_security_only_dependabot(config)
 
     def test_central_preset_keeps_mise_projection_read_only(self):
         config = update_ownership.load_json(PRESET)
         mise_rule = next(rule for rule in config["packageRules"] if rule.get("matchManagers") == ["mise"])
         self.assertIs(mise_rule["enabled"], False)
         self.assertEqual(config["lockFileMaintenance"], {"enabled": False})
+
+    def test_central_preset_rejects_weakened_pinning_cadence_and_bounds(self):
+        valid = update_ownership.load_json(PRESET)
+        mutations = {
+            "extends": [],
+            "dependencyDashboard": False,
+            "timezone": "UTC",
+            "schedule": ["before 4am on monday"],
+            "prConcurrentLimit": 50,
+            "prHourlyLimit": 20,
+            "rebaseWhen": "never",
+            "rangeStrategy": "auto",
+            "pinDigests": False,
+            "semanticCommits": "disabled",
+            "internalChecksFilter": "flexible",
+        }
+        for key, value in mutations.items():
+            with self.subTest(key=key):
+                config = copy.deepcopy(valid)
+                config[key] = value
+                with self.assertRaises(update_ownership.OwnershipError):
+                    update_ownership.validate_central_preset(config)
 
     def test_exactly_one_canonical_repository_config_is_required(self):
         with tempfile.TemporaryDirectory() as directory:

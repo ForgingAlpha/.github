@@ -82,6 +82,13 @@ def validate_renovate(config: dict[str, Any], base: str) -> None:
         raise OwnershipError(f"repository Renovate baseBranchPatterns must be exactly [{base!r}]")
 
 
+def validate_default_branch(base: str, default_branch: str) -> None:
+    if base != default_branch:
+        raise OwnershipError(
+            f"update policy base_branch {base!r} must equal repository default branch {default_branch!r}"
+        )
+
+
 def validate_config_files(repository_root: Path, canonical_path: Path) -> None:
     root = repository_root.resolve()
     canonical = canonical_path if canonical_path.is_absolute() else root / canonical_path
@@ -100,7 +107,7 @@ def validate_config_files(repository_root: Path, canonical_path: Path) -> None:
             raise OwnershipError("deprecated package.json renovate configuration is forbidden")
 
 
-def validate_security_only_dependabot(config: dict[str, Any], base: str) -> None:
+def validate_security_only_dependabot(config: dict[str, Any]) -> None:
     if config.get("version") != 2:
         raise OwnershipError("Dependabot config version must be 2")
     updates = config.get("updates")
@@ -125,11 +132,32 @@ def validate_security_only_dependabot(config: dict[str, Any], base: str) -> None
         identities.add(identity)
         if raw_update.get("open-pull-requests-limit") != 0:
             raise OwnershipError(f"Dependabot {ecosystem} normal version updates must have open-pull-requests-limit: 0")
-        if raw_update.get("target-branch") != base:
-            raise OwnershipError(f"Dependabot {ecosystem} target branch must be {base}")
+        if "target-branch" in raw_update:
+            raise OwnershipError(
+                f"Dependabot {ecosystem} must omit target-branch so this block customizes default-branch security updates"
+            )
 
 
 def validate_central_preset(config: dict[str, Any]) -> None:
+    expected_values = {
+        "extends": ["config:recommended"],
+        "dependencyDashboard": True,
+        "timezone": "America/New_York",
+        "schedule": ["at any time"],
+        "prConcurrentLimit": 5,
+        "prHourlyLimit": 2,
+        "rebaseWhen": "behind-base-branch",
+        "rangeStrategy": "pin",
+        "pinDigests": True,
+        "semanticCommits": "enabled",
+    }
+    mismatches = {
+        key: {"expected": expected, "actual": config.get(key)}
+        for key, expected in expected_values.items()
+        if config.get(key) != expected
+    }
+    if mismatches:
+        raise OwnershipError(f"central Renovate preset policy values differ: {mismatches}")
     if config.get("internalChecksFilter") != "strict":
         raise OwnershipError("central Renovate preset must use strict internal checks")
     if config.get("vulnerabilityAlerts") != {"enabled": False} or config.get("osvVulnerabilityAlerts") is not False:
@@ -165,6 +193,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dependabot", type=Path)
     parser.add_argument("--central-preset", type=Path)
     parser.add_argument("--repository-root", type=Path)
+    parser.add_argument("--default-branch")
     return parser.parse_args()
 
 
@@ -175,14 +204,17 @@ def main() -> int:
             validate_central_preset(load_json(args.central_preset))
             print("✓ Central Renovate preset validation passed")
             return 0
-        if not args.policy or not args.renovate or not args.dependabot or not args.repository_root:
-            raise OwnershipError("repository-root, policy, renovate, and dependabot paths are required for consumer validation")
+        if not args.policy or not args.renovate or not args.dependabot or not args.repository_root or not args.default_branch:
+            raise OwnershipError(
+                "repository-root, default-branch, policy, renovate, and dependabot paths are required for consumer validation"
+            )
         owner, base, _profile = validate_policy(load_json(args.policy))
         if owner != "renovate":
             raise OwnershipError("ci-update-ownership is the destination Renovate-mode gate")
+        validate_default_branch(base, args.default_branch)
         validate_config_files(args.repository_root, args.renovate)
         validate_renovate(load_json(args.renovate), base)
-        validate_security_only_dependabot(load_yaml(args.dependabot), base)
+        validate_security_only_dependabot(load_yaml(args.dependabot))
         print(f"✓ Update ownership validation passed (Renovate normal updates; Dependabot security only; base {base})")
         return 0
     except OwnershipError as error:

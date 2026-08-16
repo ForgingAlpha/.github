@@ -82,6 +82,11 @@ disabled until the constrained writer is available. Required CI on the canary
 rejects overlapping update ownership and a runtime declaration or lock that is
 not the exact assigned projection.
 
+The hosted service may evaluate the repository more than once per day; the
+unrestricted run window satisfies the policy's at-least-daily evaluation
+requirement. Release eligibility remains governed by the exact 3/7/30-day
+minimum ages rather than by scan frequency.
+
 Installing the hosted Renovate App and changing ruleset bypass actors are
 operator actions, not consequences of publishing this repository. Until those
 actions are separately approved and verified, Renovate may propose eligible
