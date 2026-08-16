@@ -92,6 +92,11 @@ operator actions, not consequences of publishing this repository. Until those
 actions are separately approved and verified, Renovate may propose eligible
 normal updates but cannot complete unattended protected merges.
 
+For the first canary, install the App while the canonical consumer config PR is
+green but unmerged. Inspect and close Renovate's generated onboarding PR, then
+merge the canonical reviewed config to activate proposal creation. Merging the
+config first would skip the onboarding safety gate.
+
 | Update | Minimum age | Merge policy |
 | --- | ---: | --- |
 | Patch | 3 days | Automatic into code-repository `dev` after exact-head `CI` |

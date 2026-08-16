@@ -163,10 +163,13 @@ in order.
   repository and that protected `dev` requires pull requests and `CI` without
   automation bypass.
 - After the updater-ownership gate, central preset, runtime catalog, and
-  `alphaapps-site` consumer projection are green, install the free hosted
-  Renovate GitHub App on only that site canary. App installation is a separate
-  sensitive operator action. Review the onboarding/dry-run result before
-  merging its configuration or allowing update pull requests.
+  `alphaapps-site` consumer projection PR are green but still unmerged, install
+  the free hosted Renovate GitHub App on only that site canary. App installation
+  is a separate sensitive operator action. Inspect Renovate's generated
+  onboarding PR and job log for the intended managers, default `dev` base,
+  central preset, cooldowns, and disabled vulnerability/mise lanes. Close that
+  generated onboarding PR without merging its competing config; then merge the
+  already-reviewed canonical consumer PR to perform the manual onboarding.
 - Keep Renovate vulnerability remediation disabled and retain GitHub Dependabot
   alerts and security updates.
 - For each repository, convert Dependabot to security-only in the same protected
