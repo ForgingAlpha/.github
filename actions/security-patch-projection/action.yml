@@ -8,12 +8,6 @@ inputs:
   source-merge-sha:
     description: Exact merged dev security revision emitted by trusted push CI.
     required: true
-  automation-app-id:
-    description: App ID that classified and merged the exact Dependabot source revision.
-    required: true
-  projection-app-id:
-    description: App ID that owns the projection branch, pull request, and attestation check.
-    required: true
   source-branch:
     description: Protected integration branch.
     required: false
@@ -64,8 +58,6 @@ runs:
           --source-merge-sha "${{ inputs.source-merge-sha }}" \
           --source-branch "${{ inputs.source-branch }}" \
           --target-branch "${{ inputs.target-branch }}" \
-          --automation-app-id "${{ inputs.automation-app-id }}" \
-          --projection-app-id "${{ inputs.projection-app-id }}" \
           --manifest-path "${{ inputs.manifest-path }}" \
           --lock-path "${{ inputs.lock-path }}" \
           --draft "${{ inputs.draft }}"

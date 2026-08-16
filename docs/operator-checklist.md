@@ -30,13 +30,11 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
   dependency-change output.
 - Install the automation GitHub App with repository contents and pull-request
   write, issues write, checks write, and read-only Dependabot-alert permissions.
-  Store its ID
-  and private key as organization Dependabot secrets named
-  `ALPHAAPPS_AUTOMATION_APP_ID` and `ALPHAAPPS_AUTOMATION_PRIVATE_KEY`.
-  Also store the ID as the organization Actions variable
-  `ALPHAAPPS_AUTOMATION_APP_ID` and the private key as the organization Actions
-  secret `ALPHAAPPS_AUTOMATION_PRIVATE_KEY`; post-merge projection workflows run
-  in the Actions context and require those stores.
+  The released control-plane policy pins its public App ID; do not duplicate or
+  override that identity in a consumer secret, variable, or workflow input.
+  Store only its private key as the organization Dependabot secret and the
+  organization Actions secret `ALPHAAPPS_AUTOMATION_PRIVATE_KEY`; post-merge
+  projection workflows run in the Actions context and require that second store.
 - Create the `security-autopromote` label in every participating repository,
   including `ForgingAlpha/.github` and each application repository.
 - Treat the existing whole-branch promotion workflow and `prod-*` tags as a
@@ -150,7 +148,10 @@ application findings are fixed; do not weaken CI to merge them.
 
 - For exact security projection, confirm the writer App can create only a task
   branch and pull request and has no persistent-branch bypass. Store no
-  activation credential in the writer workflow.
+  activation credential in the writer workflow. Confirm its public App ID is
+  the exact source-classifier and writer identity pinned by the released
+  control-plane policy; do not add a consumer variable or workflow input that
+  can select a different automation App.
 - Before the first projection, upgrade source classification so its trusted
   exact-head check also binds the source base and complete associated GHSA set;
   the current head-only classification is not production-projection authority.

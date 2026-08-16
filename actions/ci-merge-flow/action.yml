@@ -40,7 +40,6 @@ runs:
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
         BASE_REF: ${{ github.event.pull_request.base.ref }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        PROJECTION_APP_ID: ${{ vars.ALPHAAPPS_AUTOMATION_APP_ID }}
       shell: bash
       run: |
         set -euo pipefail
@@ -68,13 +67,12 @@ runs:
           exit 0
         fi
 
-        if [[ "$BASE_REF" == "main" && -n "$PROJECTION_APP_ID" ]]; then
+        if [[ "$BASE_REF" == "main" ]]; then
           if python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" \
             verify-ci-admission \
             --repository "${GITHUB_REPOSITORY}" \
             --pull-request "${PR_NUMBER}" \
-            --target-branch "${BASE_REF}" \
-            --projection-app-id "${PROJECTION_APP_ID}"; then
+            --target-branch "${BASE_REF}"; then
             echo "✓ Trusted exact security projection admitted to required CI"
             exit 0
           fi

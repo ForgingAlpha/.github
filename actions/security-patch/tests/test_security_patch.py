@@ -13,6 +13,7 @@ SCRIPT = ROOT / "actions" / "security-patch" / "scripts" / "security_patch.py"
 PROJECTION_ACTION = ROOT / "actions" / "security-patch-projection" / "action.yml"
 ACTIVATION_ACTION = ROOT / "actions" / "security-patch-activation" / "action.yml"
 DEPENDABOT_ACTION = ROOT / "actions" / "dependabot-automerge" / "action.yml"
+DEPENDABOT_WORKFLOW = ROOT / ".github" / "workflows" / "dependabot-automerge.yml"
 MERGE_FLOW_ACTION = ROOT / "actions" / "ci-merge-flow" / "action.yml"
 
 spec = importlib.util.spec_from_file_location("security_patch", SCRIPT)
@@ -93,7 +94,10 @@ class ProjectionCreateApi(FakeApi):
         if path.endswith("/check-runs"):
             return {
                 "head_sha": sha("d"),
-                "app": {"id": 2468, "slug": "forgingalpha-security-projector"},
+                "app": {
+                    "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
+                    "slug": "forgingalpha-security-projector",
+                },
             }
         if path.endswith("/pulls"):
             return {
@@ -117,7 +121,7 @@ def source_fixture() -> FakeApi:
     manifest_blob = sha("f")
     old_lock_blob = sha("1")
     new_lock_blob = sha("2")
-    app_id = 1234
+    app_id = security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID
     pr_number = 17
 
     api.page_values[f"repos/{repository}/commits/{source_merge}/pulls?per_page=100"] = [[{
@@ -198,7 +202,7 @@ def admission_fixture() -> FakeApi:
     old_lock_blob = sha("f")
     new_lock_blob = sha("1")
     pull_request = 44
-    app_id = 2468
+    app_id = security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID
     attestation = {
         "schema": security_patch.PROJECTION_SCHEMA,
         "repository": repository,
@@ -306,7 +310,10 @@ def full_projection_fixture() -> FakeApi:
             "head_sha": projection_head,
             "status": "completed",
             "conclusion": "success",
-            "app": {"id": 2468, "slug": "forgingalpha-security-projector"},
+            "app": {
+                "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
+                "slug": "forgingalpha-security-projector",
+            },
             "output": {"summary": json.dumps(attestation)},
         }]
     }]
@@ -334,7 +341,6 @@ class SecurityPatchSourceTest(unittest.TestCase):
             "ForgingAlpha/alphaapps-site",
             sha("c"),
             "dev",
-            1234,
             "package.json",
             "package-lock.json",
         )
@@ -380,6 +386,13 @@ class SecurityPatchSourceTest(unittest.TestCase):
         api = source_fixture()
         page = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?per_page=100"][0]
         page["check_runs"].append(dict(page["check_runs"][0]))
+        with self.assertRaisesRegex(security_patch.PolicyError, "exactly one trusted"):
+            self.build(api)
+
+    def test_rejects_classification_from_any_other_app(self):
+        api = source_fixture()
+        page = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?per_page=100"][0]
+        page["check_runs"][0]["app"]["id"] = 9999
         with self.assertRaisesRegex(security_patch.PolicyError, "exactly one trusted"):
             self.build(api)
 
@@ -466,12 +479,15 @@ class ProjectionInvariantTest(unittest.TestCase):
         }
         check = {
             "head_sha": head,
-            "app": {"id": 2468, "slug": "forgingalpha-security-projector"},
+            "app": {
+                "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
+                "slug": "forgingalpha-security-projector",
+            },
         }
-        security_patch.verify_created_projection_identity(pr, check, 44, "main", head, 2468)
+        security_patch.verify_created_projection_identity(pr, check, 44, "main", head)
         check["app"]["id"] = 9999
-        with self.assertRaisesRegex(security_patch.PolicyError, "configured App"):
-            security_patch.verify_created_projection_identity(pr, check, 44, "main", head, 2468)
+        with self.assertRaisesRegex(security_patch.PolicyError, "centrally trusted App"):
+            security_patch.verify_created_projection_identity(pr, check, 44, "main", head)
 
     def test_create_projection_uses_exact_git_data_and_attests_before_pr(self):
         api = ProjectionCreateApi()
@@ -518,7 +534,7 @@ class ProjectionInvariantTest(unittest.TestCase):
         }]]
 
         pull_request, evidence = security_patch.create_projection(
-            api, source, "main", "package.json", "package-lock.json", 2468, True
+            api, source, "main", "package.json", "package-lock.json", True
         )
         self.assertEqual(pull_request, 44)
         self.assertEqual(evidence.production_base, production_base)
@@ -537,7 +553,6 @@ class ProjectionAdmissionTest(unittest.TestCase):
             "ForgingAlpha/alphaapps-site",
             44,
             "main",
-            2468,
         )
 
     def test_accepts_only_exact_app_attested_projection(self):
@@ -584,8 +599,6 @@ class ProjectionAdmissionTest(unittest.TestCase):
             44,
             "dev",
             "main",
-            1234,
-            2468,
             True,
         )
         self.assertEqual(evidence.source_pull_request, 17)
@@ -743,12 +756,25 @@ class ActionContractTest(unittest.TestCase):
         for fragment in (
             "verify-ci-admission",
             "github.event.pull_request.number",
-            "vars.ALPHAAPPS_AUTOMATION_APP_ID",
             "Trusted exact security projection admitted to required CI",
         ):
             self.assertIn(fragment, text)
+        self.assertNotIn("vars.", text)
+        self.assertNotIn("projection-app-id", text)
         self.assertNotIn("security/", text)
         self.assertNotIn("security-autopromote", text)
+
+    def test_projection_identity_is_one_central_non_overridable_trust_anchor(self):
+        self.assertEqual(security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID, 4249954)
+        for path in (PROJECTION_ACTION, ACTIVATION_ACTION, MERGE_FLOW_ACTION):
+            text = path.read_text()
+            self.assertNotIn("projection-app-id", text)
+            self.assertNotIn("automation-app-id", text)
+            self.assertNotIn("PROJECTION_APP_ID", text)
+            self.assertNotIn("AUTOMATION_APP_ID", text)
+        workflow = DEPENDABOT_WORKFLOW.read_text()
+        self.assertIn("app-id: 4249954", workflow)
+        self.assertNotIn("ALPHAAPPS_AUTOMATION_APP_ID", workflow)
 
     def test_projection_attestation_exists_before_pr_event_can_start_ci(self):
         text = SCRIPT.read_text()

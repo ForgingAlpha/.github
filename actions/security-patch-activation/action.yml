@@ -8,12 +8,6 @@ inputs:
   pull-request-number:
     description: Exact projected production pull request.
     required: true
-  automation-app-id:
-    description: App ID that classified and merged the Dependabot source revision.
-    required: true
-  projection-app-id:
-    description: App ID that owns the exact projection attestation and pull request.
-    required: true
   security-app-client-id:
     description: Client ID for the protected security activation App.
     required: false
@@ -85,8 +79,6 @@ runs:
           --pull-request "${{ inputs.pull-request-number }}" \
           --source-branch "${{ inputs.source-branch }}" \
           --target-branch "${{ inputs.target-branch }}" \
-          --automation-app-id "${{ inputs.automation-app-id }}" \
-          --projection-app-id "${{ inputs.projection-app-id }}" \
           --manifest-path "${{ inputs.manifest-path }}" \
           --lock-path "${{ inputs.lock-path }}" \
           --require-ready true \
@@ -131,8 +123,6 @@ runs:
           --pull-request "${{ inputs.pull-request-number }}" \
           --source-branch "${{ inputs.source-branch }}" \
           --target-branch "${{ inputs.target-branch }}" \
-          --automation-app-id "${{ inputs.automation-app-id }}" \
-          --projection-app-id "${{ inputs.projection-app-id }}" \
           --manifest-path "${{ inputs.manifest-path }}" \
           --lock-path "${{ inputs.lock-path }}" \
           --require-ready true \

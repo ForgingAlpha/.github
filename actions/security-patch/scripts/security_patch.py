@@ -26,6 +26,9 @@ SOURCE_CHECK = "AlphaApps Security Classification"
 PROJECTION_CHECK = "AlphaApps Security Projection"
 PROFILE = "root-npm-v1"
 MAX_BLOB_BYTES = 20 * 1024 * 1024
+# Public GitHub App identity owned by the released control-plane policy. This
+# is a trust anchor, not a credential. Consumers cannot select or override it.
+TRUSTED_SECURITY_AUTOMATION_APP_ID = 4249954
 
 
 class PolicyError(RuntimeError):
@@ -392,7 +395,6 @@ def build_source_evidence(
     repository: str,
     source_merge: str,
     source_branch: str,
-    automation_app_id: int,
     manifest_path: str,
     lock_path: str,
 ) -> SourceEvidence:
@@ -407,7 +409,7 @@ def build_source_evidence(
         repository,
         source_head,
         SOURCE_CHECK,
-        automation_app_id,
+        TRUSTED_SECURITY_AUTOMATION_APP_ID,
         SOURCE_SCHEMA,
     )
     require(attestation.get("repository") == repository, "source attestation repository mismatch")
@@ -529,7 +531,6 @@ def verify_created_projection_identity(
     projection_pr: int,
     target_branch: str,
     projection_head: str,
-    projection_app_id: int,
 ) -> None:
     require(pr_result.get("number") == projection_pr and pr_result.get("state") == "open", "created projection PR is not open")
     require(pr_result.get("base", {}).get("ref") == target_branch, "created projection PR base mismatch")
@@ -537,7 +538,10 @@ def verify_created_projection_identity(
     projection_login = pr_result.get("user", {}).get("login")
     require(isinstance(projection_login, str) and projection_login.endswith("[bot]"), "created projection PR has no App author")
     require(check_result.get("head_sha") == projection_head, "created projection check head mismatch")
-    require(check_result.get("app", {}).get("id") == projection_app_id, "projection token does not belong to the configured App")
+    require(
+        check_result.get("app", {}).get("id") == TRUSTED_SECURITY_AUTOMATION_APP_ID,
+        "projection token does not belong to the centrally trusted App",
+    )
     projection_slug = check_result.get("app", {}).get("slug")
     require(
         isinstance(projection_slug, str)
@@ -553,11 +557,9 @@ def create_projection(
     target_branch: str,
     manifest_path: str,
     lock_path: str,
-    projection_app_id: int,
     draft: bool,
 ) -> tuple[int, ProjectionEvidence]:
     repository = source.repository
-    projection_app_id = require_app_id(projection_app_id, "projection App")
     collisions = open_lock_proposals(api, repository, target_branch, lock_path, fresh=True)
     require(not collisions, f"open production PRs already touch {lock_path}: {collisions}")
 
@@ -669,7 +671,6 @@ def create_projection(
         projection_pr,
         target_branch,
         projection_head,
-        projection_app_id,
     )
     return projection_pr, evidence
 
@@ -731,7 +732,6 @@ def verify_projection_admission(
     repository: str,
     pull_request: int,
     target_branch: str,
-    projection_app_id: int,
 ) -> ProjectionEvidence:
     """Admit a trusted exact projection to CI without granting merge authority."""
 
@@ -748,7 +748,7 @@ def verify_projection_admission(
         repository,
         projection_head,
         PROJECTION_CHECK,
-        projection_app_id,
+        TRUSTED_SECURITY_AUTOMATION_APP_ID,
         PROJECTION_SCHEMA,
     )
     evidence = parse_projection_attestation(raw_attestation)
@@ -808,8 +808,6 @@ def verify_projection(
     pull_request: int,
     source_branch: str,
     target_branch: str,
-    automation_app_id: int,
-    projection_app_id: int,
     require_ready: bool,
 ) -> tuple[ProjectionEvidence, dict[str, Any]]:
     repository = require_repository(repository)
@@ -827,7 +825,7 @@ def verify_projection(
         repository,
         projection_head,
         PROJECTION_CHECK,
-        projection_app_id,
+        TRUSTED_SECURITY_AUTOMATION_APP_ID,
         PROJECTION_SCHEMA,
     )
     evidence = parse_projection_attestation(raw_attestation)
@@ -841,7 +839,6 @@ def verify_projection(
         repository,
         evidence.source_merge,
         source_branch,
-        automation_app_id,
         evidence.manifest_path,
         evidence.lock_path,
     )
@@ -997,7 +994,6 @@ def add_common_source_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--source-branch", default="dev")
     parser.add_argument("--target-branch", default="main")
-    parser.add_argument("--automation-app-id", required=True)
     parser.add_argument("--manifest-path", default="package.json")
     parser.add_argument("--lock-path", default="package-lock.json")
 
@@ -1013,13 +1009,11 @@ def cli(argv: list[str] | None = None) -> int:
     project_parser = subparsers.add_parser("project")
     add_common_source_args(project_parser)
     project_parser.add_argument("--source-merge-sha", required=True)
-    project_parser.add_argument("--projection-app-id", required=True)
     project_parser.add_argument("--draft", choices=("true", "false"), default="true")
 
     verify_parser = subparsers.add_parser("verify-projection")
     add_common_source_args(verify_parser)
     verify_parser.add_argument("--pull-request", required=True)
-    verify_parser.add_argument("--projection-app-id", required=True)
     verify_parser.add_argument("--require-ready", choices=("true", "false"), default="true")
     verify_parser.add_argument("--verify-checks", choices=("true", "false"), default="false")
     verify_parser.add_argument("--ci-workflow-path", default=".github/workflows/ci.yml")
@@ -1032,7 +1026,6 @@ def cli(argv: list[str] | None = None) -> int:
     admission_parser.add_argument("--repository", required=True)
     admission_parser.add_argument("--pull-request", required=True)
     admission_parser.add_argument("--target-branch", default="main")
-    admission_parser.add_argument("--projection-app-id", required=True)
 
     post_parser = subparsers.add_parser("verify-post-merge")
     post_parser.add_argument("--repository", required=True)
@@ -1049,7 +1042,6 @@ def cli(argv: list[str] | None = None) -> int:
             manifest_path = require_root_file(args.manifest_path, "manifest path")
             lock_path = require_root_file(args.lock_path, "lock path")
             require(manifest_path != lock_path, "manifest and lock paths must differ")
-            automation_app_id = require_app_id(args.automation_app_id, "automation App")
 
         if args.command == "verify-source":
             evidence = build_source_evidence(
@@ -1057,7 +1049,6 @@ def cli(argv: list[str] | None = None) -> int:
                 args.repository,
                 args.source_merge_sha,
                 args.source_branch,
-                automation_app_id,
                 manifest_path,
                 lock_path,
             )
@@ -1071,18 +1062,15 @@ def cli(argv: list[str] | None = None) -> int:
                 args.repository,
                 args.source_merge_sha,
                 args.source_branch,
-                automation_app_id,
                 manifest_path,
                 lock_path,
             )
-            projection_app_id = require_app_id(args.projection_app_id, "projection App")
             pull_request, evidence = create_projection(
                 api,
                 source,
                 args.target_branch,
                 manifest_path,
                 lock_path,
-                projection_app_id,
                 args.draft == "true",
             )
             emit_output("eligible", True)
@@ -1090,7 +1078,6 @@ def cli(argv: list[str] | None = None) -> int:
             emit_output("projection_head_sha", evidence.projection_head)
             emit_output("production_base_sha", evidence.production_base)
         elif args.command == "verify-projection":
-            projection_app_id = require_app_id(args.projection_app_id, "projection App")
             pull_request = require_pr_number(args.pull_request)
             evidence, pr = verify_projection(
                 api,
@@ -1098,8 +1085,6 @@ def cli(argv: list[str] | None = None) -> int:
                 pull_request,
                 args.source_branch,
                 args.target_branch,
-                automation_app_id,
-                projection_app_id,
                 args.require_ready == "true",
             )
             if args.verify_checks == "true":
@@ -1125,7 +1110,6 @@ def cli(argv: list[str] | None = None) -> int:
                 args.repository,
                 require_pr_number(args.pull_request),
                 args.target_branch,
-                require_app_id(args.projection_app_id, "projection App"),
             )
             emit_output("verified", True)
             emit_output("projection_head_sha", evidence.projection_head)
