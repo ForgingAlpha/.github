@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -45,6 +47,7 @@ class UpdateOwnershipTest(unittest.TestCase):
         update_ownership.validate_central_preset(update_ownership.load_json(PRESET))
         action = ACTION.read_text(encoding="utf-8")
         self.assertIn(".github/update-policy.json", action)
+        self.assertIn("--repository-root .", action)
         self.assertIn("renovate.json", action)
         self.assertIn(".github/dependabot.yml", action)
         self.assertNotIn("github.token", action)
@@ -93,6 +96,49 @@ class UpdateOwnershipTest(unittest.TestCase):
         mise_rule = next(rule for rule in config["packageRules"] if rule.get("matchManagers") == ["mise"])
         self.assertIs(mise_rule["enabled"], False)
         self.assertEqual(config["lockFileMaintenance"], {"enabled": False})
+
+    def test_exactly_one_canonical_repository_config_is_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical = root / "renovate.json"
+            canonical.write_text(json.dumps(self.renovate), encoding="utf-8")
+            update_ownership.validate_config_files(root, canonical)
+
+            alternate = root / ".github" / "renovate.json5"
+            alternate.parent.mkdir()
+            alternate.write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(update_ownership.OwnershipError, "alternate Renovate config files"):
+                update_ownership.validate_config_files(root, canonical)
+
+    def test_every_official_alternate_config_name_is_rejected(self):
+        for relative in update_ownership.ALTERNATE_RENOVATE_CONFIGS:
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                canonical = root / "renovate.json"
+                canonical.write_text(json.dumps(self.renovate), encoding="utf-8")
+                alternate = root / relative
+                alternate.parent.mkdir(parents=True, exist_ok=True)
+                alternate.write_text("{}", encoding="utf-8")
+                with self.assertRaisesRegex(update_ownership.OwnershipError, relative.replace(".", r"\.")):
+                    update_ownership.validate_config_files(root, canonical)
+
+    def test_package_json_renovate_key_and_symlinked_canonical_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical = root / "renovate.json"
+            canonical.write_text(json.dumps(self.renovate), encoding="utf-8")
+            (root / "package.json").write_text('{"renovate": {}}', encoding="utf-8")
+            with self.assertRaisesRegex(update_ownership.OwnershipError, "package.json renovate"):
+                update_ownership.validate_config_files(root, canonical)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "config-target.json"
+            target.write_text(json.dumps(self.renovate), encoding="utf-8")
+            canonical = root / "renovate.json"
+            canonical.symlink_to(target)
+            with self.assertRaisesRegex(update_ownership.OwnershipError, "one regular file"):
+                update_ownership.validate_config_files(root, canonical)
 
 
 if __name__ == "__main__":

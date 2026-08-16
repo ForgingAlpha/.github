@@ -9,6 +9,7 @@ runs:
       run: |
         set -euo pipefail
         python3 "$GITHUB_ACTION_PATH/scripts/validate_update_ownership.py" \
+          --repository-root . \
           --policy .github/update-policy.json \
           --renovate renovate.json \
           --dependabot .github/dependabot.yml

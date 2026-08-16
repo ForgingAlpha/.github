@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,20 @@ import yaml
 CENTRAL_PRESET = "local>ForgingAlpha/.github:renovate-config"
 ALLOWED_POLICY_KEYS = {"schema_version", "normal_update_owner", "base_branch", "runtime_profile"}
 ALLOWED_RENOVATE_KEYS = {"$schema", "extends", "baseBranchPatterns"}
+ALTERNATE_RENOVATE_CONFIGS = (
+    "renovate.jsonc",
+    "renovate.json5",
+    ".github/renovate.json",
+    ".github/renovate.jsonc",
+    ".github/renovate.json5",
+    ".gitlab/renovate.json",
+    ".gitlab/renovate.jsonc",
+    ".gitlab/renovate.json5",
+    ".renovaterc",
+    ".renovaterc.json",
+    ".renovaterc.jsonc",
+    ".renovaterc.json5",
+)
 
 
 class OwnershipError(ValueError):
@@ -65,6 +80,24 @@ def validate_renovate(config: dict[str, Any], base: str) -> None:
         raise OwnershipError(f"repository Renovate config must extend only {CENTRAL_PRESET}")
     if config.get("baseBranchPatterns") != [base]:
         raise OwnershipError(f"repository Renovate baseBranchPatterns must be exactly [{base!r}]")
+
+
+def validate_config_files(repository_root: Path, canonical_path: Path) -> None:
+    root = repository_root.resolve()
+    canonical = canonical_path if canonical_path.is_absolute() else root / canonical_path
+    if not os.path.lexists(canonical) or not canonical.is_file() or canonical.is_symlink():
+        raise OwnershipError("canonical renovate.json must be one regular file at the repository root")
+    alternates = [relative for relative in ALTERNATE_RENOVATE_CONFIGS if os.path.lexists(root / relative)]
+    if alternates:
+        raise OwnershipError(
+            "alternate Renovate config files are forbidden because Renovate uses only the first match: "
+            + ", ".join(alternates)
+        )
+    package_json = root / "package.json"
+    if os.path.lexists(package_json):
+        package = load_json(package_json)
+        if "renovate" in package:
+            raise OwnershipError("deprecated package.json renovate configuration is forbidden")
 
 
 def validate_security_only_dependabot(config: dict[str, Any], base: str) -> None:
@@ -131,6 +164,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--renovate", type=Path)
     parser.add_argument("--dependabot", type=Path)
     parser.add_argument("--central-preset", type=Path)
+    parser.add_argument("--repository-root", type=Path)
     return parser.parse_args()
 
 
@@ -141,11 +175,12 @@ def main() -> int:
             validate_central_preset(load_json(args.central_preset))
             print("✓ Central Renovate preset validation passed")
             return 0
-        if not args.policy or not args.renovate or not args.dependabot:
-            raise OwnershipError("policy, renovate, and dependabot paths are required for consumer validation")
+        if not args.policy or not args.renovate or not args.dependabot or not args.repository_root:
+            raise OwnershipError("repository-root, policy, renovate, and dependabot paths are required for consumer validation")
         owner, base, _profile = validate_policy(load_json(args.policy))
         if owner != "renovate":
             raise OwnershipError("ci-update-ownership is the destination Renovate-mode gate")
+        validate_config_files(args.repository_root, args.renovate)
         validate_renovate(load_json(args.renovate), base)
         validate_security_only_dependabot(load_yaml(args.dependabot), base)
         print(f"✓ Update ownership validation passed (Renovate normal updates; Dependabot security only; base {base})")
