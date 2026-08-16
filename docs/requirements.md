@@ -133,24 +133,63 @@ protected `main` only after their complete control-plane gates pass.
 
 Only a Dependabot pull request with a re-provable official GitHub
 vulnerability-alert association and a trusted automation-App classification
-check bound to its exact current head SHALL be treated as an automatically
-promotable security update. Eligible security updates SHALL bypass normal
-cooldown and SHALL automatically merge and promote after that exact current
-head passes complete required `CI`.
+check bound to its exact source base, exact current head, complete associated
+OPEN or FIXED GHSA set, and approved manifest-and-lock change SHALL be treated
+as an automatically promotable security update. Eligible security updates
+SHALL bypass normal cooldown and SHALL automatically merge into protected
+`dev` only after that exact head passes complete required `CI`.
+
+After the exact Dependabot revision merges into `dev`, a no-bypass projection
+writer MAY open a production pull request only by reconstructing that exact
+approved dependency patch on the current `main` base. For every touched path,
+the current `main` blob and mode SHALL equal the source pull request's pre-fix
+blob and mode. The writer SHALL apply only the source post-fix blobs and modes;
+it SHALL NOT merge or cherry-pick the `dev` branch, resolve conflicts, regenerate
+a lock, or include unrelated files.
+
+The immutable source preimage SHALL be the first parent of the recorded `dev`
+security merge and SHALL equal the source base bound by classification. Each
+enrollment SHALL declare and verify its supported source merge shape; the
+initial site profile accepts only a one-parent squash merge whose resulting
+tree equals the classified source head. Later movement of `dev` SHALL NOT
+invalidate that captured source chain. The initial root npm profile SHALL
+compare the pre-fix blobs and modes for both `package.json` and
+`package-lock.json` against current `main`, even when a transitive-only fix
+changes only the lock.
 
 **Fit:** Every synchronization clears stale auto-merge state and routing labels.
-A changed head, untrusted merge identity, missing or ambiguous alert association
-at merge or promotion time, failed trusted workflow run, disallowed file,
-changed target, or non-fast-forward state fails closed.
+A changed source head, untrusted merge identity, incomplete or changed GHSA set,
+maintainer modification, disallowed path or file type, mismatched preimage,
+rename, binary, symlink, submodule, conflict, ambiguous API result, changed
+production base, concurrent lock change, or reconstruction mismatch fails
+closed. The resulting pull request is based on current `main`, changes only the
+approved manifest and lock paths, and has exactly the source post-fix blobs and
+modes. Projection is serialized by repository and lockfile; more than one open
+production projection touching the same lock is ambiguous and fails closed.
 
 ### REQ-014 - Exact-SHA Deployment
 
-Security promotion SHALL deploy the exact tested, still-current source SHA.
-Turnkey SHALL prove that SHA in staging before lease-protected promotion to
-`main` and production.
+An unattended security production pull request SHALL receive fresh strict
+`main`-target CI and CodeQL on its exact current head and base. Protected
+security activation SHALL independently reconstruct the expected patch,
+re-prove source and alert provenance, verify the exact trusted check runs, and
+request a pull-request merge with the exact head SHA. Quality and scanning
+requirements SHALL have no automation bypass.
 
-**Fit:** CI, staging, `main`, and the production deployment record identify the
-same commit; notification lists the promoted `dev` commit range.
+The deployed revision SHALL be the exact resulting `main` merge revision and
+tree. The source Dependabot head, its `dev` merge, the production preimage, the
+projected head, the resulting `main` merge, and the deployment SHALL remain one
+traceable immutable chain; they are not required to share one commit SHA.
+
+**Fit:** The recorded source head/base or current production head/base moving or
+mismatching before activation fails closed; later unrelated `dev` movement does
+not. GitHub atomically rejects a stale exact-SHA merge. Immediately after the
+merge, the activator verifies the returned merge SHA, current `main` SHA,
+parentage, and expected tree. The independently triggered deployment binds
+itself to and reports that exact `main` push revision and may begin concurrently
+with the activator's postcondition. A deployment failure remains visible for
+governed retry or roll-forward; automation does not silently roll back to a
+vulnerable revision.
 
 ## Operations
 
@@ -160,8 +199,14 @@ Application `dev` SHALL require pull requests and `CI`. Application `main`,
 deployment refs, and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
 
-**Fit:** Only the scoped release identity and operator can perform authorized
-promotion or release movements.
+**Fit:** Independent no-bypass rules enforce required CI, CodeQL, current-base
+state, merge shape, deletion, and non-fast-forward protection. Human review is
+enforced separately; the dedicated security activator is the only automation
+actor with pull-request-only bypass in that ruleset. GitHub scopes this bypass
+to the actor and ruleset, so the protected workflow and environment—not the
+ruleset—confine its use to a re-proved REQ-013/REQ-014 projection. Update
+authority is also pull-request-only. The projection writer has no bypass, and
+neither identity can directly push a persistent branch.
 
 ### REQ-016 - Operator Boundary
 

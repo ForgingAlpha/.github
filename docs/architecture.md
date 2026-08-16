@@ -177,8 +177,10 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 
 Normal updates and security remediation are separate, non-overlapping lanes.
 
-The security flow below is already implemented by the in-flight control-plane
-refactor. The Renovate ownership, lock-refresh, consumer-profile, and
+The source Dependabot classification capability described below is partially
+implemented; its stronger source-base and complete-GHSA attestation plus the
+production projection and activation path remain target state. The Renovate
+ownership, lock-refresh, consumer-profile, and
 updater-coverage portions are target state implemented in Phases 2 through 7 of
 `docs/plans/renovate-normal-dependency-automation.md`. Until each repository's
 audited cutover, its declared normal-update owner remains Dependabot; the
@@ -212,30 +214,75 @@ detected surface.
 
 Security classification uses the SHA-pinned official Dependabot metadata Action
 with alert lookup plus GitHub's alert-to-pull-request association. Grouped PRs
-record every associated GHSA. A trusted default-branch workflow validates
-actor, base, file scope, classification, mergeability, and successful checks.
-Every synchronization first clears stale auto-merge and routing state. The
-automation App creates a trusted classification check on the exact PR head and
-then calls GitHub's merge API with that head SHA as an atomic precondition.
+bind every associated GHSA. A trusted default-branch workflow validates actor,
+base, allowed dependency paths, maintainer-change state, and exact head. Every
+synchronization first clears stale auto-merge and routing state. The automation
+App records an exact-head classification and GitHub merges the security revision
+into protected `dev` only after required CI.
 
-Promotion does not trust the label as authority. A trusted post-merge job uses
-the automation App's read-only alert permission to re-prove that the exact PR
-head carries the App-owned classification check, the App performed the merge,
-and the Dependabot PR remains associated with an official open or fixed GitHub
-security alert. Branch promotion requires an approved `CI` workflow `push` run
-on the exact source SHA and re-reads the source immediately before its
-expected-old target lease. Target movement and the immutable deployment tag are
-one atomic push.
+Production remediation is a separate exact-patch projection, not a `dev` branch
+promotion. A trusted projector re-proves the merged Dependabot source PR,
+classification App and merge identity, exact source base and head, and complete
+OPEN or FIXED GHSA set. It accepts only the enrolled repository profile's
+dependency manifest and lock paths. The authoritative source base is the first
+parent of the recorded security merge and must equal the base bound by source
+classification. The initial site profile accepts only a one-parent squash merge
+whose tree equals the classified source head. Later unrelated movement of `dev`
+does not invalidate that immutable source chain.
 
-For Turnkey, the merged `dev` SHA deploys to the staging environment and passes
-health verification. Automation then advances `main` with an exact expected-old
-SHA lease and invokes the same reusable exact-SHA production deployment used by
-routine releases. Outliers promotes directly from tested `dev` to `main` when
-no separate staging environment exists. The entire already-green `dev` range is
-promoted and reported.
+For the initial root npm profile, current `main` must still contain the exact
+source pre-fix blob and mode for both `package.json` and `package-lock.json`,
+even when only the lock changed. Starting from the exact current `main` commit,
+the projector uses GitHub's Git Data API to replace only source-changed entries
+with the source post-fix blobs and modes. It performs no checkout, three-way
+merge, cherry-pick, conflict resolution, or lock regeneration.
 
-Privileged jobs process trusted GitHub metadata only. They never check out or
-execute pull-request code.
+The no-bypass projection writer creates one same-repository branch and pull
+request and records provenance bound to the repository, source PR, source base
+and head, `dev` merge, production base, complete GHSA set, projected head, and
+resulting tree. Labels, titles, bodies, and branch names are routing hints only.
+Any divergent preimage, unsupported file type, extra path, ambiguous API result,
+concurrent lock change, or moved base stops or rebuilds the projection from the
+new production base after the same exact checks.
+
+Projection is serialized by repository and lockfile. There may be at most one
+open production projection touching the root npm lock; a second candidate or
+any other concurrent lock proposal fails closed rather than batching or
+choosing an order.
+
+Normal pull-request CI and CodeQL then execute against the current `main` merge
+candidate with no privileged credential. A protected default-branch workflow
+first mints the no-bypass automation App token narrowed to metadata,
+pull-request, check, content, Actions, and vulnerability-alert read access. It
+uses that read-only token to independently reconstruct the expected tree,
+re-prove the full source and advisory chain, and verify the exact CI workflow
+path, run, repository, merge candidate, SHA, conclusion, and CodeQL provenance.
+Only then may it enter the branch-restricted security environment,
+mint the dedicated merge-only security activation token, and request GitHub's
+synchronous pull-request merge with the exact projected head SHA.
+
+Immediately after GitHub updates `main`, the activator verifies the returned
+merge SHA, current ref, parentage, and tree. The ordinary push-triggered
+deployment binds itself to and reports that exact merge revision; it may begin
+concurrently with the activator's postcondition and is not represented as being
+gated by it.
+
+Quality, CodeQL, current-base, deletion, non-fast-forward, and merge-shape rules
+remain in no-bypass rulesets. Human review is a separate rule with
+pull-request-only bypass for the security activator, and UPDATE authority is a
+separate pull-request-only rule. The projector has no bypass. No identity can
+directly push a persistent branch through this flow.
+
+Current migration status: Dependabot security classification and protected
+`dev` integration exist. Exact production projection and unattended activation
+are not yet active. `alphaapps-site` is the first observation-mode canary;
+unattended authority follows only after its exact projection, checks, rulesets,
+credential boundary, merge, and production deployment are proven. The legacy
+whole-branch reusable promotion workflow remains only for existing callers
+pending separate migration and is not security authority for new enrollments.
+
+Privileged jobs process trusted GitHub metadata only. They never check out,
+execute, or consume artifacts from pull-request code.
 
 Installed marketplace plugins remain outside repository dependency bots and
 are owned by their official installer. Customized vendored external skills
