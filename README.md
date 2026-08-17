@@ -84,10 +84,10 @@ in
 [`docs/plans/renovate-normal-dependency-automation.md`](docs/plans/renovate-normal-dependency-automation.md).
 The first implementation tranche publishes the central Renovate preset, the
 updater-ownership gate, and a read-only runtime-profile canary for
-`alphaapps-site`. Renovate's mise manager and generic lock maintenance remain
-disabled until the constrained writer is available. Required CI on the canary
-rejects overlapping update ownership and a runtime declaration or lock that is
-not the exact assigned projection.
+`alphaapps-site`. Renovate's mise manager, npm-managed Node engine declarations,
+and generic lock maintenance remain disabled until the constrained writer is
+available. Required CI on the canary rejects overlapping update ownership and a
+runtime declaration or lock that is not the exact assigned projection.
 
 The hosted service may evaluate the repository more than once per day; the
 unrestricted run window satisfies the policy's at-least-daily evaluation
@@ -104,7 +104,7 @@ green but unmerged. Use Renovate's generated onboarding PR and job log to prove
 App access, the default branch, and manager discovery, then close that generated
 PR. Merge the canonical reviewed config to activate proposal creation. Inspect
 the first post-merge hosted job for the resolved central preset, cooldowns,
-disabled vulnerability/mise lanes, and first-party Action exclusion. Merging
+disabled vulnerability/mise/Node-engine lanes, and first-party Action exclusion. Merging
 the canonical config before App installation would skip the onboarding safety
 gate.
 
