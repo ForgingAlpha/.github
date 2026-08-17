@@ -273,10 +273,31 @@ Any divergent preimage, unsupported file type, extra path, ambiguous API result,
 concurrent lock change, or moved base stops or rebuilds the projection from the
 new production base after the same exact checks.
 
+Projection creation is a deterministic create-or-adopt state machine. Its branch
+key contains the source pull request, source head, and production base, while its
+tree and commit are content-addressed from the exact source and production
+objects. Before creating a pull request, the writer ensures that the branch ref
+exists only at the expected projected head and that exactly one App `4618077`
+attestation with the exact canonical payload exists on that head. A retry adopts
+an existing ref, check, or open draft pull request only after fresh base, fixed-App
+actor, branch, head, single-commit tree, file set, disabled maintainer modification,
+and sole-lock proof. It never updates or deletes a conflicting ref. Accepted writes whose
+responses are lost therefore converge on one proposal; mismatches and concurrent
+duplicates remain visible and fail closed.
+The writer snapshots ref and check state before mutation and permits only the
+three monotonic states: neither object, exact ref only, or exact ref plus one
+exact check. It also searches all pull-request history for the deterministic
+same-repository head; a closed, merged, wrong-base, or duplicate record is a
+fail-closed tombstone rather than permission to create a replacement.
+
 Projection is serialized by repository and lockfile. There may be at most one
 open production projection touching the root npm lock; a second candidate or
 any other concurrent lock proposal fails closed rather than batching or
-choosing an order.
+choosing an order. GitHub caps pull-request file enumeration at 3,000 entries,
+so the proof compares the detailed pull request's changed-file count with the
+complete paginated result and rejects the cap, a mismatch, or duplicates. The
+composite action cannot supply workflow concurrency itself: enrollment must add
+a non-cancelling caller group keyed by repository, target branch, and lock path.
 
 Normal pull-request CI and CodeQL then execute for the exact projected head in
 the current `main` context with no privileged credential. GitHub also exposes a

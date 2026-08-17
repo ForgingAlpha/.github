@@ -156,6 +156,25 @@ blob and mode. The writer SHALL apply only the source post-fix blobs and modes;
 it SHALL NOT merge or cherry-pick the `dev` branch, resolve conflicts, regenerate
 a lock, or include unrelated files.
 
+Projection creation SHALL be retry-safe without updating or deleting an existing
+branch. Its deterministic branch identity SHALL bind the source pull request,
+source head, and production base. A rerun or ambiguous create response MAY adopt
+only an exact ref at the deterministic projected head, one exact successful
+attestation written by the pinned security App before the pull request, and one
+open same-repository App-authored draft pull request. The adopted pull request
+SHALL have maintainer modification disabled, the exact base, branch, head, single
+commit, tree, file set, and sole-lock ownership. Every adoption SHALL re-read the
+current production base and unique trusted check. A missing, conflicting,
+duplicate, moved, wrong-App, or otherwise ambiguous object fails closed without a
+ref update, deletion, duplicate check, or second pull-request create request.
+Before its first mutable write, the writer SHALL snapshot the deterministic ref
+and trusted checks. It accepts only no ref with no check, the exact ref with no
+check, or the exact ref with one exact check; a check without its ref, a moved
+ref, a duplicate, or a conflicting check fails with no mutable write. The
+writer SHALL enumerate all pull-request history for the exact same-repository
+head. Any closed, merged, wrong-base, or duplicate prior record is a tombstone
+and SHALL prevent a replacement pull-request create request.
+
 The immutable released control-plane policy SHALL pin the dedicated security
 source/projector App's public GitHub App ID for both source classification and
 projection writing. A consumer variable, workflow input, label, branch name, or
@@ -188,7 +207,13 @@ production base, concurrent lock change, or reconstruction mismatch fails
 closed. The resulting pull request is based on current `main`, changes only the
 approved manifest and lock paths, and has exactly the source post-fix blobs and
 modes. Projection is serialized by repository and lockfile; more than one open
-production projection touching the same lock is ambiguous and fails closed.
+production projection touching the same lock is ambiguous and fails closed. A
+rerun after an accepted ref, check, or pull-request write with a lost response
+adopts only the exact recorded state and performs no second mutable write.
+The consumer caller SHALL provide a non-cancelling concurrency group keyed by
+repository, target branch, and lock path. Enrollment SHALL fail until that
+caller-side serialization is installed. Lock ownership proof SHALL reject an
+incomplete, capped, mismatched, or duplicate pull-request file enumeration.
 
 ### REQ-014 - Exact-SHA Deployment
 

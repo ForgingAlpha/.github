@@ -1,5 +1,5 @@
 name: Exact Security Patch Projection
-description: Reconstruct one verified Dependabot dependency patch on current production.
+description: Deterministically create or adopt one verified Dependabot patch on current production.
 
 inputs:
   github-token:
@@ -24,11 +24,6 @@ inputs:
     description: Root npm lock path for the initial site profile.
     required: false
     default: package-lock.json
-  draft:
-    description: Open the projected production pull request as a draft.
-    required: false
-    default: "true"
-
 outputs:
   eligible:
     description: True only after the exact projection pull request and attestation exist.
@@ -46,7 +41,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Re-prove source and create exact production projection
+    - name: Re-prove source and create or adopt exact production projection
       id: project
       shell: bash
       env:
@@ -59,5 +54,4 @@ runs:
           --source-branch "${{ inputs.source-branch }}" \
           --target-branch "${{ inputs.target-branch }}" \
           --manifest-path "${{ inputs.manifest-path }}" \
-          --lock-path "${{ inputs.lock-path }}" \
-          --draft "${{ inputs.draft }}"
+          --lock-path "${{ inputs.lock-path }}"
