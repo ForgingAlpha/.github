@@ -28,15 +28,20 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
   Code Security/Advanced Security entitlement required by the official action.
   Do not merge the consumer rollout until a pull-request probe returns real
   dependency-change output.
-- Install the automation GitHub App with repository contents and pull-request
-  write, issues write, checks write, and read-only Dependabot-alert permissions.
+- Install the automation GitHub App with repository Actions and
+  Dependabot-alert read plus contents, pull-request, and checks write.
   The released control-plane policy pins its public App ID; do not duplicate or
   override that identity in a consumer secret, variable, or workflow input.
-  Store only its private key as the organization Dependabot secret and the
-  organization Actions secret `ALPHAAPPS_AUTOMATION_PRIVATE_KEY`; post-merge
-  projection workflows run in the Actions context and require that second store.
-- Create the `security-autopromote` label in every participating repository,
-  including `ForgingAlpha/.github` and each application repository.
+  Keep Doppler as the secret source of truth and project only the private key
+  into each enrolled repository's branch-restricted `security-automation`
+  environment. Do not create an organization Dependabot secret or a broadly
+  available organization/repository Actions secret for this credential.
+- Treat the existing `pull_request_target` Dependabot auto-merge workflow and
+  `dependabot-automerge` action as a legacy live-caller contract only. GitHub
+  withholds Actions secrets from Dependabot-triggered workflows, so it is not
+  the enrollment path for this design. Add no new callers or routing labels;
+  migrate each live consumer to the `workflow_run` source action, then retire
+  the legacy workflow/action after the final caller is proven migrated.
 - Treat the existing whole-branch promotion workflow and `prod-*` tags as a
   legacy caller contract only. Do not enroll a new security flow in that
   workflow. Retain its protection until any verified live callers are migrated,
@@ -146,30 +151,52 @@ back SHA. Only then merge consumer branches that adopt new action inputs or
 profiles. Turnkey and Outliers remain blocked until their surfaced strict
 application findings are fixed; do not weaken CI to merge them.
 
-- For exact security projection, confirm the writer App can create only a task
-  branch and pull request and has no persistent-branch bypass. Store no
-  activation credential in the writer workflow. Confirm its public App ID is
-  the exact source-classifier and writer identity pinned by the released
-  control-plane policy; do not add a consumer variable or workflow input that
-  can select a different automation App.
-- Before the first projection, upgrade source classification so its trusted
-  exact-head check also binds the source base and complete associated GHSA set;
-  the current head-only classification is not production-projection authority.
+- For exact security projection, confirm the dedicated security source/projector App can create a
+  task branch and pull request but has no `main` bypass. Its only persistent-ref
+  authority is the separately governed pull-request-only `dev` source-merge
+  bypass. Confirm it is a dedicated security App whose private key is absent
+  from every general agent launcher and unrelated workflow. Store no production
+  activation credential in the writer workflow.
+  Confirm its public App ID is the exact source-classifier and writer identity
+  pinned by the released control-plane policy; do not add a consumer variable
+  or workflow input that can select a different automation App.
+- Before the first projection, install the consumer's unprivileged CI
+  `workflow_run` security caller from the released default branch. Confirm its
+  preflight job has only Actions, checks, contents, and pull-request read
+  access; no environment, secret, App token, vulnerability-alert access,
+  checkout, cache, or pull-request artifact is available there. Confirm it
+  binds the exact CI workflow path/run/repository/PR/base/head and accepts only
+  the latest trusted exact-head CI and CodeQL results within the bounded wait.
+  Require a non-cancelling concurrency group keyed by repository and exact
+  source head; verify a retry updates one stable classification instead of
+  creating another.
+- Create a `security-automation` environment restricted to exact `dev`. Store
+  only the dedicated security source/projector App private key there. The environment
+  job mints a token with Actions and vulnerability-alert read plus checks,
+  contents, and pull-request write. It re-proves the source before any write,
+  writes one stable exact-head classification, and exact-head merges with the
+  repository's normal `merge` method. Verify the recorded result has ordered
+  parents `[classified base, classified head]`, the classified head tree, and
+  the check-derived App actor; later unrelated `dev` movement is irrelevant.
+  Simulate an accepted merge with a lost client response and verify a rerun
+  adopts only that exact recorded merge without issuing another merge request.
 - Create a `security-activation` environment restricted to the repository's
   exact default branch. Store only the dedicated security activator's client ID
   variable and private-key secret there; the activator has metadata read,
   contents write, and pull-request write, but no vulnerability-alert, workflow,
   check, status, deployment, or direct-push authority. The pre-token
-  proof uses a separately minted no-bypass automation App token narrowed to
+  proof uses a separately minted security source/projector App token narrowed to
   metadata, pull-request, check, content, Actions, and vulnerability-alert read
   access so the exact CI workflow path and run—not only a check name—are proven;
   the merge-capable token is unavailable until that proof passes.
 - Split rulesets before unattended activation: keep strict pinned CI, CodeQL,
-  current-base, merge shape, deletion, and non-fast-forward rules in a no-bypass
-  requirements set; put human review in its own set with only the security
-  activator's pull-request bypass; put UPDATE alone in an authority set with the
-  same pull-request-only bypass. Give neither the projector nor Dependabot any
-  bypass.
+  current-base, merge shape, deletion, and non-fast-forward rules in no-bypass
+  requirements. On `dev`, give only the dedicated security source/projector App
+  pull-request-only bypass of human review and UPDATE so it can merge the exact
+  classified source; Dependabot receives none. On `main`, that App/projector
+  receives no bypass. A later dedicated security activator may receive
+  pull-request-only bypass of the separate `main` human-review and UPDATE rules
+  only after the observation canary is approved.
 - Verify the production projection records and then independently re-proves the
   exact source PR, base/head blobs and modes, App-owned classification, App
   merge, complete GHSA set, production base, projected head, and result tree.

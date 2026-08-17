@@ -177,10 +177,10 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 
 Normal updates and security remediation are separate, non-overlapping lanes.
 
-The source Dependabot classification capability described below is partially
-implemented; its stronger source-base and complete-GHSA attestation plus the
-production projection and activation path remain target state. The Renovate
-ownership, lock-refresh, consumer-profile, and
+The exact-patch projection and verification primitives are released centrally;
+the Dependabot-safe source-classification wake, consumer environment and
+ruleset enrollment, and production observation canary remain target state. The
+Renovate ownership, lock-refresh, consumer-profile, and
 updater-coverage portions are target state implemented in Phases 2 through 7 of
 `docs/plans/renovate-normal-dependency-automation.md`. Until each repository's
 audited cutover, its declared normal-update owner remains Dependabot; the
@@ -212,13 +212,34 @@ repository. It also validates the applicable central preset and local coverage,
 Dependabot configuration, annotated literals, and exactly one owner per
 detected surface.
 
-Security classification uses the SHA-pinned official Dependabot metadata Action
-with alert lookup plus GitHub's alert-to-pull-request association. Grouped PRs
-bind every associated GHSA. A trusted default-branch workflow validates actor,
-base, allowed dependency paths, maintainer-change state, and exact head. Every
-synchronization first clears stale auto-merge and routing state. The automation
-App records an exact-head classification and GitHub merges the security revision
-into protected `dev` only after required CI.
+Security classification never depends on a Dependabot-triggered workflow having
+access to an Actions secret. The unprivileged pull-request CI run is only a wake
+for a default-branch `workflow_run` job. Before entering an environment or
+minting an App token, that job validates the exact CI workflow path, run,
+repository, same-repository Dependabot pull request, current base and head, and
+then polls the latest exact-head trusted CI and CodeQL checks at a bounded
+interval for at most five minutes. It waits only for missing or in-progress
+checks and fails immediately for movement, ambiguity, terminal failure, or a
+wrong reporting App. An absent workflow-run pull-request pointer uses a unique
+live commit association; malformed or multiple pointers fail closed.
+The caller serializes the repository and exact source head without cancellation;
+the classifier also re-reads its check after writing and rejects duplicates.
+
+After read-only proof, a separate job enters the branch-restricted
+`security-automation` environment, mints the dedicated security
+source/projector App,
+and re-fetches every source fact. It uses live GitHub pull-request, commit,
+file, check, workflow-run, and vulnerability-alert APIs rather than the
+event-bound Dependabot metadata Action. Grouped PRs bind every associated OPEN
+or FIXED GHSA. All commits must remain verified Dependabot commits, only the
+approved manifest and lock may change, and stale native auto-merge or retired
+routing state is rejected. The App upserts one stable exact-head
+classification, re-proves the source, and requests an exact-head normal merge
+into protected `dev`. The App key exists only in this security boundary and is
+never available to the general agent launcher. If GitHub completes the exact
+merge but its response is lost, the same operation adopts the recorded merge
+only after re-proving the exact PR, classified base and head, unique trusted
+classification, App actor, ordered parents, and source-head tree.
 
 Production remediation is a separate exact-patch projection, not a `dev` branch
 promotion. A trusted projector re-proves the merged Dependabot source PR,
@@ -226,8 +247,9 @@ classification App and merge identity, exact source base and head, and complete
 OPEN or FIXED GHSA set. It accepts only the enrolled repository profile's
 dependency manifest and lock paths. The authoritative source base is the first
 parent of the recorded security merge and must equal the base bound by source
-classification. The initial site profile accepts only a one-parent squash merge
-whose tree equals the classified source head. Later unrelated movement of `dev`
+classification. The initial site profile accepts only a normal two-parent merge
+whose ordered parents are the classified source base and source head and whose
+tree equals the classified source head. Later unrelated movement of `dev`
 does not invalidate that immutable source chain.
 
 For the initial root npm profile, current `main` must still contain the exact
@@ -237,11 +259,11 @@ the projector uses GitHub's Git Data API to replace only source-changed entries
 with the source post-fix blobs and modes. It performs no checkout, three-way
 merge, cherry-pick, conflict resolution, or lock regeneration.
 
-The no-bypass projection writer creates one same-repository branch and pull
+The no-main-bypass projection writer creates one same-repository branch and pull
 request and records provenance bound to the repository, source PR, source base
 and head, `dev` merge, production base, complete GHSA set, projected head, and
-resulting tree. The released control-plane policy pins the no-bypass security
-automation App's public ID as the identity trust anchor for both source
+resulting tree. The released control-plane policy pins the dedicated security
+source/projector App's public ID as the identity trust anchor for both source
 classification and projection writing; consumers install that App but cannot
 select or override which App the policy trusts. The App's current slug is derived
 from each trusted check and must match the corresponding merge or pull-request
@@ -259,7 +281,7 @@ choosing an order.
 Normal pull-request CI and CodeQL then execute for the exact projected head in
 the current `main` context with no privileged credential. GitHub also exposes a
 live synthetic test merge for that exact head and base. A protected default-branch workflow
-first mints the no-bypass automation App token narrowed to metadata,
+first mints the dedicated security source/projector App token narrowed to metadata,
 pull-request, check, content, Actions, and vulnerability-alert read access. It
 uses that read-only token to independently reconstruct the expected tree,
 re-prove the full source and advisory chain; verify the exact CI workflow path,
@@ -277,17 +299,23 @@ concurrently with the activator's postcondition and is not represented as being
 gated by it.
 
 Quality, CodeQL, current-base, deletion, non-fast-forward, and merge-shape rules
-remain in no-bypass rulesets. Human review is a separate rule with
-pull-request-only bypass for the security activator, and UPDATE authority is a
-separate pull-request-only rule. The projector has no bypass. No identity can
-directly push a persistent branch through this flow.
+remain in no-bypass rulesets. Human review and UPDATE authority are separate,
+branch-specific rules. The dedicated security source/projector App has pull-request-only bypass on
+`dev` for the re-proved source merge and none on `main`; Dependabot has none.
+The dedicated security activator may later receive pull-request-only bypass on
+`main` for the re-proved projection. No identity can directly push a persistent
+branch through this flow.
 
-Current migration status: Dependabot security classification and protected
-`dev` integration exist. Exact production projection and unattended activation
-are not yet active. `alphaapps-site` is the first observation-mode canary;
+Current migration status: the central exact source-classification, protected
+`dev` integration, and production-projection primitives exist, but no consumer
+has enrolled the required environment or ruleset authority. Production
+activation is not active. `alphaapps-site` is the first observation-mode canary;
 unattended authority follows only after its exact projection, checks, rulesets,
 credential boundary, merge, and production deployment are proven. The legacy
-whole-branch reusable promotion workflow remains only for existing callers
+`pull_request_target` Dependabot action remains only for unmigrated callers and
+is not a valid enrollment path because Dependabot-triggered workflows cannot
+receive its Actions secret. It is retired after the last caller migrates. The
+legacy whole-branch reusable promotion workflow remains only for existing callers
 pending separate migration and is not security authority for new enrollments.
 
 Privileged jobs process trusted GitHub metadata only. They never check out,

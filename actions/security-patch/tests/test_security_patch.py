@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "actions" / "security-patch" / "scripts" / "security_patch.py"
 PROJECTION_ACTION = ROOT / "actions" / "security-patch-projection" / "action.yml"
 ACTIVATION_ACTION = ROOT / "actions" / "security-patch-activation" / "action.yml"
-DEPENDABOT_ACTION = ROOT / "actions" / "dependabot-automerge" / "action.yml"
+SOURCE_ACTION = ROOT / "actions" / "security-patch-source" / "action.yml"
 DEPENDABOT_WORKFLOW = ROOT / ".github" / "workflows" / "dependabot-automerge.yml"
 MERGE_FLOW_ACTION = ROOT / "actions" / "ci-merge-flow" / "action.yml"
 
@@ -46,6 +46,7 @@ class FakeApi:
         self.ghsas = ("GHSA-abcd-efgh-ijkl",)
         self.posts = []
         self.puts = []
+        self.patches = []
 
     def get(self, path, fresh=False):
         if path not in self.gets:
@@ -68,6 +69,10 @@ class FakeApi:
     def put(self, path, payload):
         self.puts.append((path, payload))
         raise AssertionError(f"unexpected PUT {path}")
+
+    def patch(self, path, payload):
+        self.patches.append((path, payload))
+        raise AssertionError(f"unexpected PATCH {path}")
 
 
 class ProjectionCreateApi(FakeApi):
@@ -110,6 +115,89 @@ class ProjectionCreateApi(FakeApi):
         raise AssertionError(f"unexpected POST {path}")
 
 
+class SourceMergeApi(FakeApi):
+    def __init__(self):
+        super().__init__()
+        self.did_merge = False
+        self.source_ref_reads = 0
+        self.advance_at_ref_read = None
+        self.duplicate_after_write = False
+        self.lose_merge_response = False
+
+    def get(self, path, fresh=False):
+        repository = "ForgingAlpha/alphaapps-site"
+        if path == f"repos/{repository}/git/ref/heads/dev":
+            self.source_ref_reads += 1
+            advanced = self.did_merge or (
+                self.advance_at_ref_read is not None
+                and self.source_ref_reads >= self.advance_at_ref_read
+            )
+            return {"object": {"sha": sha("7") if advanced else sha("a")}}
+        if path == f"repos/{repository}/pulls/17" and self.did_merge:
+            value = dict(self.gets[path])
+            value.update({
+                "state": "closed",
+                "merged_at": "2026-08-16T12:30:00Z",
+                "merge_commit_sha": sha("c"),
+                "merged_by": {"login": "forgingalpha-security-automation[bot]"},
+            })
+            return value
+        return super().get(path, fresh=fresh)
+
+    def post(self, path, payload):
+        self.posts.append((path, payload))
+        if path.endswith("/check-runs"):
+            result = {
+                "id": 601,
+                **payload,
+                "head_sha": sha("b"),
+                "app": {
+                    "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
+                    "slug": "forgingalpha-security-automation",
+                },
+            }
+            checks_path = (
+                f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}"
+                "/check-runs?filter=all&per_page=100"
+            )
+            self.page_values[checks_path][0]["check_runs"].append(result)
+            if self.duplicate_after_write:
+                duplicate = dict(result)
+                duplicate["id"] = 602
+                self.page_values[checks_path][0]["check_runs"].append(duplicate)
+            return result
+        raise AssertionError(f"unexpected POST {path}")
+
+    def put(self, path, payload):
+        self.puts.append((path, payload))
+        if path.endswith("/pulls/17/merge"):
+            self.did_merge = True
+            if self.lose_merge_response:
+                raise security_patch.PolicyError("simulated lost merge response")
+            return {"merged": True, "sha": sha("c")}
+        raise AssertionError(f"unexpected PUT {path}")
+
+    def patch(self, path, payload):
+        self.patches.append((path, payload))
+        if path.endswith("/check-runs/601"):
+            result = {
+                "id": 601,
+                **payload,
+                "head_sha": sha("b"),
+                "app": {
+                    "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
+                    "slug": "forgingalpha-security-automation",
+                },
+            }
+            checks_path = (
+                f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}"
+                "/check-runs?filter=all&per_page=100"
+            )
+            self.page_values[checks_path][0]["check_runs"] = [result]
+            return result
+        raise AssertionError(f"unexpected PATCH {path}")
+
+
 def source_fixture() -> FakeApi:
     api = FakeApi()
     repository = "ForgingAlpha/alphaapps-site"
@@ -131,7 +219,7 @@ def source_fixture() -> FakeApi:
         "base": {"ref": "dev"},
         "head": {"sha": source_head},
         "user": {"login": "dependabot[bot]"},
-        "merged_by": {"login": "forgingalpha-agent-credential[bot]"},
+        "merged_by": {"login": "forgingalpha-security-automation[bot]"},
     }]]
     attestation = {
         "schema": security_patch.SOURCE_SCHEMA,
@@ -148,13 +236,13 @@ def source_fixture() -> FakeApi:
             "head_sha": source_head,
             "status": "completed",
             "conclusion": "success",
-            "app": {"id": app_id, "slug": "forgingalpha-agent-credential"},
+            "app": {"id": app_id, "slug": "forgingalpha-security-automation"},
             "output": {"summary": json.dumps(attestation)},
         }]
     }]
     api.gets[f"repos/{repository}/git/commits/{source_merge}"] = {
         "tree": {"sha": head_tree},
-        "parents": [{"sha": source_base}],
+        "parents": [{"sha": source_base}, {"sha": source_head}],
         "committer": {"date": "2026-08-16T12:00:00Z"},
     }
     api.gets[f"repos/{repository}/git/commits/{source_head}"] = {
@@ -188,6 +276,82 @@ def source_fixture() -> FakeApi:
         "filename": "package-lock.json",
         "status": "modified",
     }]]
+    return api
+
+
+def source_candidate_fixture() -> SourceMergeApi:
+    base = source_fixture()
+    api = SourceMergeApi()
+    api.gets.update(base.gets)
+    api.page_values.update(base.page_values)
+    api.ghsas = base.ghsas
+    repository = "ForgingAlpha/alphaapps-site"
+    run_id = 901
+    api.gets[f"repos/{repository}/actions/runs/{run_id}"] = {
+        "id": run_id,
+        "name": "CI",
+        "path": ".github/workflows/ci.yml",
+        "event": "pull_request",
+        "status": "completed",
+        "conclusion": "success",
+        "repository": {"full_name": repository},
+        "head_repository": {"full_name": repository},
+        "actor": {"login": "dependabot[bot]"},
+        "head_sha": sha("b"),
+        "pull_requests": [],
+    }
+    api.page_values[f"repos/{repository}/commits/{sha('b')}/pulls?per_page=100"] = [[{
+        "number": 17,
+        "state": "open",
+        "user": {"login": "dependabot[bot]"},
+        "base": {"ref": "dev"},
+        "head": {"repo": {"full_name": repository}},
+    }]]
+    api.gets[f"repos/{repository}/pulls/17"] = {
+        "number": 17,
+        "state": "open",
+        "draft": False,
+        "user": {"login": "dependabot[bot]"},
+        "base": {"ref": "dev", "sha": sha("a")},
+        "head": {"sha": sha("b"), "repo": {"full_name": repository}},
+        "merge_commit_sha": sha("c"),
+        "auto_merge": None,
+        "labels": [],
+    }
+    api.page_values[f"repos/{repository}/pulls/17/commits?per_page=100"] = [[{
+        "sha": sha("b"),
+        "author": {"login": "dependabot[bot]"},
+        "committer": {"login": "web-flow"},
+        "commit": {
+            "author": {
+                "name": "dependabot[bot]",
+                "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            },
+            "committer": {"name": "GitHub", "email": "noreply@github.com"},
+            "verification": {"verified": True, "reason": "valid"},
+        },
+    }]]
+    api.page_values[f"repos/{repository}/commits/{sha('b')}/check-runs?filter=latest&per_page=100"] = [{
+        "check_runs": [
+            {
+                "name": "CI",
+                "head_sha": sha("b"),
+                "status": "completed",
+                "conclusion": "success",
+                "app": {"id": security_patch.TRUSTED_CI_APP_ID},
+            },
+            {
+                "name": "CodeQL",
+                "head_sha": sha("b"),
+                "status": "completed",
+                "conclusion": "success",
+                "app": {"id": security_patch.TRUSTED_CODEQL_APP_ID},
+            },
+        ]
+    }]
+    api.page_values[f"repos/{repository}/commits/{sha('b')}/check-runs?filter=all&per_page=100"] = [{
+        "check_runs": []
+    }]
     return api
 
 
@@ -334,6 +498,286 @@ def full_projection_fixture() -> FakeApi:
     return api
 
 
+class SecurityPatchSourceWorkflowTest(unittest.TestCase):
+    def preflight(self, api=None, wait_seconds=0):
+        return security_patch.wait_for_source_candidate(
+            api or source_candidate_fixture(),
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            wait_seconds,
+        )
+
+    def test_preflight_resolves_empty_pointer_by_unique_commit_association(self):
+        candidate = self.preflight()
+        self.assertEqual(candidate.pull_request, 17)
+        self.assertEqual(candidate.source_base, sha("a"))
+        self.assertEqual(candidate.source_head, sha("b"))
+        self.assertEqual(candidate.changed_paths, ("package-lock.json",))
+
+    def test_read_only_preflight_does_not_query_vulnerability_alerts(self):
+        api = source_candidate_fixture()
+        candidate = security_patch.wait_for_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            0,
+            verify_alerts=False,
+        )
+        self.assertEqual(candidate.ghsa_set, ())
+        self.assertFalse(hasattr(api, "last_security_query"))
+
+    def test_preflight_accepts_one_live_workflow_pointer(self):
+        api = source_candidate_fixture()
+        api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]["pull_requests"] = [{"number": 17}]
+        candidate = self.preflight(api)
+        self.assertEqual(candidate.pull_request, 17)
+
+    def test_preflight_rejects_wrong_workflow_or_actor(self):
+        api = source_candidate_fixture()
+        run = api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]
+        run["path"] = ".github/workflows/spoof.yml"
+        with self.assertRaisesRegex(security_patch.PolicyError, "governed CI caller"):
+            self.preflight(api)
+        run["path"] = ".github/workflows/ci.yml"
+        run["actor"]["login"] = "attacker"
+        with self.assertRaisesRegex(security_patch.PolicyError, "Dependabot"):
+            self.preflight(api)
+
+    def test_preflight_rejects_moved_source_branch(self):
+        api = source_candidate_fixture()
+        api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]["base"]["sha"] = sha("9")
+        with self.assertRaisesRegex(security_patch.PolicyError, "source branch moved"):
+            self.preflight(api)
+
+    def test_preflight_rejects_stale_native_or_legacy_merge_state(self):
+        api = source_candidate_fixture()
+        pr = api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]
+        pr["auto_merge"] = {"enabled_by": {"login": "forgingalpha-agent-credential[bot]"}}
+        with self.assertRaisesRegex(security_patch.PolicyError, "native auto-merge"):
+            self.preflight(api)
+        pr["auto_merge"] = None
+        pr["labels"] = [{"name": "security-autopromote"}]
+        with self.assertRaisesRegex(security_patch.PolicyError, "retired security-autopromote"):
+            self.preflight(api)
+
+    def test_preflight_rejects_wrong_or_failed_required_check(self):
+        api = source_candidate_fixture()
+        checks = api.page_values[
+            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=latest&per_page=100"
+        ][0]["check_runs"]
+        checks[0]["app"]["id"] = 9999
+        with self.assertRaisesRegex(security_patch.PolicyError, "untrusted App"):
+            self.preflight(api)
+        checks[0]["app"]["id"] = security_patch.TRUSTED_CI_APP_ID
+        checks[1]["conclusion"] = "failure"
+        with self.assertRaisesRegex(security_patch.PolicyError, "without success"):
+            self.preflight(api)
+
+    def test_preflight_rejects_cosmetic_or_unverified_dependabot_commit(self):
+        api = source_candidate_fixture()
+        commit = api.page_values["repos/ForgingAlpha/alphaapps-site/pulls/17/commits?per_page=100"][0][0]
+        commit["committer"]["login"] = "maintainer"
+        with self.assertRaisesRegex(security_patch.PolicyError, "not committed by GitHub"):
+            self.preflight(api)
+        commit["committer"]["login"] = "web-flow"
+        commit["commit"]["author"]["email"] = "dependabot[bot]@example.com"
+        with self.assertRaisesRegex(security_patch.PolicyError, "canonical Dependabot identity"):
+            self.preflight(api)
+        commit["commit"]["author"]["email"] = "49699333+dependabot[bot]@users.noreply.github.com"
+        commit["commit"]["verification"]["reason"] = "unsigned"
+        with self.assertRaisesRegex(security_patch.PolicyError, "valid GitHub verification"):
+            self.preflight(api)
+
+    def test_preflight_times_out_when_latest_check_is_pending(self):
+        api = source_candidate_fixture()
+        checks = api.page_values[
+            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=latest&per_page=100"
+        ][0]["check_runs"]
+        checks[1].update({"status": "in_progress", "conclusion": None})
+        with self.assertRaisesRegex(security_patch.PolicyError, "bounded deadline"):
+            self.preflight(api)
+
+    def test_merge_reproves_and_accepts_recorded_result_after_later_dev_movement(self):
+        api = source_candidate_fixture()
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+        )
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertEqual(
+            api.puts,
+            [("repos/ForgingAlpha/alphaapps-site/pulls/17/merge", {"sha": sha("b"), "merge_method": "merge"})],
+        )
+        check_payload = next(payload for path, payload in api.posts if path.endswith("/check-runs"))
+        self.assertEqual(check_payload["head_sha"], sha("b"))
+        self.assertEqual(json.loads(check_payload["output"]["summary"])["source_base_sha"], sha("a"))
+        self.assertEqual(api.source_ref_reads, 4)
+
+    def test_merge_adopts_exact_recorded_result_after_response_loss(self):
+        api = source_candidate_fixture()
+        api.lose_merge_response = True
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+        )
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertEqual(len(api.puts), 1)
+
+    def test_merge_rerun_adopts_exact_already_completed_result_without_writing(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+        )
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+
+    def test_merge_rerun_rejects_completed_result_from_wrong_actor(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        source_association = api.page_values[
+            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
+        ][0][0]
+        source_association["merged_by"] = {"login": "unexpected[bot]"}
+        with self.assertRaisesRegex(security_patch.PolicyError, "merged by the classification App"):
+            security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+            )
+        self.assertFalse(api.puts)
+
+    def test_merge_rejects_dev_movement_during_final_reproof(self):
+        api = source_candidate_fixture()
+        api.advance_at_ref_read = 3
+        with self.assertRaisesRegex(security_patch.PolicyError, "source branch moved"):
+            security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+            )
+        self.assertFalse(api.puts)
+
+    def test_merge_rerun_updates_the_unique_exact_head_classification(self):
+        api = source_candidate_fixture()
+        path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"
+        api.page_values[path][0]["check_runs"] = [{
+            "id": 601,
+            "name": security_patch.SOURCE_CHECK,
+            "head_sha": sha("b"),
+            "external_id": f"{security_patch.SOURCE_SCHEMA}:17:{sha('b')}",
+            "app": {"id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID},
+        }]
+        security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+        )
+        self.assertEqual(len(api.patches), 1)
+        self.assertFalse(any(request_path.endswith("/check-runs") for request_path, _ in api.posts))
+
+    def test_merge_rejects_conflicting_or_duplicate_trusted_classification(self):
+        api = source_candidate_fixture()
+        path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"
+        run = {
+            "id": 601,
+            "name": security_patch.SOURCE_CHECK,
+            "head_sha": sha("b"),
+            "external_id": "conflicting-identity",
+            "app": {"id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID},
+        }
+        api.page_values[path][0]["check_runs"] = [run]
+        with self.assertRaisesRegex(security_patch.PolicyError, "external identity conflicts"):
+            security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+            )
+        api.page_values[path][0]["check_runs"] = [run, dict(run)]
+        with self.assertRaisesRegex(security_patch.PolicyError, "multiple trusted"):
+            security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+            )
+
+    def test_merge_rejects_a_concurrent_duplicate_created_after_write(self):
+        api = source_candidate_fixture()
+        api.duplicate_after_write = True
+        with self.assertRaisesRegex(security_patch.PolicyError, "not unique after write"):
+            security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+            )
+        self.assertFalse(api.puts)
+
+
 class SecurityPatchSourceTest(unittest.TestCase):
     def build(self, api=None):
         return security_patch.build_source_evidence(
@@ -345,17 +789,23 @@ class SecurityPatchSourceTest(unittest.TestCase):
             "package-lock.json",
         )
 
-    def test_accepts_exact_transitive_only_squash_source(self):
+    def test_accepts_exact_transitive_only_merge_source(self):
         evidence = self.build()
         self.assertEqual(evidence.source_base, sha("a"))
         self.assertEqual(evidence.source_head, sha("b"))
         self.assertEqual(evidence.changed_paths, ("package-lock.json",))
         self.assertEqual(evidence.ghsa_set, ("GHSA-abcd-efgh-ijkl",))
 
-    def test_rejects_multi_parent_source_merge(self):
+    def test_rejects_wrong_source_merge_parent_shape(self):
         api = source_fixture()
         api.gets[f"repos/ForgingAlpha/alphaapps-site/git/commits/{sha('c')}"]["parents"].append({"sha": sha("7")})
-        with self.assertRaisesRegex(security_patch.PolicyError, "one-parent squash"):
+        with self.assertRaisesRegex(security_patch.PolicyError, "two-parent merge"):
+            self.build(api)
+
+    def test_rejects_source_merge_with_wrong_second_parent(self):
+        api = source_fixture()
+        api.gets[f"repos/ForgingAlpha/alphaapps-site/git/commits/{sha('c')}"]["parents"][1]["sha"] = sha("7")
+        with self.assertRaisesRegex(security_patch.PolicyError, "second parent"):
             self.build(api)
 
     def test_rejects_merge_tree_that_differs_from_source_head(self):
@@ -738,18 +1188,22 @@ class ActionContractTest(unittest.TestCase):
         self.assertIn("Validate protected merge credential inputs", text)
         self.assertIn("Merge-enabled activation requires", text)
 
-    def test_source_classification_binds_base_head_ghsa_profile_and_squash(self):
-        text = DEPENDABOT_ACTION.read_text()
+    def test_source_action_has_read_only_preflight_and_exact_merge_modes(self):
+        text = SOURCE_ACTION.read_text()
         for fragment in (
-            "github.event.pull_request.base.sha",
-            "alphaapps-security-source-v1",
-            "source_base_sha",
-            "source_head_sha",
-            "ghsa_set:",
-            "root-npm-v1",
-            'if [ "${MERGE_METHOD}" = "squash" ]',
+            "preflight-source",
+            "merge-source",
+            "--workflow-run-id",
+            "--expected-head-sha",
+            "--expected-base-sha",
+            "operation == 'preflight'",
+            "operation == 'merge'",
         ):
             self.assertIn(fragment, text)
+        self.assertNotIn("actions/checkout", text)
+        self.assertNotIn("private-key", text)
+        self.assertNotIn("app-id", text)
+        self.assertNotIn("pull_request_target", text)
 
     def test_merge_flow_admits_only_app_attested_projection_to_ci(self):
         text = MERGE_FLOW_ACTION.read_text()
@@ -765,15 +1219,18 @@ class ActionContractTest(unittest.TestCase):
         self.assertNotIn("security-autopromote", text)
 
     def test_projection_identity_is_one_central_non_overridable_trust_anchor(self):
-        self.assertEqual(security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID, 4249954)
-        for path in (PROJECTION_ACTION, ACTIVATION_ACTION, MERGE_FLOW_ACTION):
+        self.assertEqual(security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID, 4618077)
+        for path in (SOURCE_ACTION, PROJECTION_ACTION, ACTIVATION_ACTION, MERGE_FLOW_ACTION):
             text = path.read_text()
             self.assertNotIn("projection-app-id", text)
             self.assertNotIn("automation-app-id", text)
             self.assertNotIn("PROJECTION_APP_ID", text)
             self.assertNotIn("AUTOMATION_APP_ID", text)
+
+    def test_legacy_classifier_keeps_its_quarantined_identity_until_callers_migrate(self):
         workflow = DEPENDABOT_WORKFLOW.read_text()
         self.assertIn("app-id: 4249954", workflow)
+        self.assertNotIn("app-id: 4618077", workflow)
         self.assertNotIn("ALPHAAPPS_AUTOMATION_APP_ID", workflow)
 
     def test_projection_attestation_exists_before_pr_event_can_start_ci(self):

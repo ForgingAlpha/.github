@@ -1,0 +1,102 @@
+name: Exact Security Patch Source
+description: Prove and optionally merge one official Dependabot security patch into protected dev.
+
+inputs:
+  github-token:
+    description: Read-only Actions/checks/contents/PR token for preflight, or the fixed App token adding alert read, Actions read, and checks/contents/PR write for merge.
+    required: true
+  workflow-run-id:
+    description: Exact successful CI workflow run that woke the protected resolver.
+    required: true
+  operation:
+    description: Either preflight or merge.
+    required: false
+    default: preflight
+  expected-pull-request:
+    description: Pull request number emitted by the preceding read-only preflight.
+    required: false
+  expected-head-sha:
+    description: Exact source head emitted by the preceding read-only preflight.
+    required: false
+  expected-base-sha:
+    description: Exact protected dev base emitted by the preceding read-only preflight.
+    required: false
+
+outputs:
+  verified:
+    description: True when read-only source proof succeeds.
+    value: ${{ steps.preflight.outputs.verified }}
+  pull-request-number:
+    description: Exact Dependabot source pull request.
+    value: ${{ steps.preflight.outputs.pull_request_number }}
+  source-base-sha:
+    description: Exact protected dev base proved by preflight.
+    value: ${{ steps.preflight.outputs.source_base_sha }}
+  source-head-sha:
+    description: Exact Dependabot source head proved by preflight.
+    value: ${{ steps.preflight.outputs.source_head_sha }}
+  source-merge-sha:
+    description: Exact resulting dev merge commit when operation is merge.
+    value: ${{ steps.merge.outputs.source_merge_sha }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate operation
+      shell: bash
+      env:
+        OPERATION: ${{ inputs.operation }}
+        EXPECTED_PR: ${{ inputs.expected-pull-request }}
+        EXPECTED_HEAD: ${{ inputs.expected-head-sha }}
+        EXPECTED_BASE: ${{ inputs.expected-base-sha }}
+      run: |
+        set -euo pipefail
+        case "${OPERATION}" in
+          preflight) ;;
+          merge)
+            [[ "${EXPECTED_PR}" =~ ^[1-9][0-9]*$ ]] || {
+              echo "✗ merge requires the exact preflight pull-request number." >&2
+              exit 1
+            }
+            [[ "${EXPECTED_HEAD}" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "✗ merge requires the exact preflight source head." >&2
+              exit 1
+            }
+            [[ "${EXPECTED_BASE}" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "✗ merge requires the exact preflight source base." >&2
+              exit 1
+            }
+            ;;
+          *)
+            echo "✗ operation must be preflight or merge." >&2
+            exit 1
+            ;;
+        esac
+
+    - name: Prove exact source without merge authority
+      id: preflight
+      if: ${{ inputs.operation == 'preflight' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" preflight-source \
+          --repository "${GITHUB_REPOSITORY}" \
+          --workflow-run-id "${{ inputs.workflow-run-id }}" \
+          --wait-seconds 300
+
+    - name: Re-prove, classify, and merge exact source
+      id: merge
+      if: ${{ inputs.operation == 'merge' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" merge-source \
+          --repository "${GITHUB_REPOSITORY}" \
+          --workflow-run-id "${{ inputs.workflow-run-id }}" \
+          --pull-request "${{ inputs.expected-pull-request }}" \
+          --expected-head-sha "${{ inputs.expected-head-sha }}" \
+          --expected-base-sha "${{ inputs.expected-base-sha }}"

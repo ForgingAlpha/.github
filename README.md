@@ -51,6 +51,9 @@ described below and never carries unrelated `dev` work.
 | `ci-astro` | Format, lint, Astro type checking, and build |
 | `ci-typescript` | Format, lint, type checking, and tests |
 | `ci-shell` | ShellCheck at style severity and Bash syntax |
+| `security-patch-source` | Dependabot-safe read-only proof and exact protected `dev` source merge |
+| `security-patch-projection` | Exact manifest/lock patch reconstruction on current `main` |
+| `security-patch-activation` | Independent production re-proof and exact-SHA protected merge |
 
 External Actions are Renovate-owned and use immutable full SHAs with adjacent
 release comments. Internal `ForgingAlpha/.github` shared Actions are excluded
@@ -157,6 +160,9 @@ with an expected-old lease, and creates an immutable rollback record.
 - Direct deployment and release writes belong only to the scoped release
   identity and operator.
 - Ambiguous identity, classification, checks, branch state, or SHA fails closed.
+- The security automation identity is dedicated and isolated from general agent
+  credentials; an exact completed source merge is adopted after a lost response
+  only when every immutable postcondition still matches.
 
 The durable policy is defined in [Intent](docs/intent.md),
 [Requirements](docs/requirements.md), and [Architecture](docs/architecture.md).
