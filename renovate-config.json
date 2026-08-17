@@ -50,6 +50,13 @@
       "platformAutomerge": true
     },
     {
+      "description": "Keep Node engine declarations owned by central runtime profiles",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "matchPackageNames": ["node"],
+      "enabled": false
+    },
+    {
       "description": "Keep first-party shared Actions on the governed v1 rollout channel",
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["ForgingAlpha/.github"],

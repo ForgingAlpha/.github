@@ -158,6 +158,8 @@ Create a versioned preset in `.github` with:
 - dependency dashboard and bounded grouping;
 - majors kept separate from patches and minors;
 - Renovate vulnerability remediation disabled;
+- npm-managed Node engine declarations disabled because the central runtime
+  profile owns runtime compatibility projections;
 - external Actions remain Renovate-owned and digest-pinned, while
   `ForgingAlpha/.github` Actions are disabled in Renovate because the protected
   `@v1` rollout owns their movement;
@@ -176,8 +178,9 @@ Phase 5; the read-only catalog must not be described as that complete authority.
 Acceptance:
 
 - configuration validation passes centrally and in every repository;
-- seeded validation proves the first-party Action exclusion is unique,
-  disabled, and the final package rule so a later match cannot re-enable it;
+- seeded validation proves the Node engine and first-party Action exclusions
+  are unique, disabled, and ordered last so a later match cannot re-enable
+  either one;
 - after the transition-capable coverage gate and preset pass, the operator
   installs the hosted App on the canary while the canonical consumer config is
   still unmerged;
@@ -186,8 +189,8 @@ Acceptance:
   config;
 - after the generated onboarding PR is closed and the canonical reviewed config
   is merged, the first hosted job proves the resolved central preset, cooldowns,
-  ownership split, disabled vulnerability/mise lanes, and first-party Action
-  exclusion before the canary is expanded.
+  ownership split, disabled vulnerability/mise/Node-engine lanes, and
+  first-party Action exclusion before the canary is expanded.
 
 ## Phase 4 - Prepare Dependabot Security-Only Mode
 

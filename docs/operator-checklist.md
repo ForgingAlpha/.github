@@ -233,8 +233,8 @@ in order.
   merging its competing config; then merge the already-reviewed canonical
   consumer PR to perform the manual onboarding. Inspect the first hosted job
   after that merge for the resolved central preset, cooldowns, disabled
-  vulnerability/mise lanes, and the exact `ForgingAlpha/.github` package
-  identity excluded from GitHub Actions updates.
+  vulnerability/mise/Node-engine lanes, and the exact `ForgingAlpha/.github`
+  package identity excluded from GitHub Actions updates.
 - Keep Renovate vulnerability remediation disabled and retain GitHub Dependabot
   alerts and security updates.
 - For each repository, convert Dependabot to security-only in the same protected

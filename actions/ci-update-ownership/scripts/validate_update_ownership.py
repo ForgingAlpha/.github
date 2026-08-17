@@ -170,6 +170,18 @@ def validate_central_preset(config: dict[str, Any]) -> None:
     mise_rules = [rule for rule in rules if isinstance(rule, dict) and rule.get("matchManagers") == ["mise"]]
     if len(mise_rules) != 1 or mise_rules[0].get("enabled") is not False:
         raise OwnershipError("central Renovate preset must disable direct mise projection updates")
+    node_engine_rules = [
+        rule
+        for rule in rules
+        if isinstance(rule, dict)
+        and rule.get("matchManagers") == ["npm"]
+        and rule.get("matchDepTypes") == ["engines"]
+        and rule.get("matchPackageNames") == ["node"]
+    ]
+    if len(node_engine_rules) != 1 or node_engine_rules[0].get("enabled") is not False:
+        raise OwnershipError(
+            "central Renovate preset must leave Node engine declarations to runtime-profile authority"
+        )
     first_party_action_rules = [
         rule
         for rule in rules
@@ -197,6 +209,8 @@ def validate_central_preset(config: dict[str, Any]) -> None:
         raise OwnershipError(f"central cooldown rules must be exactly {expected}, found {observed}")
     if rules.index(first_party_action_rules[0]) != len(rules) - 1:
         raise OwnershipError("first-party Action exclusion must be the final package rule")
+    if rules.index(node_engine_rules[0]) != len(rules) - 2:
+        raise OwnershipError("Node engine exclusion must immediately precede the final first-party Action rule")
 
 
 def parse_args() -> argparse.Namespace:
