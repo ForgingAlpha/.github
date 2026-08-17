@@ -201,6 +201,19 @@ application findings are fixed; do not weaken CI to merge them.
   exact source PR, base/head blobs and modes, App-owned classification, App
   merge, complete GHSA set, production base, projected head, and result tree.
   Labels and pull-request prose are never authority.
+- Before the observation canary, simulate accepted ref, attestation-check, and
+  pull-request writes whose client responses are lost. Verify each retry adopts
+  the one exact App `4618077` branch/check/draft proposal and performs no second
+  mutable write. Confirm a wrong ref head, conflicting or duplicate trusted
+  check, wrong App-authored or maintainer-modifiable pull request, moved `main`,
+  and competing root-lock proposal each fail closed without an update or delete.
+- Treat projection caller concurrency as an enrollment gate: install a
+  non-cancelling group keyed by repository, exact target branch, and lock path.
+  Verify a check without its deterministic ref, a closed or merged prior
+  projection, a wrong-base or duplicate same-head pull-request record, and a
+  capped or count-mismatched pull-request file enumeration all fail before a
+  replacement mutable write. Projection creation always opens a draft; there
+  is no consumer-controlled ready-for-review override.
 - Keep the first `alphaapps-site` projection in observation mode. Require Leo's
   existing exact-head approval for that projected `main` pull request, observe
   the normal production deployment, and verify the resulting `main` and

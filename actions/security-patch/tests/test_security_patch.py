@@ -78,40 +78,119 @@ class FakeApi:
 class ProjectionCreateApi(FakeApi):
     def __init__(self):
         super().__init__()
-        self.open_queries = 0
+        self.refs = {}
+        self.checks = []
+        self.pull_requests = {}
+        self.lose_response = None
+        self.duplicate_check_after_write = False
+        self.competing_lock_after_pr_write = False
+        self.main_ref_reads = 0
+        self.move_main_at_read = None
+        self.production_base = sha("a")
+        self.projection_tree = sha("c")
+        self.projection_head = sha("d")
+
+    def get(self, path, fresh=False):
+        repository = "ForgingAlpha/alphaapps-site"
+        if path == f"repos/{repository}/git/ref/heads/main":
+            self.main_ref_reads += 1
+            if self.move_main_at_read is not None and self.main_ref_reads >= self.move_main_at_read:
+                return {"object": {"sha": sha("9")}}
+            return {"object": {"sha": self.production_base}}
+        matching_prefix = f"repos/{repository}/git/matching-refs/heads/"
+        if path.startswith(matching_prefix):
+            branch = path[len(matching_prefix):]
+            value = self.refs.get(branch)
+            return [] if value is None else [{"ref": f"refs/heads/{branch}", "object": {"sha": value}}]
+        pull_prefix = f"repos/{repository}/pulls/"
+        if path.startswith(pull_prefix) and path[len(pull_prefix):].isdigit():
+            number = int(path[len(pull_prefix):])
+            if number not in self.pull_requests:
+                raise AssertionError(f"unexpected GET {path}")
+            return self.pull_requests[number]
+        return super().get(path, fresh=fresh)
 
     def pages(self, path, fresh=False):
         if path == "repos/ForgingAlpha/alphaapps-site/pulls?state=open&base=main&per_page=100":
-            self.open_queries += 1
-            if self.open_queries == 1:
-                return [[]]
-            return [[{"number": 44}]]
+            return [[
+                pull
+                for pull in self.pull_requests.values()
+                if pull.get("state") == "open" and pull.get("base", {}).get("ref") == "main"
+            ]]
+        if path.startswith("repos/ForgingAlpha/alphaapps-site/pulls?state=all&head="):
+            return [[pull for pull in self.pull_requests.values()]]
+        if path.startswith("repos/ForgingAlpha/alphaapps-site/commits/") and path.endswith(
+            "/check-runs?filter=all&per_page=100"
+        ):
+            return [{"check_runs": self.checks}]
         return super().pages(path, fresh=fresh)
 
     def post(self, path, payload):
         self.posts.append((path, payload))
         if path.endswith("/git/trees"):
-            return {"sha": sha("c")}
+            return {"sha": self.projection_tree}
         if path.endswith("/git/commits"):
-            return {"sha": sha("d")}
+            return {"sha": self.projection_head}
         if path.endswith("/git/refs"):
-            return {"ref": payload["ref"], "object": {"sha": payload["sha"]}}
+            branch = payload["ref"].removeprefix("refs/heads/")
+            if branch in self.refs:
+                raise security_patch.PolicyError("simulated existing projection ref")
+            self.refs[branch] = payload["sha"]
+            result = {"ref": payload["ref"], "object": {"sha": payload["sha"]}}
+            if self.lose_response == "ref":
+                raise security_patch.PolicyError("simulated lost ref response")
+            return result
         if path.endswith("/check-runs"):
-            return {
-                "head_sha": sha("d"),
+            result = {
+                "id": 701 + len(self.checks),
+                **payload,
                 "app": {
                     "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
                     "slug": "forgingalpha-security-projector",
                 },
             }
+            self.checks.append(result)
+            if self.duplicate_check_after_write:
+                duplicate = dict(result)
+                duplicate["id"] = result["id"] + 1
+                self.checks.append(duplicate)
+            if self.lose_response == "check":
+                raise security_patch.PolicyError("simulated lost check response")
+            return result
         if path.endswith("/pulls"):
-            return {
+            result = {
                 "number": 44,
                 "state": "open",
-                "base": {"ref": "main"},
-                "head": {"sha": sha("d")},
+                "draft": payload["draft"],
+                "maintainer_can_modify": payload["maintainer_can_modify"],
+                "changed_files": 1,
+                "base": {"ref": "main", "sha": self.production_base},
+                "head": {
+                    "ref": payload["head"],
+                    "sha": self.projection_head,
+                    "repo": {"full_name": "ForgingAlpha/alphaapps-site"},
+                },
                 "user": {"login": "forgingalpha-security-projector[bot]"},
             }
+            self.pull_requests[44] = result
+            if self.competing_lock_after_pr_write:
+                self.pull_requests[45] = {
+                    "number": 45,
+                    "state": "open",
+                    "changed_files": 1,
+                    "base": {"ref": "main", "sha": sha("a")},
+                    "head": {
+                        "ref": "other",
+                        "sha": sha("7"),
+                        "repo": {"full_name": "ForgingAlpha/alphaapps-site"},
+                    },
+                }
+                self.page_values[
+                    "repos/ForgingAlpha/alphaapps-site/pulls/45/files?per_page=100"
+                ] = [[{"filename": "package-lock.json", "status": "modified"}]]
+            if self.lose_response == "pr":
+                raise security_patch.PolicyError("simulated lost pull-request response")
+            return result
         raise AssertionError(f"unexpected POST {path}")
 
 
@@ -386,6 +465,7 @@ def admission_fixture() -> FakeApi:
     api.gets[f"repos/{repository}/pulls/{pull_request}"] = {
         "number": pull_request,
         "state": "open",
+        "changed_files": 1,
         "base": {"ref": "main", "sha": production_base},
         "head": {"sha": projection_head, "repo": {"full_name": repository}},
         "user": {"login": "forgingalpha-security-projector[bot]"},
@@ -464,6 +544,7 @@ def full_projection_fixture() -> FakeApi:
         "number": pull_request,
         "state": "open",
         "draft": False,
+        "changed_files": 1,
         "base": {"ref": "main", "sha": production_base},
         "head": {"sha": projection_head, "repo": {"full_name": repository}},
         "user": {"login": "forgingalpha-security-projector[bot]"},
@@ -496,6 +577,60 @@ def full_projection_fixture() -> FakeApi:
         "sha": projection_head,
     }]]
     return api
+
+
+def projection_create_fixture() -> tuple[ProjectionCreateApi, security_patch.SourceEvidence]:
+    api = ProjectionCreateApi()
+    repository = "ForgingAlpha/alphaapps-site"
+    production_base = sha("a")
+    production_tree = sha("b")
+    projection_tree = sha("c")
+    projection_head = sha("d")
+    manifest = blob("package.json", "e")
+    old_lock = blob("package-lock.json", "f")
+    new_lock = blob("package-lock.json", "1")
+    source = security_patch.SourceEvidence(
+        repository=repository,
+        pull_request=17,
+        source_base=sha("2"),
+        source_head=sha("3"),
+        source_merge=sha("4"),
+        source_tree=sha("5"),
+        ghsa_set=("GHSA-abcd-efgh-ijkl",),
+        changed_paths=("package-lock.json",),
+        pre={"package.json": manifest, "package-lock.json": old_lock},
+        post={"package.json": manifest, "package-lock.json": new_lock},
+        classification_app_slug="forgingalpha-security-automation",
+    )
+    api.gets[f"repos/{repository}/git/ref/heads/main"] = {"object": {"sha": production_base}}
+    api.gets[f"repos/{repository}/git/commits/{production_base}"] = {
+        "tree": {"sha": production_tree}, "parents": [{"sha": sha("6")}],
+    }
+    api.gets[f"repos/{repository}/git/commits/{source.source_merge}"] = {
+        "tree": {"sha": source.source_tree},
+        "parents": [{"sha": source.source_base}],
+        "committer": {"date": "2026-08-16T12:00:00Z"},
+    }
+    api.gets[f"repos/{repository}/git/commits/{projection_head}"] = {
+        "tree": {"sha": projection_tree}, "parents": [{"sha": production_base}],
+    }
+    api.gets[f"repos/{repository}/git/trees/{production_tree}"] = {
+        "truncated": False,
+        "tree": [manifest.as_dict(), old_lock.as_dict()],
+    }
+    api.gets[f"repos/{repository}/git/trees/{projection_tree}"] = {
+        "truncated": False,
+        "tree": [manifest.as_dict(), new_lock.as_dict()],
+    }
+    api.gets[f"repos/{repository}/git/blobs/{manifest.sha}"] = encoded_blob(b'{"name":"site"}\n')
+    api.gets[f"repos/{repository}/git/blobs/{old_lock.sha}"] = encoded_blob(b'{"version":"1"}\n')
+    api.page_values[f"repos/{repository}/pulls/44/files?per_page=100"] = [[{
+        "filename": "package-lock.json", "status": "modified",
+    }]]
+    api.page_values[f"repos/{repository}/pulls/44/commits?per_page=100"] = [[{
+        "sha": projection_head,
+    }]]
+    return api, source
 
 
 class SecurityPatchSourceWorkflowTest(unittest.TestCase):
@@ -887,6 +1022,12 @@ class ProjectionInvariantTest(unittest.TestCase):
     def test_open_lock_proposal_serialization_fails_closed(self):
         api = FakeApi()
         api.page_values["repos/ForgingAlpha/alphaapps-site/pulls?state=open&base=main&per_page=100"] = [[{"number": 9}]]
+        api.gets["repos/ForgingAlpha/alphaapps-site/pulls/9"] = {
+            "number": 9,
+            "state": "open",
+            "changed_files": 1,
+            "base": {"ref": "main"},
+        }
         api.page_values["repos/ForgingAlpha/alphaapps-site/pulls/9/files?per_page=100"] = [[{
             "filename": "package-lock.json",
             "status": "modified",
@@ -900,6 +1041,25 @@ class ProjectionInvariantTest(unittest.TestCase):
             ),
             [9],
         )
+
+    def test_open_lock_proposal_rejects_incomplete_capped_file_enumeration(self):
+        api = FakeApi()
+        repository = "ForgingAlpha/alphaapps-site"
+        api.page_values[f"repos/{repository}/pulls?state=open&base=main&per_page=100"] = [[{
+            "number": 9,
+        }]]
+        api.gets[f"repos/{repository}/pulls/9"] = {
+            "number": 9,
+            "state": "open",
+            "changed_files": security_patch.PULL_FILES_API_LIMIT + 1,
+            "base": {"ref": "main"},
+        }
+        api.page_values[f"repos/{repository}/pulls/9/files?per_page=100"] = [[
+            {"filename": f"generated/{index:04d}.txt", "status": "modified"}
+            for index in range(security_patch.PULL_FILES_API_LIMIT)
+        ]]
+        with self.assertRaisesRegex(security_patch.PolicyError, "enumeration is incomplete"):
+            security_patch.open_lock_proposals(api, repository, "main", "package-lock.json")
 
     def test_post_merge_requires_exact_parent_order_and_tree(self):
         api = FakeApi()
@@ -940,51 +1100,12 @@ class ProjectionInvariantTest(unittest.TestCase):
             security_patch.verify_created_projection_identity(pr, check, 44, "main", head)
 
     def test_create_projection_uses_exact_git_data_and_attests_before_pr(self):
-        api = ProjectionCreateApi()
+        api, source = projection_create_fixture()
         repository = "ForgingAlpha/alphaapps-site"
         production_base = sha("a")
-        production_tree = sha("b")
-        manifest = blob("package.json", "e")
-        old_lock = blob("package-lock.json", "f")
-        new_lock = blob("package-lock.json", "1")
-        source = security_patch.SourceEvidence(
-            repository=repository,
-            pull_request=17,
-            source_base=sha("2"),
-            source_head=sha("3"),
-            source_merge=sha("4"),
-            source_tree=sha("5"),
-            ghsa_set=("GHSA-abcd-efgh-ijkl",),
-            changed_paths=("package-lock.json",),
-            pre={"package.json": manifest, "package-lock.json": old_lock},
-            post={"package.json": manifest, "package-lock.json": new_lock},
-            classification_app_slug="forgingalpha-agent-credential",
-        )
-        api.gets[f"repos/{repository}/git/ref/heads/main"] = {"object": {"sha": production_base}}
-        api.gets[f"repos/{repository}/git/commits/{production_base}"] = {
-            "tree": {"sha": production_tree}, "parents": [{"sha": sha("6")}],
-        }
-        api.gets[f"repos/{repository}/git/commits/{source.source_merge}"] = {
-            "tree": {"sha": source.source_tree},
-            "parents": [{"sha": source.source_base}],
-            "committer": {"date": "2026-08-16T12:00:00Z"},
-        }
-        api.gets[f"repos/{repository}/git/trees/{production_tree}"] = {
-            "truncated": False,
-            "tree": [manifest.as_dict(), old_lock.as_dict()],
-        }
-        api.gets[f"repos/{repository}/git/trees/{sha('c')}"] = {
-            "truncated": False,
-            "tree": [manifest.as_dict(), new_lock.as_dict()],
-        }
-        api.gets[f"repos/{repository}/git/blobs/{manifest.sha}"] = encoded_blob(b'{"name":"site"}\n')
-        api.gets[f"repos/{repository}/git/blobs/{old_lock.sha}"] = encoded_blob(b'{"version":"1"}\n')
-        api.page_values[f"repos/{repository}/pulls/44/files?per_page=100"] = [[{
-            "filename": "package-lock.json", "status": "modified",
-        }]]
 
         pull_request, evidence = security_patch.create_projection(
-            api, source, "main", "package.json", "package-lock.json", True
+            api, source, "main", "package.json", "package-lock.json"
         )
         self.assertEqual(pull_request, 44)
         self.assertEqual(evidence.production_base, production_base)
@@ -993,7 +1114,349 @@ class ProjectionInvariantTest(unittest.TestCase):
         commit_payload = next(payload for path, payload in api.posts if path.endswith("/git/commits"))
         self.assertEqual(commit_payload["parents"], [production_base])
         tree_payload = next(payload for path, payload in api.posts if path.endswith("/git/trees"))
-        self.assertEqual(tree_payload["tree"], [new_lock.as_dict()])
+        self.assertEqual(tree_payload["tree"], [source.post["package-lock.json"].as_dict()])
+        branch = f"security/dependabot-17-{sha('3')}-{sha('a')}"
+        self.assertEqual(api.pull_requests[44]["head"]["ref"], branch)
+
+    def test_projection_adopts_each_accepted_write_after_response_loss(self):
+        for stage in ("ref", "check", "pr"):
+            with self.subTest(stage=stage):
+                api, source = projection_create_fixture()
+                api.lose_response = stage
+                pull_request, evidence = security_patch.create_projection(
+                    api, source, "main", "package.json", "package-lock.json"
+                )
+                self.assertEqual(pull_request, 44)
+                self.assertEqual(evidence.projection_head, sha("d"))
+                mutable_paths = ("/git/refs", "/check-runs", "/pulls")
+                writes_after_loss = [
+                    path for path, _ in api.posts if path.endswith(mutable_paths)
+                ]
+                api.lose_response = None
+                rerun = security_patch.create_projection(
+                    api, source, "main", "package.json", "package-lock.json"
+                )
+                writes_after_rerun = [
+                    path for path, _ in api.posts if path.endswith(mutable_paths)
+                ]
+                self.assertEqual(rerun, (pull_request, evidence))
+                self.assertEqual(writes_after_rerun, writes_after_loss)
+
+    def test_projection_rerun_performs_no_second_ref_check_or_pr_write(self):
+        api, source = projection_create_fixture()
+        expected = security_patch.create_projection(
+            api, source, "main", "package.json", "package-lock.json"
+        )
+        mutable_paths = (
+            "repos/ForgingAlpha/alphaapps-site/git/refs",
+            "repos/ForgingAlpha/alphaapps-site/check-runs",
+            "repos/ForgingAlpha/alphaapps-site/pulls",
+        )
+        first_counts = {path: sum(item[0] == path for item in api.posts) for path in mutable_paths}
+        actual = security_patch.create_projection(
+            api, source, "main", "package.json", "package-lock.json"
+        )
+        second_counts = {path: sum(item[0] == path for item in api.posts) for path in mutable_paths}
+        self.assertEqual(actual, expected)
+        self.assertEqual(first_counts, {path: 1 for path in mutable_paths})
+        self.assertEqual(second_counts, first_counts)
+
+    def test_projection_allows_exact_ref_without_check_to_resume(self):
+        api, source = projection_create_fixture()
+        api.move_main_at_read = 3
+        with self.assertRaisesRegex(security_patch.PolicyError, "before projection pull request"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+        self.assertEqual(len(api.refs), 1)
+        api.checks.clear()
+        api.move_main_at_read = None
+        api.main_ref_reads = 0
+        ref_writes = sum(path.endswith("/git/refs") for path, _ in api.posts)
+        pull_request, _ = security_patch.create_projection(
+            api, source, "main", "package.json", "package-lock.json"
+        )
+        self.assertEqual(pull_request, 44)
+        self.assertEqual(sum(path.endswith("/git/refs") for path, _ in api.posts), ref_writes)
+        self.assertEqual(sum(path.endswith("/check-runs") for path, _ in api.posts), 2)
+
+    def test_projection_rejects_check_without_ref_before_mutation(self):
+        api, source = projection_create_fixture()
+        api.move_main_at_read = 3
+        with self.assertRaises(security_patch.PolicyError):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+        api.refs.clear()
+        api.move_main_at_read = None
+        api.main_ref_reads = 0
+        mutable_before = [
+            path for path, _ in api.posts if path.endswith(("/git/refs", "/check-runs", "/pulls"))
+        ]
+        with self.assertRaisesRegex(security_patch.PolicyError, "check exists without"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+        mutable_after = [
+            path for path, _ in api.posts if path.endswith(("/git/refs", "/check-runs", "/pulls"))
+        ]
+        self.assertEqual(mutable_after, mutable_before)
+
+    def test_projection_rejects_prior_closed_wrong_base_or_duplicate_branch_record(self):
+        cases = (
+            ("closed", [{"state": "closed", "base": "main", "merged_at": None}], "closed or merged"),
+            ("merged", [{"state": "closed", "base": "main", "merged_at": "2026-08-17T12:00:00Z"}], "closed or merged"),
+            ("wrong-base", [{"state": "open", "base": "release", "merged_at": None}], "base mismatch"),
+            (
+                "multiple",
+                [
+                    {"state": "open", "base": "main", "merged_at": None},
+                    {"state": "closed", "base": "main", "merged_at": None},
+                ],
+                "multiple pull-request records",
+            ),
+        )
+        for label, records, message in cases:
+            with self.subTest(label=label):
+                api, source = projection_create_fixture()
+                branch = security_patch.projection_branch(source, sha("a"))
+                for offset, record in enumerate(records):
+                    number = 44 + offset
+                    api.pull_requests[number] = {
+                        "number": number,
+                        "state": record["state"],
+                        "merged_at": record["merged_at"],
+                        "base": {"ref": record["base"], "sha": sha("a")},
+                        "head": {
+                            "ref": branch,
+                            "sha": sha("d"),
+                            "repo": {"full_name": source.repository},
+                        },
+                    }
+                with self.assertRaisesRegex(security_patch.PolicyError, message):
+                    security_patch.create_projection(
+                        api, source, "main", "package.json", "package-lock.json"
+                    )
+                self.assertFalse(any(
+                    path.endswith(("/git/refs", "/check-runs", "/pulls"))
+                    for path, _ in api.posts
+                ))
+
+    def test_new_production_base_uses_new_branch_and_preserves_old_partial_records(self):
+        api, source = projection_create_fixture()
+        api.move_main_at_read = 3
+        with self.assertRaisesRegex(security_patch.PolicyError, "before projection pull request"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+        old_refs = dict(api.refs)
+        old_check = json.loads(json.dumps(api.checks[0]))
+
+        repository = source.repository
+        new_base = sha("9")
+        new_production_tree = sha("7")
+        new_projection_tree = sha("8")
+        new_projection_head = sha("6")
+        api.move_main_at_read = None
+        api.main_ref_reads = 0
+        api.production_base = new_base
+        api.projection_tree = new_projection_tree
+        api.projection_head = new_projection_head
+        api.gets[f"repos/{repository}/git/commits/{new_base}"] = {
+            "tree": {"sha": new_production_tree}, "parents": [{"sha": sha("0")}],
+        }
+        api.gets[f"repos/{repository}/git/commits/{new_projection_head}"] = {
+            "tree": {"sha": new_projection_tree}, "parents": [{"sha": new_base}],
+        }
+        api.gets[f"repos/{repository}/git/trees/{new_production_tree}"] = {
+            "truncated": False,
+            "tree": [source.pre["package.json"].as_dict(), source.pre["package-lock.json"].as_dict()],
+        }
+        api.gets[f"repos/{repository}/git/trees/{new_projection_tree}"] = {
+            "truncated": False,
+            "tree": [source.post["package.json"].as_dict(), source.post["package-lock.json"].as_dict()],
+        }
+        api.page_values[f"repos/{repository}/pulls/44/commits?per_page=100"] = [[{
+            "sha": new_projection_head,
+        }]]
+
+        pull_request, evidence = security_patch.create_projection(
+            api, source, "main", "package.json", "package-lock.json"
+        )
+        self.assertEqual(pull_request, 44)
+        self.assertEqual(evidence.production_base, new_base)
+        self.assertEqual(evidence.projection_head, new_projection_head)
+        self.assertEqual(api.checks[0], old_check)
+        for branch, head in old_refs.items():
+            self.assertEqual(api.refs[branch], head)
+        self.assertEqual(len(api.refs), 2)
+        self.assertEqual(len(api.checks), 2)
+
+    def test_existing_projection_pr_cannot_backfill_a_missing_ref_or_check(self):
+        for missing in ("ref", "check"):
+            with self.subTest(missing=missing):
+                api, source = projection_create_fixture()
+                security_patch.create_projection(
+                    api, source, "main", "package.json", "package-lock.json"
+                )
+                if missing == "ref":
+                    api.refs.clear()
+                    message = "check exists without its deterministic branch"
+                else:
+                    api.checks.clear()
+                    message = "pre-existing trusted check"
+                mutable_before = len([
+                    path
+                    for path, _ in api.posts
+                    if path.endswith(("/git/refs", "/check-runs", "/pulls"))
+                ])
+                with self.assertRaisesRegex(security_patch.PolicyError, message):
+                    security_patch.create_projection(
+                        api, source, "main", "package.json", "package-lock.json"
+                    )
+                mutable_after = len([
+                    path
+                    for path, _ in api.posts
+                    if path.endswith(("/git/refs", "/check-runs", "/pulls"))
+                ])
+                self.assertEqual(mutable_after, mutable_before)
+
+    def test_projection_rejects_existing_branch_at_a_different_head_without_update(self):
+        api, source = projection_create_fixture()
+        branch = security_patch.projection_branch(source, sha("a"))
+        api.refs[branch] = sha("8")
+        with self.assertRaisesRegex(security_patch.PolicyError, "different head"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+        self.assertFalse(any(path.endswith("/git/refs") for path, _ in api.posts))
+
+    def test_projection_rejects_duplicate_or_conflicting_trusted_check(self):
+        api, source = projection_create_fixture()
+        security_patch.create_projection(
+            api, source, "main", "package.json", "package-lock.json"
+        )
+        duplicate = dict(api.checks[0])
+        duplicate["id"] = 999
+        api.checks.append(duplicate)
+        with self.assertRaisesRegex(security_patch.PolicyError, "multiple trusted"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+
+        api, source = projection_create_fixture()
+        security_patch.create_projection(
+            api, source, "main", "package.json", "package-lock.json"
+        )
+        api.checks[0]["external_id"] = "security-projection-v1:wrong"
+        with self.assertRaisesRegex(security_patch.PolicyError, "external_id mismatch"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+
+    def test_projection_rejects_duplicate_check_created_during_write(self):
+        api, source = projection_create_fixture()
+        api.duplicate_check_after_write = True
+        with self.assertRaisesRegex(security_patch.PolicyError, "recorded uniquely"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+
+    def test_projection_rejects_wrong_recorded_pr_identity(self):
+        mutations = (
+            ("user", lambda pull: pull.update({"user": {"login": "attacker[bot]"}}), "different App owners"),
+            ("draft", lambda pull: pull.update({"draft": False}), "remain draft"),
+            ("maintainer", lambda pull: pull.update({"maintainer_can_modify": True}), "maintainer modification"),
+        )
+        for label, mutate, message in mutations:
+            with self.subTest(label=label):
+                api, source = projection_create_fixture()
+                security_patch.create_projection(
+                    api, source, "main", "package.json", "package-lock.json"
+                )
+                mutate(api.pull_requests[44])
+                with self.assertRaisesRegex(security_patch.PolicyError, message):
+                    security_patch.create_projection(
+                        api, source, "main", "package.json", "package-lock.json"
+                    )
+
+    def test_projection_rejects_wrong_recorded_pr_revision_or_tree(self):
+        cases = (
+            (
+                "head",
+                lambda api: api.pull_requests[44]["head"].update({"sha": sha("8")}),
+                "head mismatch",
+            ),
+            (
+                "base",
+                lambda api: api.pull_requests[44]["base"].update({"sha": sha("8")}),
+                "base SHA mismatch",
+            ),
+            (
+                "tree",
+                lambda api: api.gets[
+                    "repos/ForgingAlpha/alphaapps-site/git/commits/" + sha("d")
+                ]["tree"].update({"sha": sha("8")}),
+                "commit tree mismatch",
+            ),
+        )
+        for label, mutate, message in cases:
+            with self.subTest(label=label):
+                api, source = projection_create_fixture()
+                security_patch.create_projection(
+                    api, source, "main", "package.json", "package-lock.json"
+                )
+                mutate(api)
+                with self.assertRaisesRegex(security_patch.PolicyError, message):
+                    security_patch.create_projection(
+                        api, source, "main", "package.json", "package-lock.json"
+                    )
+
+    def test_projection_rejects_competing_lock_before_mutable_writes(self):
+        api, source = projection_create_fixture()
+        api.pull_requests[45] = {
+            "number": 45,
+            "state": "open",
+            "changed_files": 1,
+            "base": {"ref": "main", "sha": sha("a")},
+            "head": {"ref": "other", "sha": sha("7"), "repo": {"full_name": source.repository}},
+        }
+        api.page_values[f"repos/{source.repository}/pulls/45/files?per_page=100"] = [[{
+            "filename": "package-lock.json", "status": "modified",
+        }]]
+        with self.assertRaisesRegex(security_patch.PolicyError, "already touch"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+        mutable = ("/git/refs", "/check-runs", "/pulls")
+        self.assertFalse(any(path.endswith(mutable) for path, _ in api.posts))
+
+    def test_projection_rejects_main_movement_before_pr_creation(self):
+        api, source = projection_create_fixture()
+        api.move_main_at_read = 3
+        with self.assertRaisesRegex(security_patch.PolicyError, "before projection pull request"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+        self.assertFalse(any(path.endswith("/pulls") for path, _ in api.posts))
+
+    def test_projection_rejects_main_movement_after_pr_acceptance(self):
+        api, source = projection_create_fixture()
+        api.move_main_at_read = 4
+        with self.assertRaisesRegex(security_patch.PolicyError, "while recording projection"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
+        self.assertEqual(sum(path.endswith("/pulls") for path, _ in api.posts), 1)
+        self.assertIn(44, api.pull_requests)
+
+    def test_projection_rejects_competing_lock_created_with_projection_pr(self):
+        api, source = projection_create_fixture()
+        api.competing_lock_after_pr_write = True
+        with self.assertRaisesRegex(security_patch.PolicyError, "ambiguous"):
+            security_patch.create_projection(
+                api, source, "main", "package.json", "package-lock.json"
+            )
 
 
 class ProjectionAdmissionTest(unittest.TestCase):
@@ -1035,6 +1498,12 @@ class ProjectionAdmissionTest(unittest.TestCase):
         api = admission_fixture()
         path = "repos/ForgingAlpha/alphaapps-site/pulls?state=open&base=main&per_page=100"
         api.page_values[path][0].append({"number": 45})
+        api.gets["repos/ForgingAlpha/alphaapps-site/pulls/45"] = {
+            "number": 45,
+            "state": "open",
+            "changed_files": 1,
+            "base": {"ref": "main"},
+        }
         api.page_values["repos/ForgingAlpha/alphaapps-site/pulls/45/files?per_page=100"] = [[{
             "filename": "package-lock.json",
             "status": "modified",
@@ -1235,8 +1704,9 @@ class ActionContractTest(unittest.TestCase):
 
     def test_projection_attestation_exists_before_pr_event_can_start_ci(self):
         text = SCRIPT.read_text()
-        check = text.index('f"repos/{repository}/check-runs"', text.index("def create_projection"))
-        pull = text.index('f"repos/{repository}/pulls"', text.index("def create_projection"))
+        create = text.index("def create_projection")
+        check = text.index("ensure_projection_check(api, evidence)", create)
+        pull = text.index('f"repos/{repository}/pulls"', create)
         self.assertLess(check, pull)
 
 

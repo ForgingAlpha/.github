@@ -35,6 +35,7 @@ TRUSTED_CODEQL_APP_ID = 57789
 CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 CI_CHECK = "CI"
 CODEQL_CHECK = "CodeQL"
+PULL_FILES_API_LIMIT = 3000
 
 
 class PolicyError(RuntimeError):
@@ -373,8 +374,17 @@ def load_pair(
     return tree_sha, pair
 
 
-def pull_files(api: GhApi, repository: str, pull_request: int) -> list[dict[str, Any]]:
-    pages = api.pages(f"repos/{repository}/pulls/{pull_request}/files?per_page=100")
+def pull_files(
+    api: GhApi,
+    repository: str,
+    pull_request: int,
+    *,
+    fresh: bool = False,
+) -> list[dict[str, Any]]:
+    pages = api.pages(
+        f"repos/{repository}/pulls/{pull_request}/files?per_page=100",
+        fresh=fresh,
+    )
     files = flatten_pages(pages, "pull-request files")
     for item in files:
         require(isinstance(item, dict), "pull-request file entry must be an object")
@@ -944,7 +954,34 @@ def open_lock_proposals(
     for pull in pulls:
         require(isinstance(pull, dict), "open pull-request entry must be an object")
         number = require_pr_number(pull.get("number"), "open pull request")
-        if any(item.get("filename") == lock_path for item in pull_files(api, repository, number)):
+        detail = api.get(f"repos/{repository}/pulls/{number}", fresh=fresh)
+        require(isinstance(detail, dict), "open pull-request detail must be an object")
+        require(
+            detail.get("number") == number
+            and detail.get("state") == "open"
+            and detail.get("base", {}).get("ref") == target_branch,
+            "open pull request changed during lock enumeration",
+        )
+        changed_files = detail.get("changed_files")
+        require(
+            isinstance(changed_files, int) and not isinstance(changed_files, bool) and changed_files > 0,
+            "open pull request changed_files is invalid",
+        )
+        files = pull_files(api, repository, number, fresh=fresh)
+        require(
+            len(files) < PULL_FILES_API_LIMIT and len(files) == changed_files,
+            "open pull-request file enumeration is incomplete",
+        )
+        filenames = [item.get("filename") for item in files]
+        require(
+            all(isinstance(filename, str) and filename for filename in filenames)
+            and len(filenames) == len(set(filenames)),
+            "open pull-request file enumeration is invalid or duplicate",
+        )
+        if any(
+            item.get("filename") == lock_path
+            for item in files
+        ):
             collisions.append(number)
     return collisions
 
@@ -970,6 +1007,188 @@ def assert_root_tree_projection(
     for path in changed_paths:
         expected[path] = post[path]
     require(result_entries == expected, "projection result tree contains an extra or mismatched entry")
+
+
+def projection_branch(source: SourceEvidence, production_base: str) -> str:
+    source_head = require_sha(source.source_head, "source head")
+    production_base = require_sha(production_base, "production base")
+    return f"security/dependabot-{source.pull_request}-{source_head}-{production_base}"
+
+
+def matching_projection_ref(
+    api: GhApi,
+    repository: str,
+    branch: str,
+    *,
+    fresh: bool = False,
+) -> dict[str, Any] | None:
+    path = f"repos/{repository}/git/matching-refs/heads/{quote(branch, safe='/')}"
+    raw = api.get(path, fresh=fresh)
+    require(isinstance(raw, list), "matching projection refs response must be a list")
+    expected_ref = f"refs/heads/{branch}"
+    matches = [item for item in raw if isinstance(item, dict) and item.get("ref") == expected_ref]
+    require(len(matches) <= 1, "projection branch ref is ambiguous")
+    return matches[0] if matches else None
+
+
+def ensure_projection_ref(
+    api: GhApi,
+    repository: str,
+    branch: str,
+    projection_head: str,
+) -> None:
+    projection_head = require_sha(projection_head, "projection head")
+    existing = matching_projection_ref(api, repository, branch, fresh=True)
+    if existing is None:
+        try:
+            api.post(
+                f"repos/{repository}/git/refs",
+                {"ref": f"refs/heads/{branch}", "sha": projection_head},
+            )
+        except PolicyError:
+            pass
+        existing = matching_projection_ref(api, repository, branch, fresh=True)
+    require(existing is not None, "exact projection branch was not recorded")
+    require(
+        require_sha(str(existing.get("object", {}).get("sha")), "projection branch head")
+        == projection_head,
+        "projection branch exists at a different head",
+    )
+
+
+def require_projection_ref(
+    api: GhApi,
+    repository: str,
+    branch: str,
+    projection_head: str,
+) -> None:
+    existing = matching_projection_ref(api, repository, branch, fresh=True)
+    require(existing is not None, "exact projection branch is missing after recording")
+    require(
+        require_sha(str(existing.get("object", {}).get("sha")), "projection branch head")
+        == projection_head,
+        "projection branch moved after recording",
+    )
+
+
+def projection_check_payload(evidence: ProjectionEvidence) -> dict[str, Any]:
+    attestation = evidence.attestation()
+    digest = hashlib.sha256(canonical_json(attestation).encode()).hexdigest()
+    return {
+        "name": PROJECTION_CHECK,
+        "head_sha": evidence.projection_head,
+        "status": "completed",
+        "conclusion": "success",
+        "external_id": f"{PROJECTION_SCHEMA}:{digest}",
+        "output": {
+            "title": "Exact security projection verified",
+            "summary": canonical_json(attestation),
+        },
+    }
+
+
+def trusted_projection_checks(
+    api: GhApi,
+    evidence: ProjectionEvidence,
+    *,
+    fresh: bool = False,
+) -> list[dict[str, Any]]:
+    path = (
+        f"repos/{evidence.repository}/commits/{evidence.projection_head}"
+        "/check-runs?filter=all&per_page=100"
+    )
+    pages = api.pages(path, fresh=fresh)
+    require(isinstance(pages, list), "projection check pagination must be a list")
+    runs: list[dict[str, Any]] = []
+    for page in pages:
+        require(isinstance(page, dict), "projection check page must be an object")
+        page_runs = page.get("check_runs")
+        require(isinstance(page_runs, list), "projection check page has no check_runs list")
+        runs.extend(
+            run
+            for run in page_runs
+            if isinstance(run, dict)
+            and run.get("name") == PROJECTION_CHECK
+            and run.get("head_sha") == evidence.projection_head
+            and run.get("app", {}).get("id") == TRUSTED_SECURITY_AUTOMATION_APP_ID
+        )
+    return runs
+
+
+def validate_projection_check(
+    check: dict[str, Any],
+    evidence: ProjectionEvidence,
+) -> str:
+    expected = projection_check_payload(evidence)
+    for key in ("name", "head_sha", "status", "conclusion", "external_id"):
+        require(check.get(key) == expected[key], f"projection check {key} mismatch")
+    require(check.get("output", {}).get("title") == expected["output"]["title"], "projection check title mismatch")
+    require(
+        check.get("output", {}).get("summary") == expected["output"]["summary"],
+        "projection check attestation mismatch",
+    )
+    require(
+        check.get("app", {}).get("id") == TRUSTED_SECURITY_AUTOMATION_APP_ID,
+        "projection check was not written by the centrally trusted App",
+    )
+    slug = check.get("app", {}).get("slug")
+    require(isinstance(slug, str) and slug, "projection check App slug is missing")
+    return slug
+
+
+def ensure_projection_check(api: GhApi, evidence: ProjectionEvidence) -> None:
+    checks = trusted_projection_checks(api, evidence, fresh=True)
+    require(len(checks) <= 1, "multiple trusted projection checks already exist")
+    if not checks:
+        try:
+            api.post(f"repos/{evidence.repository}/check-runs", projection_check_payload(evidence))
+        except PolicyError:
+            pass
+        checks = trusted_projection_checks(api, evidence, fresh=True)
+    require(len(checks) == 1, "trusted projection check was not recorded uniquely")
+    validate_projection_check(checks[0], evidence)
+
+
+def open_projection_pull_request(
+    api: GhApi,
+    repository: str,
+    target_branch: str,
+    branch: str,
+    projection_head: str,
+    *,
+    fresh: bool = False,
+) -> int | None:
+    owner = repository.split("/", 1)[0]
+    head_filter = quote(f"{owner}:{branch}", safe="")
+    pulls = flatten_pages(
+        api.pages(
+            f"repos/{repository}/pulls?state=all&head={head_filter}&per_page=100",
+            fresh=fresh,
+        ),
+        "projection branch pull requests",
+    )
+    same_branch = [
+        pull
+        for pull in pulls
+        if isinstance(pull, dict)
+        and pull.get("head", {}).get("ref") == branch
+        and pull.get("head", {}).get("repo", {}).get("full_name") == repository
+    ]
+    require(len(same_branch) <= 1, "projection branch has multiple pull-request records")
+    if not same_branch:
+        return None
+    pull = same_branch[0]
+    require(
+        pull.get("state") == "open" and pull.get("merged_at") is None,
+        "projection branch has a closed or merged pull-request record",
+    )
+    require(pull.get("base", {}).get("ref") == target_branch, "existing projection PR base mismatch")
+    require(
+        require_sha(str(pull.get("head", {}).get("sha")), "existing projection head")
+        == projection_head,
+        "existing projection PR head mismatch",
+    )
+    return require_pr_number(pull.get("number"), "existing projection pull request")
 
 
 def verify_created_projection_identity(
@@ -998,18 +1217,76 @@ def verify_created_projection_identity(
     )
 
 
+def verify_recorded_projection(
+    api: GhApi,
+    source: SourceEvidence,
+    evidence: ProjectionEvidence,
+    pull_request: int,
+    target_branch: str,
+    branch: str,
+) -> dict[str, Any]:
+    repository = source.repository
+    require(
+        ref_sha(api, repository, target_branch, fresh=True) == evidence.production_base,
+        "production base moved while recording projection",
+    )
+    require_projection_ref(api, repository, branch, evidence.projection_head)
+    checks = trusted_projection_checks(api, evidence, fresh=True)
+    require(len(checks) == 1, "trusted projection check is not unique after recording")
+    projection_slug = validate_projection_check(checks[0], evidence)
+
+    pr = api.get(f"repos/{repository}/pulls/{pull_request}", fresh=True)
+    require(isinstance(pr, dict), "projection pull-request response must be an object")
+    verify_created_projection_identity(
+        pr,
+        checks[0],
+        pull_request,
+        target_branch,
+        evidence.projection_head,
+    )
+    require(pr.get("draft") is True, "recorded projection PR must remain draft")
+    require(pr.get("maintainer_can_modify") is False, "recorded projection PR allows maintainer modification")
+    require(pr.get("base", {}).get("sha") == evidence.production_base, "recorded projection PR base SHA mismatch")
+    require(pr.get("head", {}).get("ref") == branch, "recorded projection PR branch mismatch")
+    require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "recorded projection PR is not same-repository")
+    require(pr.get("user", {}).get("login") == f"{projection_slug}[bot]", "recorded projection PR has the wrong App actor")
+
+    commit = git_commit(api, repository, evidence.projection_head)
+    require(
+        [parent["sha"] for parent in commit["parents"]] == [evidence.production_base],
+        "recorded projection commit has the wrong parent",
+    )
+    require(commit["tree"]["sha"] == evidence.projection_tree, "recorded projection commit tree mismatch")
+    _, production_entries = root_tree(api, repository, evidence.production_base)
+    _, projected_entries = root_tree(api, repository, evidence.projection_head)
+    assert_root_tree_projection(production_entries, projected_entries, source.changed_paths, source.post)
+    validate_pair_diff(
+        pull_files(api, repository, pull_request, fresh=True),
+        source.pre,
+        source.post,
+        evidence.manifest_path,
+        evidence.lock_path,
+    )
+    commits = flatten_pages(
+        api.pages(f"repos/{repository}/pulls/{pull_request}/commits?per_page=100", fresh=True),
+        "projection commits",
+    )
+    require(
+        len(commits) == 1 and commits[0].get("sha") == evidence.projection_head,
+        "recorded projection PR must contain one exact commit",
+    )
+    assert_only_lock_proposal(api, repository, target_branch, evidence.lock_path, pull_request)
+    return pr
+
+
 def create_projection(
     api: GhApi,
     source: SourceEvidence,
     target_branch: str,
     manifest_path: str,
     lock_path: str,
-    draft: bool,
 ) -> tuple[int, ProjectionEvidence]:
     repository = source.repository
-    collisions = open_lock_proposals(api, repository, target_branch, lock_path, fresh=True)
-    require(not collisions, f"open production PRs already touch {lock_path}: {collisions}")
-
     production_base = ref_sha(api, repository, target_branch)
     production_tree, production_entries = root_tree(api, repository, production_base)
     _, production_pair = load_pair(api, repository, production_base, manifest_path, lock_path)
@@ -1052,11 +1329,7 @@ def create_projection(
         },
     )
     projection_head = require_sha(str(commit_result.get("sha")), "projection head")
-    branch = f"security/dependabot-{source.pull_request}-{source.source_head[:12]}"
-    api.post(
-        f"repos/{repository}/git/refs",
-        {"ref": f"refs/heads/{branch}", "sha": projection_head},
-    )
+    branch = projection_branch(source, production_base)
 
     evidence = ProjectionEvidence(
         repository=repository,
@@ -1072,22 +1345,51 @@ def create_projection(
         manifest_path=manifest_path,
         lock_path=lock_path,
     )
-    attestation = evidence.attestation()
-    digest = hashlib.sha256(canonical_json(attestation).encode()).hexdigest()
-    check_result = api.post(
-        f"repos/{repository}/check-runs",
-        {
-            "name": PROJECTION_CHECK,
-            "head_sha": projection_head,
-            "status": "completed",
-            "conclusion": "success",
-            "external_id": f"{PROJECTION_SCHEMA}:{digest}",
-            "output": {
-                "title": "Exact security projection verified",
-                "summary": canonical_json(attestation),
-            },
-        },
+    existing_pr = open_projection_pull_request(
+        api,
+        repository,
+        target_branch,
+        branch,
+        projection_head,
+        fresh=True,
     )
+    collisions = open_lock_proposals(api, repository, target_branch, lock_path, fresh=True)
+    if existing_pr is None:
+        require(not collisions, f"open production PRs already touch {lock_path}: {collisions}")
+    else:
+        require(collisions == [existing_pr], f"open production lock proposals are ambiguous: {collisions}")
+    require(
+        ref_sha(api, repository, target_branch, fresh=True) == production_base,
+        "production base moved before projection writes",
+    )
+    recorded_ref = matching_projection_ref(api, repository, branch, fresh=True)
+    recorded_checks = trusted_projection_checks(api, evidence, fresh=True)
+    require(len(recorded_checks) <= 1, "multiple trusted projection checks already exist")
+    if recorded_ref is None:
+        require(
+            not recorded_checks,
+            "trusted projection check exists without its deterministic branch",
+        )
+    else:
+        require(
+            require_sha(str(recorded_ref.get("object", {}).get("sha")), "projection branch head")
+            == projection_head,
+            "projection branch exists at a different head",
+        )
+    if recorded_checks:
+        validate_projection_check(recorded_checks[0], evidence)
+
+    if existing_pr is None:
+        if recorded_ref is None:
+            ensure_projection_ref(api, repository, branch, projection_head)
+        if not recorded_checks:
+            ensure_projection_check(api, evidence)
+    else:
+        require(recorded_ref is not None, "exact projection branch is missing after recording")
+        require(
+            len(recorded_checks) == 1,
+            "an existing projection PR requires one pre-existing trusted check",
+        )
 
     ghsa_text = ", ".join(source.ghsa_set)
     body = (
@@ -1099,25 +1401,45 @@ def create_projection(
         f"- advisories: {ghsa_text}\n\n"
         "This body is routing information only. Protected activation independently reconstructs every value."
     )
-    pr_result = api.post(
-        f"repos/{repository}/pulls",
-        {
-            "title": f"fix(security): project Dependabot #{source.pull_request}",
-            "head": branch,
-            "base": target_branch,
-            "body": body,
-            "draft": draft,
-            "maintainer_can_modify": False,
-        },
+    if existing_pr is None:
+        require(
+            ref_sha(api, repository, target_branch, fresh=True) == production_base,
+            "production base moved before projection pull request",
+        )
+        require(
+            not open_lock_proposals(api, repository, target_branch, lock_path, fresh=True),
+            f"an open production pull request began touching {lock_path}",
+        )
+        try:
+            api.post(
+                f"repos/{repository}/pulls",
+                {
+                    "title": f"fix(security): project Dependabot #{source.pull_request}",
+                    "head": branch,
+                    "base": target_branch,
+                    "body": body,
+                    "draft": True,
+                    "maintainer_can_modify": False,
+                },
+            )
+        except PolicyError:
+            pass
+    projection_pr = open_projection_pull_request(
+        api,
+        repository,
+        target_branch,
+        branch,
+        projection_head,
+        fresh=True,
     )
-    projection_pr = require_pr_number(pr_result.get("number"), "projection pull request")
-    assert_only_lock_proposal(api, repository, target_branch, lock_path, projection_pr)
-    verify_created_projection_identity(
-        pr_result,
-        check_result,
+    require(projection_pr is not None, "exact projection pull request was not recorded")
+    verify_recorded_projection(
+        api,
+        source,
+        evidence,
         projection_pr,
         target_branch,
-        projection_head,
+        branch,
     )
     return projection_pr, evidence
 
@@ -1471,7 +1793,6 @@ def cli(argv: list[str] | None = None) -> int:
     project_parser = subparsers.add_parser("project")
     add_common_source_args(project_parser)
     project_parser.add_argument("--source-merge-sha", required=True)
-    project_parser.add_argument("--draft", choices=("true", "false"), default="true")
 
     verify_parser = subparsers.add_parser("verify-projection")
     add_common_source_args(verify_parser)
@@ -1569,7 +1890,6 @@ def cli(argv: list[str] | None = None) -> int:
                 args.target_branch,
                 manifest_path,
                 lock_path,
-                args.draft == "true",
             )
             emit_output("eligible", True)
             emit_output("pull_request_number", pull_request)
