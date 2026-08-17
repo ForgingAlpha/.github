@@ -160,6 +160,9 @@ with an expected-old lease, and creates an immutable rollback record.
 - Direct deployment and release writes belong only to the scoped release
   identity and operator.
 - Ambiguous identity, classification, checks, branch state, or SHA fails closed.
+- The security automation identity is dedicated and isolated from general agent
+  credentials; an exact completed source merge is adopted after a lost response
+  only when every immutable postcondition still matches.
 
 The durable policy is defined in [Intent](docs/intent.md),
 [Requirements](docs/requirements.md), and [Architecture](docs/architecture.md).

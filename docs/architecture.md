@@ -226,7 +226,8 @@ The caller serializes the repository and exact source head without cancellation;
 the classifier also re-reads its check after writing and rejects duplicates.
 
 After read-only proof, a separate job enters the branch-restricted
-`security-automation` environment, mints the fixed no-bypass automation App,
+`security-automation` environment, mints the dedicated security
+source/projector App,
 and re-fetches every source fact. It uses live GitHub pull-request, commit,
 file, check, workflow-run, and vulnerability-alert APIs rather than the
 event-bound Dependabot metadata Action. Grouped PRs bind every associated OPEN
@@ -234,7 +235,11 @@ or FIXED GHSA. All commits must remain verified Dependabot commits, only the
 approved manifest and lock may change, and stale native auto-merge or retired
 routing state is rejected. The App upserts one stable exact-head
 classification, re-proves the source, and requests an exact-head normal merge
-into protected `dev`.
+into protected `dev`. The App key exists only in this security boundary and is
+never available to the general agent launcher. If GitHub completes the exact
+merge but its response is lost, the same operation adopts the recorded merge
+only after re-proving the exact PR, classified base and head, unique trusted
+classification, App actor, ordered parents, and source-head tree.
 
 Production remediation is a separate exact-patch projection, not a `dev` branch
 promotion. A trusted projector re-proves the merged Dependabot source PR,
@@ -254,11 +259,11 @@ the projector uses GitHub's Git Data API to replace only source-changed entries
 with the source post-fix blobs and modes. It performs no checkout, three-way
 merge, cherry-pick, conflict resolution, or lock regeneration.
 
-The no-bypass projection writer creates one same-repository branch and pull
+The no-main-bypass projection writer creates one same-repository branch and pull
 request and records provenance bound to the repository, source PR, source base
 and head, `dev` merge, production base, complete GHSA set, projected head, and
-resulting tree. The released control-plane policy pins the no-bypass security
-automation App's public ID as the identity trust anchor for both source
+resulting tree. The released control-plane policy pins the dedicated security
+source/projector App's public ID as the identity trust anchor for both source
 classification and projection writing; consumers install that App but cannot
 select or override which App the policy trusts. The App's current slug is derived
 from each trusted check and must match the corresponding merge or pull-request
@@ -276,7 +281,7 @@ choosing an order.
 Normal pull-request CI and CodeQL then execute for the exact projected head in
 the current `main` context with no privileged credential. GitHub also exposes a
 live synthetic test merge for that exact head and base. A protected default-branch workflow
-first mints the no-bypass automation App token narrowed to metadata,
+first mints the dedicated security source/projector App token narrowed to metadata,
 pull-request, check, content, Actions, and vulnerability-alert read access. It
 uses that read-only token to independently reconstruct the expected tree,
 re-prove the full source and advisory chain; verify the exact CI workflow path,
@@ -295,7 +300,7 @@ gated by it.
 
 Quality, CodeQL, current-base, deletion, non-fast-forward, and merge-shape rules
 remain in no-bypass rulesets. Human review and UPDATE authority are separate,
-branch-specific rules. The fixed automation App has pull-request-only bypass on
+branch-specific rules. The dedicated security source/projector App has pull-request-only bypass on
 `dev` for the re-proved source merge and none on `main`; Dependabot has none.
 The dedicated security activator may later receive pull-request-only bypass on
 `main` for the re-proved projection. No identity can directly push a persistent

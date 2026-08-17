@@ -3,7 +3,7 @@ description: Re-prove and merge one exact security projection through a dedicate
 
 inputs:
   proof-token:
-    description: Narrow no-bypass App token with metadata, pull request, content, checks, Actions, and vulnerability-alert read.
+    description: Narrow read-only security source/projector App token with metadata, pull request, content, checks, Actions, and vulnerability-alert read.
     required: true
   pull-request-number:
     description: Exact projected production pull request.

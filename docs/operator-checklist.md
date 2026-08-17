@@ -151,10 +151,12 @@ back SHA. Only then merge consumer branches that adopt new action inputs or
 profiles. Turnkey and Outliers remain blocked until their surfaced strict
 application findings are fixed; do not weaken CI to merge them.
 
-- For exact security projection, confirm the fixed automation App can create a
+- For exact security projection, confirm the dedicated security source/projector App can create a
   task branch and pull request but has no `main` bypass. Its only persistent-ref
   authority is the separately governed pull-request-only `dev` source-merge
-  bypass. Store no production activation credential in the writer workflow.
+  bypass. Confirm it is a dedicated security App whose private key is absent
+  from every general agent launcher and unrelated workflow. Store no production
+  activation credential in the writer workflow.
   Confirm its public App ID is the exact source-classifier and writer identity
   pinned by the released control-plane policy; do not add a consumer variable
   or workflow input that can select a different automation App.
@@ -169,25 +171,27 @@ application findings are fixed; do not weaken CI to merge them.
   source head; verify a retry updates one stable classification instead of
   creating another.
 - Create a `security-automation` environment restricted to exact `dev`. Store
-  only the fixed no-bypass automation App private key there. The environment
+  only the dedicated security source/projector App private key there. The environment
   job mints a token with Actions and vulnerability-alert read plus checks,
   contents, and pull-request write. It re-proves the source before any write,
   writes one stable exact-head classification, and exact-head merges with the
   repository's normal `merge` method. Verify the recorded result has ordered
   parents `[classified base, classified head]`, the classified head tree, and
   the check-derived App actor; later unrelated `dev` movement is irrelevant.
+  Simulate an accepted merge with a lost client response and verify a rerun
+  adopts only that exact recorded merge without issuing another merge request.
 - Create a `security-activation` environment restricted to the repository's
   exact default branch. Store only the dedicated security activator's client ID
   variable and private-key secret there; the activator has metadata read,
   contents write, and pull-request write, but no vulnerability-alert, workflow,
   check, status, deployment, or direct-push authority. The pre-token
-  proof uses a separately minted no-bypass automation App token narrowed to
+  proof uses a separately minted security source/projector App token narrowed to
   metadata, pull-request, check, content, Actions, and vulnerability-alert read
   access so the exact CI workflow path and run—not only a check name—are proven;
   the merge-capable token is unavailable until that proof passes.
 - Split rulesets before unattended activation: keep strict pinned CI, CodeQL,
   current-base, merge shape, deletion, and non-fast-forward rules in no-bypass
-  requirements. On `dev`, give only the fixed security automation App
+  requirements. On `dev`, give only the dedicated security source/projector App
   pull-request-only bypass of human review and UPDATE so it can merge the exact
   classified source; Dependabot receives none. On `main`, that App/projector
   receives no bypass. A later dedicated security activator may receive

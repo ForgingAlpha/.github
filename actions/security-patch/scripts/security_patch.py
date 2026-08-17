@@ -29,7 +29,7 @@ PROFILE = "root-npm-v1"
 MAX_BLOB_BYTES = 20 * 1024 * 1024
 # Public GitHub App identity owned by the released control-plane policy. This
 # is a trust anchor, not a credential. Consumers cannot select or override it.
-TRUSTED_SECURITY_AUTOMATION_APP_ID = 4249954
+TRUSTED_SECURITY_AUTOMATION_APP_ID = 4618077
 TRUSTED_CI_APP_ID = 15368
 TRUSTED_CODEQL_APP_ID = 57789
 CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
@@ -672,6 +672,41 @@ def upsert_source_classification(api: GhApi, candidate: SourceCandidate) -> str:
     return slug
 
 
+def adopt_completed_source_merge(
+    api: GhApi,
+    repository: str,
+    source_branch: str,
+    manifest_path: str,
+    lock_path: str,
+    expected_pull_request: int,
+    expected_head: str,
+    expected_base: str,
+    expected_merge: str | None = None,
+) -> str | None:
+    """Adopt an exact merge that GitHub completed before its response was observed."""
+    pull = api.get(f"repos/{repository}/pulls/{expected_pull_request}", fresh=True)
+    require(isinstance(pull, dict), "source pull-request response must be an object")
+    require(pull.get("number") == expected_pull_request, "source pull-request number mismatch")
+    if pull.get("state") == "open":
+        return None
+    require(pull.get("merged_at") is not None, "closed source pull request was not merged")
+    merge_sha = require_sha(str(pull.get("merge_commit_sha")), "recorded source merge")
+    if expected_merge is not None:
+        require(merge_sha == expected_merge, "source merge response and recorded merge SHA differ")
+    evidence = build_source_evidence(
+        api,
+        repository,
+        merge_sha,
+        source_branch,
+        manifest_path,
+        lock_path,
+    )
+    require(evidence.pull_request == expected_pull_request, "recorded source merge PR mismatch")
+    require(evidence.source_head == expected_head, "recorded source merge head mismatch")
+    require(evidence.source_base == expected_base, "recorded source merge base mismatch")
+    return merge_sha
+
+
 def merge_source_candidate(
     api: GhApi,
     repository: str,
@@ -683,6 +718,18 @@ def merge_source_candidate(
     expected_head: str,
     expected_base: str,
 ) -> str:
+    adopted = adopt_completed_source_merge(
+        api,
+        repository,
+        source_branch,
+        manifest_path,
+        lock_path,
+        expected_pull_request,
+        expected_head,
+        expected_base,
+    )
+    if adopted is not None:
+        return adopted
     candidate = wait_for_source_candidate(
         api,
         repository,
@@ -695,7 +742,7 @@ def merge_source_candidate(
         expected_head=expected_head,
         expected_base=expected_base,
     )
-    app_slug = upsert_source_classification(api, candidate)
+    upsert_source_classification(api, candidate)
     final = wait_for_source_candidate(
         api,
         repository,
@@ -709,23 +756,40 @@ def merge_source_candidate(
         expected_base=candidate.source_base,
     )
     require(final == candidate, "source evidence changed after classification")
-    result = api.put(
-        f"repos/{repository}/pulls/{candidate.pull_request}/merge",
-        {"sha": candidate.source_head, "merge_method": "merge"},
-    )
+    try:
+        result = api.put(
+            f"repos/{repository}/pulls/{candidate.pull_request}/merge",
+            {"sha": candidate.source_head, "merge_method": "merge"},
+        )
+    except PolicyError:
+        adopted = adopt_completed_source_merge(
+            api,
+            repository,
+            source_branch,
+            manifest_path,
+            lock_path,
+            candidate.pull_request,
+            candidate.source_head,
+            candidate.source_base,
+        )
+        if adopted is not None:
+            return adopted
+        raise
     require(isinstance(result, dict) and result.get("merged") is True, "GitHub did not merge the exact security source")
     merge_sha = require_sha(str(result.get("sha")), "source merge result")
-    commit = git_commit(api, repository, merge_sha)
-    require(
-        [parent["sha"] for parent in commit["parents"]] == [candidate.source_base, candidate.source_head],
-        "source merge parents do not equal attested dev and source head",
+    adopted = adopt_completed_source_merge(
+        api,
+        repository,
+        source_branch,
+        manifest_path,
+        lock_path,
+        candidate.pull_request,
+        candidate.source_head,
+        candidate.source_base,
+        merge_sha,
     )
-    require(commit["tree"]["sha"] == candidate.source_tree, "source merge tree does not equal source head tree")
-    merged_pr = api.get(f"repos/{repository}/pulls/{candidate.pull_request}", fresh=True)
-    require(merged_pr.get("merged_at") is not None, "source pull request is not recorded as merged")
-    require(merged_pr.get("merge_commit_sha") == merge_sha, "source pull-request merge SHA mismatch")
-    require(merged_pr.get("merged_by", {}).get("login") == f"{app_slug}[bot]", "source merge actor is not the classification App")
-    return merge_sha
+    require(adopted is not None, "GitHub did not record the exact security source merge")
+    return adopted
 
 
 def validate_pair_diff(

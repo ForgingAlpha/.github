@@ -122,6 +122,7 @@ class SourceMergeApi(FakeApi):
         self.source_ref_reads = 0
         self.advance_at_ref_read = None
         self.duplicate_after_write = False
+        self.lose_merge_response = False
 
     def get(self, path, fresh=False):
         repository = "ForgingAlpha/alphaapps-site"
@@ -138,7 +139,7 @@ class SourceMergeApi(FakeApi):
                 "state": "closed",
                 "merged_at": "2026-08-16T12:30:00Z",
                 "merge_commit_sha": sha("c"),
-                "merged_by": {"login": "forgingalpha-agent-credential[bot]"},
+                "merged_by": {"login": "forgingalpha-security-automation[bot]"},
             })
             return value
         return super().get(path, fresh=fresh)
@@ -152,7 +153,7 @@ class SourceMergeApi(FakeApi):
                 "head_sha": sha("b"),
                 "app": {
                     "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
-                    "slug": "forgingalpha-agent-credential",
+                    "slug": "forgingalpha-security-automation",
                 },
             }
             checks_path = (
@@ -171,6 +172,8 @@ class SourceMergeApi(FakeApi):
         self.puts.append((path, payload))
         if path.endswith("/pulls/17/merge"):
             self.did_merge = True
+            if self.lose_merge_response:
+                raise security_patch.PolicyError("simulated lost merge response")
             return {"merged": True, "sha": sha("c")}
         raise AssertionError(f"unexpected PUT {path}")
 
@@ -183,7 +186,7 @@ class SourceMergeApi(FakeApi):
                 "head_sha": sha("b"),
                 "app": {
                     "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
-                    "slug": "forgingalpha-agent-credential",
+                    "slug": "forgingalpha-security-automation",
                 },
             }
             checks_path = (
@@ -216,7 +219,7 @@ def source_fixture() -> FakeApi:
         "base": {"ref": "dev"},
         "head": {"sha": source_head},
         "user": {"login": "dependabot[bot]"},
-        "merged_by": {"login": "forgingalpha-agent-credential[bot]"},
+        "merged_by": {"login": "forgingalpha-security-automation[bot]"},
     }]]
     attestation = {
         "schema": security_patch.SOURCE_SCHEMA,
@@ -233,7 +236,7 @@ def source_fixture() -> FakeApi:
             "head_sha": source_head,
             "status": "completed",
             "conclusion": "success",
-            "app": {"id": app_id, "slug": "forgingalpha-agent-credential"},
+            "app": {"id": app_id, "slug": "forgingalpha-security-automation"},
             "output": {"summary": json.dumps(attestation)},
         }]
     }]
@@ -622,6 +625,62 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
         self.assertEqual(check_payload["head_sha"], sha("b"))
         self.assertEqual(json.loads(check_payload["output"]["summary"])["source_base_sha"], sha("a"))
         self.assertEqual(api.source_ref_reads, 4)
+
+    def test_merge_adopts_exact_recorded_result_after_response_loss(self):
+        api = source_candidate_fixture()
+        api.lose_merge_response = True
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+        )
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertEqual(len(api.puts), 1)
+
+    def test_merge_rerun_adopts_exact_already_completed_result_without_writing(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+        )
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+
+    def test_merge_rerun_rejects_completed_result_from_wrong_actor(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        source_association = api.page_values[
+            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
+        ][0][0]
+        source_association["merged_by"] = {"login": "unexpected[bot]"}
+        with self.assertRaisesRegex(security_patch.PolicyError, "merged by the classification App"):
+            security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+            )
+        self.assertFalse(api.puts)
 
     def test_merge_rejects_dev_movement_during_final_reproof(self):
         api = source_candidate_fixture()
@@ -1160,15 +1219,18 @@ class ActionContractTest(unittest.TestCase):
         self.assertNotIn("security-autopromote", text)
 
     def test_projection_identity_is_one_central_non_overridable_trust_anchor(self):
-        self.assertEqual(security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID, 4249954)
+        self.assertEqual(security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID, 4618077)
         for path in (SOURCE_ACTION, PROJECTION_ACTION, ACTIVATION_ACTION, MERGE_FLOW_ACTION):
             text = path.read_text()
             self.assertNotIn("projection-app-id", text)
             self.assertNotIn("automation-app-id", text)
             self.assertNotIn("PROJECTION_APP_ID", text)
             self.assertNotIn("AUTOMATION_APP_ID", text)
+
+    def test_legacy_classifier_keeps_its_quarantined_identity_until_callers_migrate(self):
         workflow = DEPENDABOT_WORKFLOW.read_text()
         self.assertIn("app-id: 4249954", workflow)
+        self.assertNotIn("app-id: 4618077", workflow)
         self.assertNotIn("ALPHAAPPS_AUTOMATION_APP_ID", workflow)
 
     def test_projection_attestation_exists_before_pr_event_can_start_ci(self):

@@ -148,7 +148,7 @@ wrong-App results fail closed. Source classification SHALL use non-cancelling
 repository-and-head concurrency and SHALL recheck that its trusted exact-head
 classification is unique after every create or update.
 
-After the exact Dependabot revision merges into `dev`, a no-bypass projection
+After the exact Dependabot revision merges into `dev`, a no-main-bypass projection
 writer MAY open a production pull request only by reconstructing that exact
 approved dependency patch on the current `main` base. For every touched path,
 the current `main` blob and mode SHALL equal the source pull request's pre-fix
@@ -156,12 +156,17 @@ blob and mode. The writer SHALL apply only the source post-fix blobs and modes;
 it SHALL NOT merge or cherry-pick the `dev` branch, resolve conflicts, regenerate
 a lock, or include unrelated files.
 
-The immutable released control-plane policy SHALL pin the no-bypass security
-automation App's public GitHub App ID for both source classification and
+The immutable released control-plane policy SHALL pin the dedicated security
+source/projector App's public GitHub App ID for both source classification and
 projection writing. A consumer variable, workflow input, label, branch name, or
 pull-request field SHALL NOT select or override that trust identity. Each
 trusted check's current App slug SHALL match the corresponding merge or
-pull-request bot actor.
+pull-request bot actor. The App SHALL be dedicated to security automation; its
+private key SHALL NOT be available to a general agent launcher or any
+non-security workflow, and it SHALL have no `main` bypass. A merge rerun or ambiguous API
+response SHALL adopt an already-completed source merge only after re-proving the
+exact pull request, classified base and head, unique trusted classification,
+merge actor, ordered parents, and source-head tree. Any mismatch fails closed.
 
 The immutable source preimage SHALL be the first parent of the recorded `dev`
 security merge and SHALL equal the source base bound by classification. Each
