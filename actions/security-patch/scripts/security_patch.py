@@ -162,10 +162,42 @@ class GhApi:
                 raise PolicyError("vulnerability-alert response schema is invalid") from error
             require(isinstance(nodes, list), "vulnerability-alert nodes must be a list")
             for node in nodes:
-                if node.get("dependabotUpdate", {}).get("pullRequest", {}).get("number") != pull_request:
+                require(isinstance(node, dict), "vulnerability-alert node must be an object")
+                require(
+                    "dependabotUpdate" in node,
+                    "vulnerability-alert node has no dependabotUpdate field",
+                )
+                dependabot_update = node["dependabotUpdate"]
+                if dependabot_update is None:
+                    continue
+                require(
+                    isinstance(dependabot_update, dict),
+                    "vulnerability-alert dependabotUpdate must be an object or null",
+                )
+                require(
+                    "pullRequest" in dependabot_update,
+                    "vulnerability-alert dependabotUpdate has no pullRequest field",
+                )
+                pull_request_pointer = dependabot_update["pullRequest"]
+                if pull_request_pointer is None:
+                    continue
+                require(
+                    isinstance(pull_request_pointer, dict),
+                    "vulnerability-alert pullRequest must be an object or null",
+                )
+                associated_number = pull_request_pointer.get("number")
+                require(
+                    isinstance(associated_number, int)
+                    and not isinstance(associated_number, bool)
+                    and associated_number > 0,
+                    "vulnerability-alert pull request number must be a positive integer",
+                )
+                if associated_number != pull_request:
                     continue
                 require(node.get("state") in {"OPEN", "FIXED"}, "associated alert state is not eligible")
-                ghsa = node.get("securityAdvisory", {}).get("ghsaId")
+                security_advisory = node.get("securityAdvisory")
+                require(isinstance(security_advisory, dict), "associated GHSA is invalid")
+                ghsa = security_advisory.get("ghsaId")
                 require(isinstance(ghsa, str) and ghsa.startswith("GHSA-"), "associated GHSA is invalid")
                 ghsas.add(ghsa)
         require(bool(ghsas), "source pull request has no official OPEN or FIXED GitHub alert")
