@@ -44,6 +44,7 @@ class FakeApi:
         self.gets = {}
         self.page_values = {}
         self.ghsas = ("GHSA-abcd-efgh-ijkl",)
+        self.repository_ghsas = self.ghsas
         self.posts = []
         self.puts = []
         self.patches = []
@@ -61,6 +62,10 @@ class FakeApi:
     def security_ghsas(self, repository, pull_request):
         self.last_security_query = (repository, pull_request)
         return self.ghsas
+
+    def security_ghsa_evidence(self, repository, pull_request):
+        self.last_security_query = (repository, pull_request)
+        return self.ghsas, self.repository_ghsas
 
     def post(self, path, payload):
         self.posts.append((path, payload))
@@ -202,26 +207,46 @@ class SourceMergeApi(FakeApi):
         self.advance_at_ref_read = None
         self.duplicate_after_write = False
         self.lose_merge_response = False
+        self.merge_pull_visibility_delay = 0
+        self.merge_ref_visibility_delay = 0
+        self.merge_association_visibility_delay = 0
+        self.merge_pull_reads = 0
+        self.merge_ref_reads = 0
+        self.merge_association_reads = 0
+        self.merge_actor = "forgingalpha-security-automation[bot]"
+        self.merged_ref_sha = sha("c")
 
     def get(self, path, fresh=False):
         repository = "ForgingAlpha/alphaapps-site"
         if path == f"repos/{repository}/git/ref/heads/dev":
             self.source_ref_reads += 1
-            advanced = self.did_merge or (
-                self.advance_at_ref_read is not None
-                and self.source_ref_reads >= self.advance_at_ref_read
-            )
+            if self.did_merge:
+                self.merge_ref_reads += 1
+                delayed = self.merge_ref_reads <= self.merge_ref_visibility_delay
+                return {"object": {"sha": sha("a") if delayed else self.merged_ref_sha}}
+            advanced = self.advance_at_ref_read is not None and self.source_ref_reads >= self.advance_at_ref_read
             return {"object": {"sha": sha("7") if advanced else sha("a")}}
         if path == f"repos/{repository}/pulls/17" and self.did_merge:
+            self.merge_pull_reads += 1
+            if self.merge_pull_reads <= self.merge_pull_visibility_delay:
+                return super().get(path, fresh=fresh)
             value = dict(self.gets[path])
             value.update({
                 "state": "closed",
                 "merged_at": "2026-08-16T12:30:00Z",
                 "merge_commit_sha": sha("c"),
-                "merged_by": {"login": "forgingalpha-security-automation[bot]"},
+                "merged_by": {"login": self.merge_actor},
             })
             return value
         return super().get(path, fresh=fresh)
+
+    def pages(self, path, fresh=False):
+        association_path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
+        if path == association_path and self.did_merge:
+            self.merge_association_reads += 1
+            if self.merge_association_reads <= self.merge_association_visibility_delay:
+                return [[]]
+        return super().pages(path, fresh=fresh)
 
     def post(self, path, payload):
         self.posts.append((path, payload))
@@ -298,8 +323,21 @@ def source_fixture() -> FakeApi:
         "base": {"ref": "dev"},
         "head": {"sha": source_head},
         "user": {"login": "dependabot[bot]"},
-        "merged_by": {"login": "forgingalpha-security-automation[bot]"},
+        "merged_by": None,
     }]]
+    api.gets[f"repos/{repository}/pulls/{pr_number}"] = {
+        "number": pr_number,
+        "state": "closed",
+        "merged_at": "2026-08-16T12:00:00Z",
+        "merge_commit_sha": source_merge,
+        "base": {"ref": "dev", "sha": source_base},
+        "head": {
+            "sha": source_head,
+            "repo": {"full_name": repository},
+        },
+        "user": {"login": "dependabot[bot]"},
+        "merged_by": {"login": "forgingalpha-security-automation[bot]"},
+    }
     attestation = {
         "schema": security_patch.SOURCE_SCHEMA,
         "repository": repository,
@@ -315,6 +353,8 @@ def source_fixture() -> FakeApi:
             "head_sha": source_head,
             "status": "completed",
             "conclusion": "success",
+            "external_id": f"{security_patch.SOURCE_SCHEMA}:{pr_number}:{source_head}",
+            "completed_at": "2026-08-16T11:59:59Z",
             "app": {"id": app_id, "slug": "forgingalpha-security-automation"},
             "output": {"summary": json.dumps(attestation)},
         }]
@@ -737,11 +777,19 @@ def vulnerability_alert_node(number, state="OPEN", ghsa="GHSA-abcd-efgh-ijkl"):
 class SecurityAlertAssociationTest(unittest.TestCase):
     def test_skips_schema_legitimate_nulls_and_other_prs_while_collecting_exact_associations(self):
         legitimate_unrelated = [
-            {"dependabotUpdate": None},
-            {"dependabotUpdate": {"pullRequest": None}},
             {
-                "state": None,
-                "securityAdvisory": None,
+                "state": "FIXED",
+                "securityAdvisory": {"ghsaId": "GHSA-null-update-aaaa"},
+                "dependabotUpdate": None,
+            },
+            {
+                "state": "OPEN",
+                "securityAdvisory": {"ghsaId": "GHSA-null-pointer-bbbb"},
+                "dependabotUpdate": {"pullRequest": None},
+            },
+            {
+                "state": "OPEN",
+                "securityAdvisory": {"ghsaId": "GHSA-other-pr-cccc"},
                 "dependabotUpdate": {"pullRequest": {"number": 99}},
             },
         ]
@@ -764,13 +812,33 @@ class SecurityAlertAssociationTest(unittest.TestCase):
 
     def test_schema_legitimate_unrelated_entries_do_not_create_an_association(self):
         api = SecurityAlertGraphqlApi(vulnerability_alert_pages([
-            {"dependabotUpdate": None},
-            {"dependabotUpdate": {"pullRequest": None}},
+            {
+                "state": "FIXED",
+                "securityAdvisory": {"ghsaId": "GHSA-null-update-aaaa"},
+                "dependabotUpdate": None,
+            },
+            {
+                "state": "OPEN",
+                "securityAdvisory": {"ghsaId": "GHSA-null-pointer-bbbb"},
+                "dependabotUpdate": {"pullRequest": None},
+            },
             vulnerability_alert_node(41),
         ]))
 
         with self.assertRaisesRegex(security_patch.PolicyError, "no official OPEN or FIXED"):
             api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+    def test_cleared_post_merge_pointer_retains_repository_advisory_evidence_only(self):
+        api = SecurityAlertGraphqlApi(vulnerability_alert_pages([{
+            "state": "OPEN",
+            "securityAdvisory": {"ghsaId": "GHSA-abcd-efgh-ijkl"},
+            "dependabotUpdate": None,
+        }]))
+
+        self.assertEqual(
+            api.security_ghsa_evidence("ForgingAlpha/analyzingalpha-site", 40),
+            ((), ("GHSA-abcd-efgh-ijkl",)),
+        )
 
     def test_structurally_malformed_entries_fail_closed_even_with_a_valid_association(self):
         malformed_entries = (
@@ -793,6 +861,12 @@ class SecurityAlertAssociationTest(unittest.TestCase):
         )
         for node, error in malformed_entries:
             with self.subTest(node=node):
+                if isinstance(node, dict):
+                    node = {
+                        "state": "OPEN",
+                        "securityAdvisory": {"ghsaId": "GHSA-malformed-node"},
+                        **node,
+                    }
                 api = SecurityAlertGraphqlApi(vulnerability_alert_pages([
                     vulnerability_alert_node(40),
                     node,
@@ -806,7 +880,7 @@ class SecurityAlertAssociationTest(unittest.TestCase):
                 api = SecurityAlertGraphqlApi(vulnerability_alert_pages([
                     vulnerability_alert_node(40, state=state),
                 ]))
-                with self.assertRaisesRegex(security_patch.PolicyError, "associated alert state is not eligible"):
+                with self.assertRaisesRegex(security_patch.PolicyError, "repository alert state is not eligible"):
                     api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
 
     def test_matching_association_requires_a_valid_security_advisory(self):
@@ -816,7 +890,7 @@ class SecurityAlertAssociationTest(unittest.TestCase):
                 node = vulnerability_alert_node(40)
                 node["securityAdvisory"] = security_advisory
                 api = SecurityAlertGraphqlApi(vulnerability_alert_pages([node]))
-                with self.assertRaisesRegex(security_patch.PolicyError, "associated GHSA is invalid"):
+                with self.assertRaisesRegex(security_patch.PolicyError, "repository GHSA is invalid"):
                     api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
 
     def test_one_valid_association_does_not_mask_a_malformed_matching_entry(self):
@@ -824,8 +898,8 @@ class SecurityAlertAssociationTest(unittest.TestCase):
         malformed_advisory = vulnerability_alert_node(40)
         malformed_advisory["securityAdvisory"] = None
         for node, error in (
-            (malformed_state, "associated alert state is not eligible"),
-            (malformed_advisory, "associated GHSA is invalid"),
+            (malformed_state, "repository alert state is not eligible"),
+            (malformed_advisory, "repository GHSA is invalid"),
         ):
             with self.subTest(error=error):
                 api = SecurityAlertGraphqlApi(vulnerability_alert_pages([
@@ -834,6 +908,21 @@ class SecurityAlertAssociationTest(unittest.TestCase):
                 ]))
                 with self.assertRaisesRegex(security_patch.PolicyError, error):
                     api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+    def test_malformed_repository_advisory_fails_even_when_post_merge_pointer_is_null(self):
+        malformed = (
+            ({"state": None, "securityAdvisory": {"ghsaId": "GHSA-abcd-efgh-ijkl"}}, "state"),
+            ({"state": "OPEN", "securityAdvisory": None}, "repository GHSA"),
+            ({"state": "FIXED", "securityAdvisory": {"ghsaId": "CVE-1"}}, "repository GHSA"),
+        )
+        for fields, error in malformed:
+            with self.subTest(fields=fields):
+                api = SecurityAlertGraphqlApi(vulnerability_alert_pages([{
+                    **fields,
+                    "dependabotUpdate": None,
+                }]))
+                with self.assertRaisesRegex(security_patch.PolicyError, error):
+                    api.security_ghsa_evidence("ForgingAlpha/analyzingalpha-site", 40)
 
     def test_malformed_pagination_schema_still_fails_closed(self):
         responses = (
@@ -1149,7 +1238,7 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
         check_payload = next(payload for path, payload in api.posts if path.endswith("/check-runs"))
         self.assertEqual(check_payload["head_sha"], sha("b"))
         self.assertEqual(json.loads(check_payload["output"]["summary"])["source_base_sha"], sha("a"))
-        self.assertEqual(api.source_ref_reads, 4)
+        self.assertEqual(api.source_ref_reads, 6)
 
     def test_merge_adopts_exact_recorded_result_after_response_loss(self):
         api = source_candidate_fixture()
@@ -1171,6 +1260,10 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
     def test_merge_rerun_adopts_exact_already_completed_result_without_writing(self):
         api = source_candidate_fixture()
         api.did_merge = True
+        association = api.page_values[
+            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
+        ][0][0]
+        self.assertIsNone(association["merged_by"])
         merge_sha = security_patch.merge_source_candidate(
             api,
             "ForgingAlpha/alphaapps-site",
@@ -1185,14 +1278,303 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
         self.assertEqual(merge_sha, sha("c"))
         self.assertFalse(api.puts)
         self.assertFalse(api.posts)
+        self.assertFalse(api.patches)
+
+    def test_merge_rerun_adopts_after_github_clears_only_the_live_alert_pointer(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        api.ghsas = ()
+        api.repository_ghsas = ("GHSA-abcd-efgh-ijkl",)
+
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+            adoption_wait_seconds=0,
+            adoption_poll_seconds=0,
+        )
+
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+        self.assertFalse(api.patches)
+
+    def test_merge_polls_delayed_post_merge_pr_ref_and_association_visibility_without_remerging(self):
+        api = source_candidate_fixture()
+        api.merge_pull_visibility_delay = 2
+        api.merge_ref_visibility_delay = 2
+        api.merge_association_visibility_delay = 2
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+            adoption_wait_seconds=1,
+            adoption_poll_seconds=0,
+        )
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertEqual(
+            api.puts,
+            [("repos/ForgingAlpha/alphaapps-site/pulls/17/merge", {"sha": sha("b"), "merge_method": "merge"})],
+        )
+        self.assertGreaterEqual(api.merge_pull_reads, 3)
+        self.assertGreaterEqual(api.merge_ref_reads, 3)
+        self.assertEqual(api.merge_association_reads, 3)
+
+    def test_merge_rerun_polls_zero_associations_then_adopts_without_any_write(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        api.merge_association_visibility_delay = 2
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+            adoption_wait_seconds=1,
+            adoption_poll_seconds=0,
+        )
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertEqual(api.merge_association_reads, 3)
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+        self.assertFalse(api.patches)
+
+    def test_merge_rerun_rejects_malformed_or_duplicate_association_pointers_without_writing(self):
+        malformed_pages = (
+            [[None]],
+            [[{"number": "17"}]],
+            [[{"number": 17}, {"number": 17}]],
+        )
+        for pages in malformed_pages:
+            with self.subTest(pages=pages):
+                api = source_candidate_fixture()
+                api.did_merge = True
+                api.page_values[
+                    f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
+                ] = pages
+                with self.assertRaises(security_patch.PolicyError):
+                    security_patch.merge_source_candidate(
+                        api,
+                        "ForgingAlpha/alphaapps-site",
+                        901,
+                        "dev",
+                        "package.json",
+                        "package-lock.json",
+                        17,
+                        sha("b"),
+                        sha("a"),
+                        adoption_wait_seconds=1,
+                        adoption_poll_seconds=0,
+                    )
+                self.assertFalse(api.puts)
+                self.assertFalse(api.posts)
+                self.assertFalse(api.patches)
+
+    def test_merge_rerun_rejects_a_different_exact_associated_pull_request(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        association_path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
+        api.page_values[association_path] = [[{"number": 18}]]
+        api.gets["repos/ForgingAlpha/alphaapps-site/pulls/18"] = {
+            "number": 18,
+            "state": "closed",
+            "merged_at": "2026-08-16T12:30:00Z",
+            "merge_commit_sha": sha("c"),
+            "base": {"ref": "dev", "sha": sha("a")},
+            "head": {"sha": sha("b"), "repo": {"full_name": "ForgingAlpha/alphaapps-site"}},
+            "user": {"login": "dependabot[bot]"},
+            "merged_by": {"login": "forgingalpha-security-automation[bot]"},
+        }
+        with self.assertRaisesRegex(security_patch.PolicyError, "different exact merged Dependabot PR"):
+            security_patch.adopt_completed_source_merge(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+                association_wait_seconds=0,
+                association_poll_seconds=0,
+            )
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+        self.assertFalse(api.patches)
+
+    def test_merge_rerun_rejects_current_dev_that_does_not_contain_recorded_merge(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        api.merged_ref_sha = sha("7")
+        api.gets[
+            f"repos/ForgingAlpha/alphaapps-site/compare/{sha('c')}...{sha('7')}"
+        ] = {
+            "status": "diverged",
+            "base_commit": {"sha": sha("c")},
+            "merge_base_commit": {"sha": sha("9")},
+            "ahead_by": 1,
+        }
+        with self.assertRaisesRegex(security_patch.PolicyError, "does not contain recorded source merge"):
+            security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+                adoption_wait_seconds=0,
+                adoption_poll_seconds=0,
+            )
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+        self.assertFalse(api.patches)
+
+    def test_merge_rerun_accepts_descendant_dev_after_exact_recorded_merge(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        api.merged_ref_sha = sha("7")
+        api.gets[
+            f"repos/ForgingAlpha/alphaapps-site/compare/{sha('c')}...{sha('7')}"
+        ] = {
+            "status": "ahead",
+            "base_commit": {"sha": sha("c")},
+            "merge_base_commit": {"sha": sha("c")},
+            "ahead_by": 2,
+        }
+
+        merge_sha = security_patch.merge_source_candidate(
+            api,
+            "ForgingAlpha/alphaapps-site",
+            901,
+            "dev",
+            "package.json",
+            "package-lock.json",
+            17,
+            sha("b"),
+            sha("a"),
+            adoption_wait_seconds=0,
+            adoption_poll_seconds=0,
+        )
+
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+        self.assertFalse(api.patches)
+
+    def test_merge_rerun_rejects_canonical_pull_request_identity_drift_without_writing(self):
+        pull_path = "repos/ForgingAlpha/alphaapps-site/pulls/17"
+        mutations = {
+            "number": lambda pull: pull.update({"number": 18}),
+            "author": lambda pull: pull.update({"user": {"login": "attacker"}}),
+            "base branch": lambda pull: pull["base"].update({"ref": "main"}),
+            "base SHA": lambda pull: pull["base"].update({"sha": sha("9")}),
+            "head SHA": lambda pull: pull["head"].update({"sha": sha("9")}),
+            "head repository": lambda pull: pull["head"]["repo"].update({"full_name": "Other/site"}),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                api = source_candidate_fixture()
+                api.did_merge = True
+                mutate(api.gets[pull_path])
+                with self.assertRaises(security_patch.PolicyError):
+                    security_patch.merge_source_candidate(
+                        api,
+                        "ForgingAlpha/alphaapps-site",
+                        901,
+                        "dev",
+                        "package.json",
+                        "package-lock.json",
+                        17,
+                        sha("b"),
+                        sha("a"),
+                        adoption_wait_seconds=0,
+                        adoption_poll_seconds=0,
+                    )
+                self.assertFalse(api.puts)
+                self.assertFalse(api.posts)
+                self.assertFalse(api.patches)
+
+    def test_merge_rerun_rejects_untrusted_or_conflicting_classification_without_writing(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        checks = api.page_values[
+            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?per_page=100"
+        ][0]["check_runs"]
+        checks[0]["app"]["id"] = 9999
+        with self.assertRaisesRegex(security_patch.PolicyError, "exactly one trusted"):
+            security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+                adoption_wait_seconds=0,
+                adoption_poll_seconds=0,
+            )
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+        self.assertFalse(api.patches)
+
+    def test_merge_rerun_rejects_wrong_parents_tree_or_ghsa_without_writing(self):
+        mutations = {
+            "parents": lambda api: api.gets[
+                f"repos/ForgingAlpha/alphaapps-site/git/commits/{sha('c')}"
+            ].update({"parents": [{"sha": sha("9")}, {"sha": sha("b")}]}),
+            "tree": lambda api: api.gets[
+                f"repos/ForgingAlpha/alphaapps-site/git/commits/{sha('c')}"
+            ].update({"tree": {"sha": sha("9")}}),
+            "GHSA": lambda api: setattr(api, "ghsas", ("GHSA-wrong-wrong-wrong",)),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                api = source_candidate_fixture()
+                api.did_merge = True
+                mutate(api)
+                with self.assertRaises(security_patch.PolicyError):
+                    security_patch.merge_source_candidate(
+                        api,
+                        "ForgingAlpha/alphaapps-site",
+                        901,
+                        "dev",
+                        "package.json",
+                        "package-lock.json",
+                        17,
+                        sha("b"),
+                        sha("a"),
+                        adoption_wait_seconds=0,
+                        adoption_poll_seconds=0,
+                    )
+                self.assertFalse(api.puts)
+                self.assertFalse(api.posts)
+                self.assertFalse(api.patches)
 
     def test_merge_rerun_rejects_completed_result_from_wrong_actor(self):
         api = source_candidate_fixture()
         api.did_merge = True
-        source_association = api.page_values[
-            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
-        ][0][0]
-        source_association["merged_by"] = {"login": "unexpected[bot]"}
+        api.merge_actor = "unexpected[bot]"
         with self.assertRaisesRegex(security_patch.PolicyError, "merged by the classification App"):
             security_patch.merge_source_candidate(
                 api,
@@ -1320,6 +1702,56 @@ class SecurityPatchSourceTest(unittest.TestCase):
         self.assertEqual(evidence.source_head, sha("b"))
         self.assertEqual(evidence.changed_paths, ("package-lock.json",))
         self.assertEqual(evidence.ghsa_set, ("GHSA-abcd-efgh-ijkl",))
+
+    def test_accepts_cleared_post_merge_alert_pointer_with_exact_historical_and_live_proofs(self):
+        api = source_fixture()
+        api.ghsas = ()
+        api.repository_ghsas = (
+            "GHSA-abcd-efgh-ijkl",
+            "GHSA-unrelated-live-alert",
+        )
+
+        evidence = self.build(api)
+
+        self.assertEqual(evidence.ghsa_set, ("GHSA-abcd-efgh-ijkl",))
+
+    def test_rejects_cleared_pointer_without_matching_live_repository_advisory(self):
+        api = source_fixture()
+        api.ghsas = ()
+        api.repository_ghsas = ()
+        with self.assertRaisesRegex(security_patch.PolicyError, "no longer visible"):
+            self.build(api)
+
+        api.repository_ghsas = ("GHSA-wrong-wrong-wrong",)
+        with self.assertRaisesRegex(security_patch.PolicyError, "no longer visible"):
+            self.build(api)
+
+    def test_rejects_post_merge_classification_identity_or_timing_drift(self):
+        path = (
+            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}"
+            "/check-runs?per_page=100"
+        )
+        mutations = {
+            "external identity": (
+                lambda check: check.update({"external_id": "wrong"}),
+                "external identity mismatch",
+            ),
+            "missing completion": (
+                lambda check: check.pop("completed_at"),
+                "completion must be a GitHub UTC timestamp",
+            ),
+            "late completion": (
+                lambda check: check.update({"completed_at": "2026-08-16T12:00:01Z"}),
+                "not completed before",
+            ),
+        }
+        for name, (mutate, error) in mutations.items():
+            with self.subTest(name=name):
+                api = source_fixture()
+                check = api.page_values[path][0]["check_runs"][0]
+                mutate(check)
+                with self.assertRaisesRegex(security_patch.PolicyError, error):
+                    self.build(api)
 
     def test_rejects_wrong_source_merge_parent_shape(self):
         api = source_fixture()

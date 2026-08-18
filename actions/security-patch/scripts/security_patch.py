@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Iterable
 from urllib.parse import quote
 
@@ -36,6 +37,8 @@ CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 CI_CHECK = "CI"
 CODEQL_CHECK = "CodeQL"
 PULL_FILES_API_LIMIT = 3000
+SOURCE_MERGE_ADOPTION_WAIT_SECONDS = 30
+SOURCE_MERGE_ADOPTION_POLL_SECONDS = 2
 
 
 class PolicyError(RuntimeError):
@@ -131,7 +134,12 @@ class GhApi:
     def patch(self, path: str, payload: Any) -> Any:
         return self._run(["--method", "PATCH", path, "--input", "-"], payload)
 
-    def security_ghsas(self, repository: str, pull_request: int) -> tuple[str, ...]:
+    def security_ghsa_evidence(
+        self,
+        repository: str,
+        pull_request: int,
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Return exact PR-linked and repository-visible official GHSA sets."""
         owner, name = repository.split("/", 1)
         query = (
             "query($owner:String!,$name:String!,$endCursor:String){"
@@ -154,7 +162,8 @@ class GhApi:
             ]
         )
         require(isinstance(pages, list), "vulnerability-alert pagination must be a list")
-        ghsas: set[str] = set()
+        associated_ghsas: set[str] = set()
+        repository_ghsas: set[str] = set()
         for page in pages:
             try:
                 nodes = page["data"]["repository"]["vulnerabilityAlerts"]["nodes"]
@@ -163,6 +172,13 @@ class GhApi:
             require(isinstance(nodes, list), "vulnerability-alert nodes must be a list")
             for node in nodes:
                 require(isinstance(node, dict), "vulnerability-alert node must be an object")
+                state = node.get("state")
+                security_advisory = node.get("securityAdvisory")
+                require(state in {"OPEN", "FIXED"}, "repository alert state is not eligible")
+                require(isinstance(security_advisory, dict), "repository GHSA is invalid")
+                ghsa = security_advisory.get("ghsaId")
+                require(isinstance(ghsa, str) and ghsa.startswith("GHSA-"), "repository GHSA is invalid")
+                repository_ghsas.add(ghsa)
                 require(
                     "dependabotUpdate" in node,
                     "vulnerability-alert node has no dependabotUpdate field",
@@ -194,14 +210,13 @@ class GhApi:
                 )
                 if associated_number != pull_request:
                     continue
-                require(node.get("state") in {"OPEN", "FIXED"}, "associated alert state is not eligible")
-                security_advisory = node.get("securityAdvisory")
-                require(isinstance(security_advisory, dict), "associated GHSA is invalid")
-                ghsa = security_advisory.get("ghsaId")
-                require(isinstance(ghsa, str) and ghsa.startswith("GHSA-"), "associated GHSA is invalid")
-                ghsas.add(ghsa)
-        require(bool(ghsas), "source pull request has no official OPEN or FIXED GitHub alert")
-        return tuple(sorted(ghsas))
+                associated_ghsas.add(ghsa)
+        return tuple(sorted(associated_ghsas)), tuple(sorted(repository_ghsas))
+
+    def security_ghsas(self, repository: str, pull_request: int) -> tuple[str, ...]:
+        associated_ghsas, _ = self.security_ghsa_evidence(repository, pull_request)
+        require(bool(associated_ghsas), "source pull request has no official OPEN or FIXED GitHub alert")
+        return associated_ghsas
 
 
 @dataclass(frozen=True)
@@ -310,8 +325,8 @@ def parse_attestation_check(
     name: str,
     app_id: int,
     schema: str,
-) -> tuple[dict[str, Any], str]:
-    candidates: list[tuple[dict[str, Any], str]] = []
+) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    candidates: list[tuple[dict[str, Any], str, dict[str, Any]]] = []
     for run in check_runs(api, repository, sha):
         if not (
             run.get("name") == name
@@ -331,9 +346,17 @@ def parse_attestation_check(
         require(attestation.get("schema") == schema, f"{name} attestation schema is invalid")
         slug = run.get("app", {}).get("slug")
         require(isinstance(slug, str) and slug, f"{name} check App slug is missing")
-        candidates.append((attestation, slug))
+        candidates.append((attestation, slug, run))
     require(len(candidates) == 1, f"expected exactly one trusted {name} check, found {len(candidates)}")
     return candidates[0]
+
+
+def github_timestamp(value: Any, label: str) -> datetime:
+    require(isinstance(value, str), f"{label} must be a GitHub UTC timestamp")
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError as error:
+        raise PolicyError(f"{label} must be a GitHub UTC timestamp") from error
 
 
 def git_commit(api: GhApi, repository: str, sha: str) -> dict[str, Any]:
@@ -817,6 +840,62 @@ def upsert_source_classification(api: GhApi, candidate: SourceCandidate) -> str:
     return slug
 
 
+def require_exact_source_pull_identity(
+    pull: Any,
+    repository: str,
+    source_branch: str,
+    expected_pull_request: int,
+    expected_head: str,
+    expected_base: str,
+) -> None:
+    require(isinstance(pull, dict), "source pull-request response must be an object")
+    require(pull.get("number") == expected_pull_request, "source pull-request number mismatch")
+    require(pull.get("user", {}).get("login") == "dependabot[bot]", "source pull request is not Dependabot")
+    base = pull.get("base")
+    head = pull.get("head")
+    require(isinstance(base, dict), "source pull-request base must be an object")
+    require(isinstance(head, dict), "source pull-request head must be an object")
+    require(base.get("ref") == source_branch, "source pull-request base branch mismatch")
+    require(base.get("sha") == expected_base, "source pull-request base SHA mismatch")
+    require(head.get("sha") == expected_head, "source pull-request head SHA mismatch")
+    require(head.get("repo", {}).get("full_name") == repository, "source pull-request head repository mismatch")
+
+
+def source_branch_contains_merge(
+    api: GhApi,
+    repository: str,
+    source_branch: str,
+    expected_base: str,
+    merge_sha: str,
+) -> bool:
+    """Prove the recorded merge is the branch tip or an ancestor of it."""
+    current_source = ref_sha(api, repository, source_branch, fresh=True)
+    if current_source == expected_base:
+        return False
+    if current_source == merge_sha:
+        return True
+    comparison = api.get(
+        f"repos/{repository}/compare/{merge_sha}...{current_source}",
+        fresh=True,
+    )
+    require(isinstance(comparison, dict), "source branch ancestry response must be an object")
+    require(comparison.get("status") == "ahead", "current source branch does not contain recorded source merge")
+    require(
+        comparison.get("base_commit", {}).get("sha") == merge_sha,
+        "source branch ancestry base does not equal recorded source merge",
+    )
+    require(
+        comparison.get("merge_base_commit", {}).get("sha") == merge_sha,
+        "recorded source merge is not the current source branch merge base",
+    )
+    ahead_by = comparison.get("ahead_by")
+    require(
+        isinstance(ahead_by, int) and not isinstance(ahead_by, bool) and ahead_by > 0,
+        "source branch ancestry distance is invalid",
+    )
+    return True
+
+
 def adopt_completed_source_merge(
     api: GhApi,
     repository: str,
@@ -827,29 +906,110 @@ def adopt_completed_source_merge(
     expected_head: str,
     expected_base: str,
     expected_merge: str | None = None,
+    association_wait_seconds: int = 0,
+    association_poll_seconds: int = SOURCE_MERGE_ADOPTION_POLL_SECONDS,
 ) -> str | None:
     """Adopt an exact merge that GitHub completed before its response was observed."""
     pull = api.get(f"repos/{repository}/pulls/{expected_pull_request}", fresh=True)
-    require(isinstance(pull, dict), "source pull-request response must be an object")
-    require(pull.get("number") == expected_pull_request, "source pull-request number mismatch")
+    require_exact_source_pull_identity(
+        pull,
+        repository,
+        source_branch,
+        expected_pull_request,
+        expected_head,
+        expected_base,
+    )
     if pull.get("state") == "open":
         return None
+    require(pull.get("state") == "closed", "source pull-request state is invalid")
     require(pull.get("merged_at") is not None, "closed source pull request was not merged")
     merge_sha = require_sha(str(pull.get("merge_commit_sha")), "recorded source merge")
     if expected_merge is not None:
         require(merge_sha == expected_merge, "source merge response and recorded merge SHA differ")
-    evidence = build_source_evidence(
+    if not source_branch_contains_merge(
+        api,
+        repository,
+        source_branch,
+        expected_base,
+        merge_sha,
+    ):
+        return None
+    associated_pull = source_pull_request(
+        api,
+        repository,
+        merge_sha,
+        source_branch,
+        expected_pull_request,
+        wait_seconds=association_wait_seconds,
+        poll_seconds=association_poll_seconds,
+        allow_missing=True,
+    )
+    if associated_pull is None:
+        return None
+    require_exact_source_pull_identity(
+        associated_pull,
+        repository,
+        source_branch,
+        expected_pull_request,
+        expected_head,
+        expected_base,
+    )
+    require(associated_pull.get("state") == "closed", "source pull-request state is invalid")
+    require(associated_pull.get("merged_at") is not None, "closed source pull request was not merged")
+    require(
+        associated_pull.get("merge_commit_sha") == merge_sha,
+        "canonical source pull-request merge SHA changed",
+    )
+    evidence = build_source_evidence_from_pull(
         api,
         repository,
         merge_sha,
         source_branch,
         manifest_path,
         lock_path,
+        associated_pull,
     )
     require(evidence.pull_request == expected_pull_request, "recorded source merge PR mismatch")
     require(evidence.source_head == expected_head, "recorded source merge head mismatch")
     require(evidence.source_base == expected_base, "recorded source merge base mismatch")
     return merge_sha
+
+
+def wait_for_completed_source_merge(
+    api: GhApi,
+    repository: str,
+    source_branch: str,
+    manifest_path: str,
+    lock_path: str,
+    expected_pull_request: int,
+    expected_head: str,
+    expected_base: str,
+    wait_seconds: int,
+    poll_seconds: int = SOURCE_MERGE_ADOPTION_POLL_SECONDS,
+    expected_merge: str | None = None,
+) -> str | None:
+    require(0 <= wait_seconds <= 60, "source merge adoption wait must be between zero and 60 seconds")
+    require(poll_seconds >= 0, "source merge adoption poll interval must be non-negative")
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        adopted = adopt_completed_source_merge(
+            api,
+            repository,
+            source_branch,
+            manifest_path,
+            lock_path,
+            expected_pull_request,
+            expected_head,
+            expected_base,
+            expected_merge,
+            max(0, int(deadline - time.monotonic())),
+            poll_seconds,
+        )
+        if adopted is not None:
+            return adopted
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(min(poll_seconds, max(0.0, deadline - time.monotonic())))
 
 
 def merge_source_candidate(
@@ -862,6 +1022,8 @@ def merge_source_candidate(
     expected_pull_request: int,
     expected_head: str,
     expected_base: str,
+    adoption_wait_seconds: int = SOURCE_MERGE_ADOPTION_WAIT_SECONDS,
+    adoption_poll_seconds: int = SOURCE_MERGE_ADOPTION_POLL_SECONDS,
 ) -> str:
     adopted = adopt_completed_source_merge(
         api,
@@ -872,9 +1034,16 @@ def merge_source_candidate(
         expected_pull_request,
         expected_head,
         expected_base,
+        None,
+        adoption_wait_seconds,
+        adoption_poll_seconds,
     )
     if adopted is not None:
         return adopted
+    require(
+        ref_sha(api, repository, source_branch, fresh=True) == expected_base,
+        "source branch moved before an exact completed merge could be adopted",
+    )
     candidate = wait_for_source_candidate(
         api,
         repository,
@@ -907,7 +1076,7 @@ def merge_source_candidate(
             {"sha": candidate.source_head, "merge_method": "merge"},
         )
     except PolicyError:
-        adopted = adopt_completed_source_merge(
+        adopted = wait_for_completed_source_merge(
             api,
             repository,
             source_branch,
@@ -916,13 +1085,15 @@ def merge_source_candidate(
             candidate.pull_request,
             candidate.source_head,
             candidate.source_base,
+            adoption_wait_seconds,
+            adoption_poll_seconds,
         )
         if adopted is not None:
             return adopted
         raise
     require(isinstance(result, dict) and result.get("merged") is True, "GitHub did not merge the exact security source")
     merge_sha = require_sha(str(result.get("sha")), "source merge result")
-    adopted = adopt_completed_source_merge(
+    adopted = wait_for_completed_source_merge(
         api,
         repository,
         source_branch,
@@ -931,6 +1102,8 @@ def merge_source_candidate(
         candidate.pull_request,
         candidate.source_head,
         candidate.source_base,
+        adoption_wait_seconds,
+        adoption_poll_seconds,
         merge_sha,
     )
     require(adopted is not None, "GitHub did not record the exact security source merge")
@@ -963,39 +1136,97 @@ def validate_pair_diff(
     return changed
 
 
-def source_pull_request(api: GhApi, repository: str, source_merge: str, source_branch: str) -> dict[str, Any]:
-    pulls = flatten_pages(
-        api.pages(f"repos/{repository}/commits/{source_merge}/pulls?per_page=100"),
-        "commit-associated pull requests",
-    )
-    matches = [
-        pull
-        for pull in pulls
-        if isinstance(pull, dict)
-        and pull.get("merged_at") is not None
-        and pull.get("merge_commit_sha") == source_merge
-        and pull.get("base", {}).get("ref") == source_branch
-        and pull.get("user", {}).get("login") == "dependabot[bot]"
-    ]
-    require(len(matches) == 1, f"expected one merged Dependabot source PR, found {len(matches)}")
-    return matches[0]
+def source_pull_request(
+    api: GhApi,
+    repository: str,
+    source_merge: str,
+    source_branch: str,
+    expected_pull_request: int | None = None,
+    wait_seconds: int = SOURCE_MERGE_ADOPTION_WAIT_SECONDS,
+    poll_seconds: int = SOURCE_MERGE_ADOPTION_POLL_SECONDS,
+    allow_missing: bool = False,
+) -> dict[str, Any] | None:
+    require(0 <= wait_seconds <= 60, "source pull-request association wait must be between zero and 60 seconds")
+    require(poll_seconds >= 0, "source pull-request association poll interval must be non-negative")
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        pointers = flatten_pages(
+            api.pages(
+                f"repos/{repository}/commits/{source_merge}/pulls?per_page=100",
+                fresh=True,
+            ),
+            "commit-associated pull requests",
+        )
+        pointer_numbers: list[int] = []
+        for pointer in pointers:
+            require(isinstance(pointer, dict), "commit-associated pull-request pointer must be an object")
+            pointer_number = pointer.get("number")
+            require(
+                isinstance(pointer_number, int)
+                and not isinstance(pointer_number, bool)
+                and pointer_number > 0,
+                "commit-associated pull-request number must be a positive integer",
+            )
+            pointer_numbers.append(pointer_number)
+        require(
+            len(pointer_numbers) == len(set(pointer_numbers)),
+            "commit-associated pull-request pointers contain duplicates",
+        )
+        matches: list[dict[str, Any]] = []
+        for pull_number in pointer_numbers:
+            pull = api.get(f"repos/{repository}/pulls/{pull_number}", fresh=True)
+            require(isinstance(pull, dict), "canonical source pull-request response must be an object")
+            require(pull.get("number") == pull_number, "canonical source pull-request number mismatch")
+            canonical_base = pull.get("base")
+            canonical_user = pull.get("user")
+            exact_source = bool(
+                pull.get("merged_at") is not None
+                and pull.get("merge_commit_sha") == source_merge
+                and isinstance(canonical_base, dict)
+                and canonical_base.get("ref") == source_branch
+                and isinstance(canonical_user, dict)
+                and canonical_user.get("login") == "dependabot[bot]"
+            )
+            if expected_pull_request is not None and pull_number == expected_pull_request:
+                require(exact_source, "expected source pull-request canonical record conflicts with the merge")
+                matches.append(pull)
+                continue
+            if exact_source:
+                require(
+                    expected_pull_request is None,
+                    "commit association identifies a different exact merged Dependabot PR",
+                )
+                matches.append(pull)
+        require(len(matches) <= 1, f"expected at most one merged Dependabot source PR, found {len(matches)}")
+        if matches:
+            return matches[0]
+        if time.monotonic() >= deadline:
+            if allow_missing:
+                return None
+            raise PolicyError("expected one merged Dependabot source PR, found 0")
+        time.sleep(min(poll_seconds, max(0.0, deadline - time.monotonic())))
 
 
-def build_source_evidence(
+def build_source_evidence_from_pull(
     api: GhApi,
     repository: str,
     source_merge: str,
     source_branch: str,
     manifest_path: str,
     lock_path: str,
+    pull: dict[str, Any],
 ) -> SourceEvidence:
     repository = require_repository(repository)
     source_merge = require_sha(source_merge, "source merge")
-    pull = source_pull_request(api, repository, source_merge, source_branch)
+    require(isinstance(pull, dict), "source pull request must be an object")
+    require(pull.get("merged_at") is not None, "source pull request was not merged")
+    require(pull.get("merge_commit_sha") == source_merge, "source pull-request merge SHA mismatch")
+    require(pull.get("base", {}).get("ref") == source_branch, "source pull-request base branch mismatch")
+    require(pull.get("user", {}).get("login") == "dependabot[bot]", "source pull request is not Dependabot")
     pull_number = require_pr_number(pull.get("number"), "source pull request")
     source_head = require_sha(str(pull.get("head", {}).get("sha")), "source head")
 
-    attestation, app_slug = parse_attestation_check(
+    attestation, app_slug, classification = parse_attestation_check(
         api,
         repository,
         source_head,
@@ -1007,6 +1238,19 @@ def build_source_evidence(
     require(attestation.get("pull_request") == pull_number, "source attestation PR mismatch")
     require(attestation.get("source_head_sha") == source_head, "source attestation head mismatch")
     require(attestation.get("profile") == PROFILE, "source attestation is not production-profile eligible")
+    require(
+        classification.get("external_id") == f"{SOURCE_SCHEMA}:{pull_number}:{source_head}",
+        "source classification external identity mismatch",
+    )
+    classification_completed = github_timestamp(
+        classification.get("completed_at"),
+        "source classification completion",
+    )
+    merged_at = github_timestamp(pull.get("merged_at"), "source pull-request merge time")
+    require(
+        classification_completed <= merged_at,
+        "source classification was not completed before the source merge",
+    )
     attested_base = require_sha(str(attestation.get("source_base_sha")), "attested source base")
     attested_ghsas = attestation.get("ghsa_set")
     require(
@@ -1027,8 +1271,19 @@ def build_source_evidence(
     require(source_tree == head_commit["tree"]["sha"], "source merge tree does not equal source head tree")
     require(pull.get("merged_by", {}).get("login") == f"{app_slug}[bot]", "source PR was not merged by the classification App")
 
-    live_ghsas = api.security_ghsas(repository, pull_number)
-    require(tuple(attested_ghsas) == live_ghsas, "live GHSA set does not equal source attestation")
+    associated_ghsas, repository_ghsas = api.security_ghsa_evidence(repository, pull_number)
+    if associated_ghsas:
+        require(tuple(attested_ghsas) == associated_ghsas, "live GHSA set does not equal source attestation")
+    else:
+        # GitHub may clear vulnerabilityAlert.dependabotUpdate after the exact
+        # source PR merges. The exact trusted pre-merge classification retains
+        # that historical association, while this readback proves every
+        # attested advisory remains an official repository alert.
+        require(
+            set(attested_ghsas) <= set(repository_ghsas),
+            "attested GHSA set is no longer visible in official repository alerts",
+        )
+    live_ghsas = tuple(attested_ghsas)
 
     _, pre = load_pair(api, repository, source_base, manifest_path, lock_path)
     _, post = load_pair(api, repository, source_head, manifest_path, lock_path)
@@ -1051,6 +1306,29 @@ def build_source_evidence(
         pre=pre,
         post=post,
         classification_app_slug=app_slug,
+    )
+
+
+def build_source_evidence(
+    api: GhApi,
+    repository: str,
+    source_merge: str,
+    source_branch: str,
+    manifest_path: str,
+    lock_path: str,
+) -> SourceEvidence:
+    repository = require_repository(repository)
+    source_merge = require_sha(source_merge, "source merge")
+    pull = source_pull_request(api, repository, source_merge, source_branch)
+    require(pull is not None, "merged Dependabot source PR is missing")
+    return build_source_evidence_from_pull(
+        api,
+        repository,
+        source_merge,
+        source_branch,
+        manifest_path,
+        lock_path,
+        pull,
     )
 
 
@@ -1647,7 +1925,7 @@ def verify_projection_admission(
     require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "projection PR head must be same-repository")
     projection_head = require_sha(str(pr.get("head", {}).get("sha")), "live projection head")
 
-    raw_attestation, projection_slug = parse_attestation_check(
+    raw_attestation, projection_slug, _ = parse_attestation_check(
         api,
         repository,
         projection_head,
@@ -1724,7 +2002,7 @@ def verify_projection(
     require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "projection PR head must be same-repository")
     projection_head = require_sha(str(pr.get("head", {}).get("sha")), "live projection head")
 
-    raw_attestation, projection_slug = parse_attestation_check(
+    raw_attestation, projection_slug, _ = parse_attestation_check(
         api,
         repository,
         projection_head,
