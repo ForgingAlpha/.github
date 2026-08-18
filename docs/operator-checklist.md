@@ -166,7 +166,11 @@ application findings are fixed; do not weaken CI to merge them.
   access; no environment, secret, App token, vulnerability-alert access,
   checkout, cache, or pull-request artifact is available there. Confirm it
   binds the exact CI workflow path/run/repository/PR/base/head and accepts only
-  the latest trusted exact-head CI and CodeQL results within the bounded wait.
+  latest trusted exact-head CI success and CodeQL success within the bounded
+  wait. The only CodeQL exception is trusted aggregate neutral after exact
+  lockfile-only source classification and the released two-configuration
+  Default setup no-configurations-found output with one exact pull-request
+  pointer; every other non-success fails closed.
   Require a non-cancelling concurrency group keyed by repository and exact
   source head; verify a retry updates one stable classification instead of
   creating another.

@@ -434,6 +434,73 @@ def source_candidate_fixture() -> SourceMergeApi:
     return api
 
 
+def live_codeql_neutral_output(
+    repository: str = "ForgingAlpha/alphaapps-site",
+    pull_request: int = 17,
+    source_branch: str = "dev",
+) -> dict:
+    return {
+        "annotations_count": 0,
+        "text": None,
+        "title": "2 configurations not found",
+        "summary": (
+            "**Warning**: Code scanning cannot determine the alerts introduced by this pull request, because "
+            f"2 configurations present on `refs/heads/{source_branch}` were not found:\n\n"
+            "### Default setup\n\n"
+            "* :question:&nbsp;&nbsp;`/language:actions`\n"
+            "* :question:&nbsp;&nbsp;`/language:javascript-typescript`\n\n\n"
+            f"[View all branch alerts](/{repository}/security/code-scanning?"
+            f"query=pr%3A{pull_request}+tool%3ACodeQL+is%3Aopen)."
+        ),
+    }
+
+
+def live_codeql_pointer(
+    repository: str = "ForgingAlpha/alphaapps-site",
+    pull_request: int = 17,
+    source_branch: str = "dev",
+    source_base: str = sha("a"),
+    source_head: str = sha("b"),
+) -> dict:
+    repository_name = repository.split("/", 1)[1]
+    repository_pointer = {
+        "id": 1234,
+        "name": repository_name,
+        "url": f"https://api.github.com/repos/{repository}",
+    }
+    return {
+        "number": pull_request,
+        "url": f"https://api.github.com/repos/{repository}/pulls/{pull_request}",
+        "base": {
+            "ref": source_branch,
+            "sha": source_base,
+            "repo": dict(repository_pointer),
+        },
+        "head": {
+            "ref": "dependabot/npm_and_yarn/security-test",
+            "sha": source_head,
+            "repo": dict(repository_pointer),
+        },
+    }
+
+
+def set_codeql_neutral(
+    api: SourceMergeApi,
+    output: dict | None = None,
+    pointers: list | None = None,
+) -> dict:
+    check = api.page_values[
+        f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=latest&per_page=100"
+    ][0]["check_runs"][1]
+    check.update({
+        "status": "completed",
+        "conclusion": "neutral",
+        "output": live_codeql_neutral_output() if output is None else output,
+        "pull_requests": [live_codeql_pointer()] if pointers is None else pointers,
+    })
+    return check
+
+
 def admission_fixture() -> FakeApi:
     api = FakeApi()
     repository = "ForgingAlpha/alphaapps-site"
@@ -712,6 +779,178 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
         checks[0]["app"]["id"] = security_patch.TRUSTED_CI_APP_ID
         checks[1]["conclusion"] = "failure"
         with self.assertRaisesRegex(security_patch.PolicyError, "without success"):
+            self.preflight(api)
+
+    def test_preflight_accepts_full_live_codeql_neutral_after_exact_lock_classification(self):
+        api = source_candidate_fixture()
+        set_codeql_neutral(api)
+        candidate = self.preflight(api)
+        self.assertEqual(candidate.changed_paths, ("package-lock.json",))
+        self.assertEqual(api.posts, [])
+        self.assertEqual(api.puts, [])
+        self.assertEqual(api.patches, [])
+
+    def test_preflight_rejects_any_codeql_neutral_output_drift(self):
+        def wrong_title(output):
+            output["title"] = "3 configurations not found"
+
+        def missing_title(output):
+            output.pop("title")
+
+        def wrong_count(output):
+            output["summary"] = output["summary"].replace("because 2 configurations", "because 3 configurations")
+
+        def wrong_branch(output):
+            output["summary"] = output["summary"].replace("refs/heads/dev", "refs/heads/main")
+
+        def missing_bullet(output):
+            output["summary"] = output["summary"].replace(
+                "* :question:&nbsp;&nbsp;`/language:javascript-typescript`\n",
+                "",
+            )
+
+        def wrong_bullet(output):
+            output["summary"] = output["summary"].replace("/language:actions", "/language:python")
+
+        def extra_bullet(output):
+            output["summary"] = output["summary"].replace(
+                "* :question:&nbsp;&nbsp;`/language:javascript-typescript`\n",
+                "* :question:&nbsp;&nbsp;`/language:javascript-typescript`\n"
+                "* :question:&nbsp;&nbsp;`/language:python`\n",
+            )
+
+        def trailing_content(output):
+            output["summary"] += "\nUnexpected trailing content"
+
+        def nonempty_text(output):
+            output["text"] = "Unexpected detail"
+
+        def annotations(output):
+            output["annotations_count"] = 1
+
+        mutations = {
+            "wrong title count": wrong_title,
+            "missing title": missing_title,
+            "wrong summary count": wrong_count,
+            "wrong branch": wrong_branch,
+            "missing bullet": missing_bullet,
+            "wrong bullet": wrong_bullet,
+            "extra bullet": extra_bullet,
+            "trailing content": trailing_content,
+            "nonempty text": nonempty_text,
+            "annotations": annotations,
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                api = source_candidate_fixture()
+                output = live_codeql_neutral_output()
+                mutate(output)
+                set_codeql_neutral(api, output=output)
+                with self.assertRaisesRegex(security_patch.PolicyError, "exact lockfile-only no-configurations"):
+                    self.preflight(api)
+
+    def test_preflight_rejects_any_codeql_neutral_pull_request_pointer_drift(self):
+        mutations = {
+            "wrong number": lambda pointer: pointer.update({"number": 18}),
+            "wrong pull request URL": lambda pointer: pointer.update({"url": "https://api.github.com/wrong"}),
+            "wrong base ref": lambda pointer: pointer["base"].update({"ref": "main"}),
+            "wrong base SHA": lambda pointer: pointer["base"].update({"sha": sha("9")}),
+            "wrong head SHA": lambda pointer: pointer["head"].update({"sha": sha("9")}),
+            "empty head ref": lambda pointer: pointer["head"].update({"ref": ""}),
+            "wrong base repo name": lambda pointer: pointer["base"]["repo"].update({"name": "wrong"}),
+            "wrong head repo URL": lambda pointer: pointer["head"]["repo"].update({"url": "https://api.github.com/wrong"}),
+            "different repo IDs": lambda pointer: pointer["head"]["repo"].update({"id": 5678}),
+            "invalid repo ID": lambda pointer: pointer["head"]["repo"].update({"id": True}),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                api = source_candidate_fixture()
+                pointer = live_codeql_pointer()
+                mutate(pointer)
+                set_codeql_neutral(api, pointers=[pointer])
+                with self.assertRaisesRegex(security_patch.PolicyError, "exact lockfile-only no-configurations"):
+                    self.preflight(api)
+
+        for name, pointers in {
+            "missing pointers": [],
+            "multiple pointers": [live_codeql_pointer(), live_codeql_pointer()],
+            "non-object pointer": ["wrong"],
+        }.items():
+            with self.subTest(name=name):
+                api = source_candidate_fixture()
+                set_codeql_neutral(api, pointers=pointers)
+                with self.assertRaisesRegex(security_patch.PolicyError, "exact lockfile-only no-configurations"):
+                    self.preflight(api)
+
+    def test_preflight_rejects_duplicate_or_untrusted_codeql_checks(self):
+        for name, app_id in {
+            "duplicate trusted": security_patch.TRUSTED_CODEQL_APP_ID,
+            "duplicate untrusted": 9999,
+        }.items():
+            with self.subTest(name=name):
+                api = source_candidate_fixture()
+                checks = api.page_values[
+                    f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=latest&per_page=100"
+                ][0]["check_runs"]
+                duplicate = dict(checks[1])
+                duplicate["app"] = {"id": app_id}
+                checks.append(duplicate)
+                with self.assertRaisesRegex(security_patch.PolicyError, "expected one latest"):
+                    self.preflight(api)
+
+        api = source_candidate_fixture()
+        checks = api.page_values[
+            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=latest&per_page=100"
+        ][0]["check_runs"]
+        checks[1]["app"]["id"] = 9999
+        with self.assertRaisesRegex(security_patch.PolicyError, "untrusted App"):
+            self.preflight(api)
+
+    def test_preflight_rejects_every_other_terminal_codeql_conclusion(self):
+        conclusions = (
+            "action_required",
+            "cancelled",
+            "failure",
+            "skipped",
+            "stale",
+            "startup_failure",
+            "timed_out",
+            None,
+        )
+        for conclusion in conclusions:
+            with self.subTest(conclusion=conclusion):
+                api = source_candidate_fixture()
+                checks = api.page_values[
+                    f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=latest&per_page=100"
+                ][0]["check_runs"]
+                checks[1].update({"status": "completed", "conclusion": conclusion})
+                with self.assertRaisesRegex(security_patch.PolicyError, "without success"):
+                    self.preflight(api)
+
+    def test_preflight_rejects_manifest_and_lock_with_exact_codeql_neutral(self):
+        api = source_candidate_fixture()
+        set_codeql_neutral(api)
+        head_tree = api.gets[f"repos/ForgingAlpha/alphaapps-site/git/trees/{sha('e')}"]["tree"]
+        manifest = next(entry for entry in head_tree if entry["path"] == "package.json")
+        manifest["sha"] = sha("4")
+        api.gets[f"repos/ForgingAlpha/alphaapps-site/git/blobs/{sha('4')}"] = encoded_blob(
+            b'{"name":"site","version":"2"}\n'
+        )
+        api.page_values["repos/ForgingAlpha/alphaapps-site/pulls/17/files?per_page=100"][0].append({
+            "filename": "package.json",
+            "status": "modified",
+        })
+        with self.assertRaisesRegex(security_patch.PolicyError, "lockfile-only source classification"):
+            self.preflight(api)
+
+    def test_preflight_rejects_disallowed_diff_before_accepting_known_codeql_neutral(self):
+        api = source_candidate_fixture()
+        set_codeql_neutral(api)
+        api.page_values["repos/ForgingAlpha/alphaapps-site/pulls/17/files?per_page=100"][0].append({
+            "filename": "README.md",
+            "status": "modified",
+        })
+        with self.assertRaisesRegex(security_patch.PolicyError, "disallowed path"):
             self.preflight(api)
 
     def test_preflight_rejects_cosmetic_or_unverified_dependabot_commit(self):

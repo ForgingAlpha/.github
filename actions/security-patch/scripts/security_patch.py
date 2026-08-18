@@ -517,6 +517,98 @@ def latest_check_state(
     return "success"
 
 
+def codeql_lock_only_no_configurations_found(
+    run: dict[str, Any],
+    candidate: SourceCandidate,
+    source_branch: str,
+) -> bool:
+    output = run.get("output")
+    if not isinstance(output, dict):
+        return False
+    repository_api_url = f"https://api.github.com/repos/{candidate.repository}"
+    repository_name = candidate.repository.split("/", 1)[1]
+    expected_summary = (
+        "**Warning**: Code scanning cannot determine the alerts introduced by this pull request, because "
+        f"2 configurations present on `refs/heads/{source_branch}` were not found:\n\n"
+        "### Default setup\n\n"
+        "* :question:&nbsp;&nbsp;`/language:actions`\n"
+        "* :question:&nbsp;&nbsp;`/language:javascript-typescript`\n\n\n"
+        f"[View all branch alerts](/{candidate.repository}/security/code-scanning?"
+        f"query=pr%3A{candidate.pull_request}+tool%3ACodeQL+is%3Aopen)."
+    )
+    if not (
+        output.get("title") == "2 configurations not found"
+        and output.get("summary") == expected_summary
+        and output.get("annotations_count") == 0
+        and output.get("text") in {None, ""}
+    ):
+        return False
+    pointers = run.get("pull_requests")
+    if not isinstance(pointers, list) or len(pointers) != 1:
+        return False
+    pointer = pointers[0]
+    if not isinstance(pointer, dict):
+        return False
+    base = pointer.get("base")
+    head = pointer.get("head")
+    if not isinstance(base, dict) or not isinstance(head, dict):
+        return False
+    base_repository = base.get("repo")
+    head_repository = head.get("repo")
+    if not isinstance(base_repository, dict) or not isinstance(head_repository, dict):
+        return False
+    base_repository_id = base_repository.get("id")
+    head_repository_id = head_repository.get("id")
+    return bool(
+        pointer.get("number") == candidate.pull_request
+        and pointer.get("url") == f"{repository_api_url}/pulls/{candidate.pull_request}"
+        and base.get("ref") == source_branch
+        and base.get("sha") == candidate.source_base
+        and head.get("sha") == candidate.source_head
+        and isinstance(head.get("ref"), str)
+        and bool(head.get("ref"))
+        and isinstance(base_repository_id, int)
+        and not isinstance(base_repository_id, bool)
+        and base_repository_id > 0
+        and isinstance(head_repository_id, int)
+        and not isinstance(head_repository_id, bool)
+        and head_repository_id == base_repository_id
+        and base_repository.get("name") == repository_name
+        and head_repository.get("name") == repository_name
+        and base_repository.get("url") == repository_api_url
+        and head_repository.get("url") == repository_api_url
+    )
+
+
+def latest_source_codeql_result(
+    api: GhApi,
+    repository: str,
+    head: str,
+) -> tuple[str, dict[str, Any] | None]:
+    named = [run for run in check_runs(api, repository, head, fresh=True) if run.get("name") == CODEQL_CHECK]
+    if not named:
+        return "pending", None
+    require(len(named) == 1, f"expected one latest {CODEQL_CHECK!r} check, found {len(named)}")
+    run = named[0]
+    require(
+        run.get("app", {}).get("id") == TRUSTED_CODEQL_APP_ID,
+        f"required check {CODEQL_CHECK!r} is reported by an untrusted App",
+    )
+    require(run.get("head_sha") == head, f"required check {CODEQL_CHECK!r} head mismatch")
+    status = run.get("status")
+    if status != "completed":
+        require(
+            status in {"queued", "in_progress", "pending", "waiting", "requested"},
+            f"required check {CODEQL_CHECK!r} has invalid status",
+        )
+        return "pending", run
+    conclusion = run.get("conclusion")
+    if conclusion == "success":
+        return "success", run
+    require(conclusion == "neutral", f"required check {CODEQL_CHECK!r} completed without success")
+    return "neutral", run
+
+
 def build_source_candidate(
     api: GhApi,
     repository: str,
@@ -601,9 +693,9 @@ def wait_for_source_candidate(
             expected_base,
         )
         ci_state = latest_check_state(api, repository, source_head, CI_CHECK, TRUSTED_CI_APP_ID)
-        codeql_state = latest_check_state(api, repository, source_head, CODEQL_CHECK, TRUSTED_CODEQL_APP_ID)
-        if ci_state == codeql_state == "success":
-            return build_source_candidate(
+        codeql_state, codeql_run = latest_source_codeql_result(api, repository, source_head)
+        if ci_state == "success" and codeql_state in {"success", "neutral"}:
+            candidate = build_source_candidate(
                 api,
                 repository,
                 workflow_run,
@@ -615,8 +707,19 @@ def wait_for_source_candidate(
                 expected_base,
                 verify_alerts,
             )
+            if codeql_state == "neutral":
+                require(
+                    candidate.changed_paths == (lock_path,),
+                    "neutral CodeQL is permitted only after an exact lockfile-only source classification",
+                )
+                require(
+                    codeql_run is not None
+                    and codeql_lock_only_no_configurations_found(codeql_run, candidate, source_branch),
+                    "neutral CodeQL does not match the exact lockfile-only no-configurations result",
+                )
+            return candidate
         if time.monotonic() >= deadline:
-            raise PolicyError("trusted CI and CodeQL did not both succeed before the bounded deadline")
+            raise PolicyError("trusted CI and CodeQL did not reach accepted terminal states before the bounded deadline")
         time.sleep(min(poll_seconds, max(0.0, deadline - time.monotonic())))
 
 
