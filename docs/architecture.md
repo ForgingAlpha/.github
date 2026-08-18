@@ -233,8 +233,14 @@ repository, same-repository Dependabot pull request, current base and head, and
 then polls the latest exact-head trusted CI and CodeQL checks at a bounded
 interval for at most five minutes. It waits only for missing or in-progress
 checks and fails immediately for movement, ambiguity, terminal failure, or a
-wrong reporting App. An absent workflow-run pull-request pointer uses a unique
-live commit association; malformed or multiple pointers fail closed.
+wrong reporting App. CI success remains mandatory. Aggregate CodeQL success is
+the normal path; its trusted neutral result remains conditional until exact
+source classification proves an exact lockfile-only patch and the check output
+and sole pull-request pointer match the released two-configuration Default
+setup no-configurations-found condition for the source branch and exact pull
+request, base, and head. Every other CodeQL non-success fails closed. An absent
+workflow-run pull-request pointer uses a unique live commit association;
+malformed or multiple pointers fail closed.
 The caller serializes the repository and exact source head without cancellation;
 the classifier also re-reads its check after writing and rejects duplicates.
 

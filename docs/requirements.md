@@ -137,14 +137,21 @@ check bound to its exact source base, exact current head, complete associated
 OPEN or FIXED GHSA set, and approved manifest-and-lock change SHALL be treated
 as an automatically promotable security update. Eligible security updates
 SHALL bypass normal cooldown and SHALL automatically merge into protected
-`dev` only after that exact head passes complete required `CI` and CodeQL. A
-successful unprivileged `pull_request` CI run MAY wake the default-branch
-classifier through `workflow_run`; no Dependabot-triggered workflow receives
-an Actions secret or privileged token. Before any App token is minted, the
+`dev` only after that exact head passes required `CI` and CodeQL. Trusted
+exact-head CI SHALL succeed. Trusted aggregate CodeQL SHALL succeed except that
+its terminal neutral result MAY be accepted only after exact source
+classification proves an exact lockfile-only patch and the trusted
+check's machine-readable output and sole pull-request pointer exactly report
+the released two-configuration Default setup no-configurations-found condition
+for the source branch and exact pull request, base, and head. Every other
+terminal non-success, missing, stale, ambiguous, or wrong-App result SHALL fail
+closed.
+A successful unprivileged `pull_request` CI run MAY wake the default-branch
+classifier through `workflow_run`; no Dependabot-triggered workflow receives an
+Actions secret or privileged token. Before any App token is minted, the
 classifier SHALL bind the exact CI workflow path, run, repository, pull request,
 base, and head, then wait only a bounded interval for the latest trusted
-exact-head CI and CodeQL results. Missing, stale, ambiguous, failed, or
-wrong-App results fail closed. Source classification SHALL use non-cancelling
+exact-head results. Source classification SHALL use non-cancelling
 repository-and-head concurrency and SHALL recheck that its trusted exact-head
 classification is unique after every create or update.
 
