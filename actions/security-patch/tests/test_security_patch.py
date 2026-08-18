@@ -700,6 +700,157 @@ def projection_create_fixture() -> tuple[ProjectionCreateApi, security_patch.Sou
     return api, source
 
 
+class SecurityAlertGraphqlApi(security_patch.GhApi):
+    def __init__(self, pages):
+        super().__init__()
+        self.response_pages = pages
+        self.calls = []
+
+    def _run(self, args, payload=None):
+        self.calls.append((args, payload))
+        return self.response_pages
+
+
+def vulnerability_alert_pages(*node_pages):
+    return [
+        {
+            "data": {
+                "repository": {
+                    "vulnerabilityAlerts": {
+                        "nodes": nodes,
+                    },
+                },
+            },
+        }
+        for nodes in node_pages
+    ]
+
+
+def vulnerability_alert_node(number, state="OPEN", ghsa="GHSA-abcd-efgh-ijkl"):
+    return {
+        "state": state,
+        "securityAdvisory": {"ghsaId": ghsa},
+        "dependabotUpdate": {"pullRequest": {"number": number}},
+    }
+
+
+class SecurityAlertAssociationTest(unittest.TestCase):
+    def test_skips_schema_legitimate_nulls_and_other_prs_while_collecting_exact_associations(self):
+        legitimate_unrelated = [
+            {"dependabotUpdate": None},
+            {"dependabotUpdate": {"pullRequest": None}},
+            {
+                "state": None,
+                "securityAdvisory": None,
+                "dependabotUpdate": {"pullRequest": {"number": 99}},
+            },
+        ]
+        api = SecurityAlertGraphqlApi(vulnerability_alert_pages(
+            [*legitimate_unrelated, vulnerability_alert_node(40, "FIXED", "GHSA-zzzz-yyyy-xxxx")],
+            [
+                vulnerability_alert_node(40, "OPEN", "GHSA-abcd-efgh-ijkl"),
+                vulnerability_alert_node(40, "FIXED", "GHSA-abcd-efgh-ijkl"),
+            ],
+        ))
+
+        self.assertEqual(
+            api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40),
+            ("GHSA-abcd-efgh-ijkl", "GHSA-zzzz-yyyy-xxxx"),
+        )
+        self.assertEqual(len(api.calls), 1)
+        args, payload = api.calls[0]
+        self.assertEqual(args[:3], ["graphql", "--paginate", "--slurp"])
+        self.assertIsNone(payload)
+
+    def test_schema_legitimate_unrelated_entries_do_not_create_an_association(self):
+        api = SecurityAlertGraphqlApi(vulnerability_alert_pages([
+            {"dependabotUpdate": None},
+            {"dependabotUpdate": {"pullRequest": None}},
+            vulnerability_alert_node(41),
+        ]))
+
+        with self.assertRaisesRegex(security_patch.PolicyError, "no official OPEN or FIXED"):
+            api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+    def test_structurally_malformed_entries_fail_closed_even_with_a_valid_association(self):
+        malformed_entries = (
+            (None, "node must be an object"),
+            ([], "node must be an object"),
+            ("invalid", "node must be an object"),
+            ({}, "no dependabotUpdate field"),
+            ({"dependabotUpdate": "invalid"}, "dependabotUpdate must be an object or null"),
+            ({"dependabotUpdate": []}, "dependabotUpdate must be an object or null"),
+            ({"dependabotUpdate": {}}, "dependabotUpdate has no pullRequest field"),
+            ({"dependabotUpdate": {"pullRequest": "invalid"}}, "pullRequest must be an object or null"),
+            ({"dependabotUpdate": {"pullRequest": []}}, "pullRequest must be an object or null"),
+            ({"dependabotUpdate": {"pullRequest": {}}}, "number must be a positive integer"),
+            ({"dependabotUpdate": {"pullRequest": {"number": None}}}, "number must be a positive integer"),
+            ({"dependabotUpdate": {"pullRequest": {"number": "40"}}}, "number must be a positive integer"),
+            ({"dependabotUpdate": {"pullRequest": {"number": True}}}, "number must be a positive integer"),
+            ({"dependabotUpdate": {"pullRequest": {"number": 0}}}, "number must be a positive integer"),
+            ({"dependabotUpdate": {"pullRequest": {"number": -1}}}, "number must be a positive integer"),
+            ({"dependabotUpdate": {"pullRequest": {"number": 40.0}}}, "number must be a positive integer"),
+        )
+        for node, error in malformed_entries:
+            with self.subTest(node=node):
+                api = SecurityAlertGraphqlApi(vulnerability_alert_pages([
+                    vulnerability_alert_node(40),
+                    node,
+                ]))
+                with self.assertRaisesRegex(security_patch.PolicyError, error):
+                    api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+    def test_matching_association_requires_an_eligible_state(self):
+        for state in (None, "DISMISSED", "open", 1):
+            with self.subTest(state=state):
+                api = SecurityAlertGraphqlApi(vulnerability_alert_pages([
+                    vulnerability_alert_node(40, state=state),
+                ]))
+                with self.assertRaisesRegex(security_patch.PolicyError, "associated alert state is not eligible"):
+                    api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+    def test_matching_association_requires_a_valid_security_advisory(self):
+        malformed_advisories = (None, [], "invalid", {}, {"ghsaId": None}, {"ghsaId": 1}, {"ghsaId": "CVE-1"})
+        for security_advisory in malformed_advisories:
+            with self.subTest(security_advisory=security_advisory):
+                node = vulnerability_alert_node(40)
+                node["securityAdvisory"] = security_advisory
+                api = SecurityAlertGraphqlApi(vulnerability_alert_pages([node]))
+                with self.assertRaisesRegex(security_patch.PolicyError, "associated GHSA is invalid"):
+                    api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+    def test_one_valid_association_does_not_mask_a_malformed_matching_entry(self):
+        malformed_state = vulnerability_alert_node(40, state=None)
+        malformed_advisory = vulnerability_alert_node(40)
+        malformed_advisory["securityAdvisory"] = None
+        for node, error in (
+            (malformed_state, "associated alert state is not eligible"),
+            (malformed_advisory, "associated GHSA is invalid"),
+        ):
+            with self.subTest(error=error):
+                api = SecurityAlertGraphqlApi(vulnerability_alert_pages([
+                    vulnerability_alert_node(40),
+                    node,
+                ]))
+                with self.assertRaisesRegex(security_patch.PolicyError, error):
+                    api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+    def test_malformed_pagination_schema_still_fails_closed(self):
+        responses = (
+            None,
+            {},
+            [None],
+            [{}],
+            [{"data": {"repository": None}}],
+            [{"data": {"repository": {"vulnerabilityAlerts": {"nodes": None}}}}],
+        )
+        for response in responses:
+            with self.subTest(response=response):
+                api = SecurityAlertGraphqlApi(response)
+                with self.assertRaisesRegex(security_patch.PolicyError, "vulnerability-alert"):
+                    api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+
 class SecurityPatchSourceWorkflowTest(unittest.TestCase):
     def preflight(self, api=None, wait_seconds=0):
         return security_patch.wait_for_source_candidate(
