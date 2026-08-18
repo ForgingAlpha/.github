@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -45,6 +46,8 @@ class FakeApi:
         self.page_values = {}
         self.ghsas = ("GHSA-abcd-efgh-ijkl",)
         self.repository_ghsas = self.ghsas
+        self.security_evidence_sequence = []
+        self.security_evidence_calls = 0
         self.posts = []
         self.puts = []
         self.patches = []
@@ -65,6 +68,9 @@ class FakeApi:
 
     def security_ghsa_evidence(self, repository, pull_request):
         self.last_security_query = (repository, pull_request)
+        self.security_evidence_calls += 1
+        if self.security_evidence_sequence:
+            return self.security_evidence_sequence.pop(0)
         return self.ghsas, self.repository_ghsas
 
     def post(self, path, payload):
@@ -751,6 +757,19 @@ class SecurityAlertGraphqlApi(security_patch.GhApi):
         return self.response_pages
 
 
+class SecurityAlertSequenceApi(FakeApi):
+    def __init__(self, evidence):
+        super().__init__()
+        self.evidence = list(evidence)
+        self.security_calls = []
+
+    def security_ghsa_evidence(self, repository, pull_request):
+        self.security_calls.append((repository, pull_request))
+        if not self.evidence:
+            raise AssertionError("unexpected security-alert reconciliation query")
+        return self.evidence.pop(0)
+
+
 def vulnerability_alert_pages(*node_pages):
     return [
         {
@@ -838,6 +857,18 @@ class SecurityAlertAssociationTest(unittest.TestCase):
         self.assertEqual(
             api.security_ghsa_evidence("ForgingAlpha/analyzingalpha-site", 40),
             ((), ("GHSA-abcd-efgh-ijkl",)),
+        )
+
+    def test_live_shaped_fixed_alert_with_null_pointer_is_repository_evidence(self):
+        api = SecurityAlertGraphqlApi(vulnerability_alert_pages([{
+            "state": "FIXED",
+            "securityAdvisory": {"ghsaId": "GHSA-2v37-7h3g-55p8"},
+            "dependabotUpdate": None,
+        }]))
+
+        self.assertEqual(
+            api.security_ghsa_evidence("ForgingAlpha/analyzingalpha-site", 40),
+            ((), ("GHSA-2v37-7h3g-55p8",)),
         )
 
     def test_structurally_malformed_entries_fail_closed_even_with_a_valid_association(self):
@@ -938,6 +969,110 @@ class SecurityAlertAssociationTest(unittest.TestCase):
                 api = SecurityAlertGraphqlApi(response)
                 with self.assertRaisesRegex(security_patch.PolicyError, "vulnerability-alert"):
                     api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+
+class SecurityAlertReconciliationTest(unittest.TestCase):
+    GHSA = ("GHSA-2v37-7h3g-55p8",)
+
+    def reconcile(self, api, wait_seconds=0, poll_seconds=0):
+        return security_patch.wait_for_attested_security_ghsas(
+            api,
+            "ForgingAlpha/analyzingalpha-site",
+            40,
+            self.GHSA,
+            wait_seconds,
+            poll_seconds,
+        )
+
+    def test_accepts_the_exact_live_association_without_polling(self):
+        api = SecurityAlertSequenceApi([(self.GHSA, self.GHSA)])
+        self.assertEqual(self.reconcile(api), self.GHSA)
+        self.assertEqual(len(api.security_calls), 1)
+
+    def test_retries_only_absent_repository_evidence_and_accepts_convergence(self):
+        api = SecurityAlertSequenceApi([
+            ((), ("GHSA-unrelated-live-alert",)),
+            ((), ("GHSA-unrelated-live-alert", *self.GHSA)),
+        ])
+
+        self.assertEqual(self.reconcile(api, wait_seconds=1), self.GHSA)
+        self.assertEqual(len(api.security_calls), 2)
+        self.assertFalse(api.posts)
+        self.assertFalse(api.puts)
+        self.assertFalse(api.patches)
+
+    def test_partial_multi_ghsa_visibility_waits_for_the_complete_set_or_times_out(self):
+        attested = (
+            "GHSA-aaaa-bbbb-cccc",
+            "GHSA-dddd-eeee-ffff",
+        )
+        api = SecurityAlertSequenceApi([
+            ((), (attested[0],)),
+            ((), attested),
+        ])
+        with patch.object(security_patch.time, "sleep", return_value=None):
+            self.assertEqual(
+                security_patch.wait_for_attested_security_ghsas(
+                    api,
+                    "ForgingAlpha/analyzingalpha-site",
+                    40,
+                    attested,
+                    wait_seconds=1,
+                    poll_seconds=5,
+                ),
+                attested,
+            )
+        self.assertEqual(len(api.security_calls), 2)
+
+        incomplete = SecurityAlertSequenceApi([((), (attested[0],))])
+        with self.assertRaisesRegex(security_patch.PolicyError, "bounded reconciliation deadline"):
+            security_patch.wait_for_attested_security_ghsas(
+                incomplete,
+                "ForgingAlpha/analyzingalpha-site",
+                40,
+                attested,
+                wait_seconds=0,
+                poll_seconds=0,
+            )
+
+    def test_conflicting_nonempty_association_fails_immediately(self):
+        api = SecurityAlertSequenceApi([
+            (("GHSA-wrong-wrong-wrong",), self.GHSA),
+            (self.GHSA, self.GHSA),
+        ])
+
+        with self.assertRaisesRegex(security_patch.PolicyError, "does not equal source attestation"):
+            self.reconcile(api, wait_seconds=1)
+        self.assertEqual(len(api.security_calls), 1)
+
+    def test_absent_evidence_fails_at_the_bounded_deadline(self):
+        api = SecurityAlertSequenceApi([((), ())])
+        with self.assertRaisesRegex(security_patch.PolicyError, "bounded reconciliation deadline"):
+            self.reconcile(api)
+        self.assertEqual(len(api.security_calls), 1)
+
+    def test_rejects_invalid_bounds_or_attestation_before_querying(self):
+        invalid = (
+            ({"wait_seconds": -1}, self.GHSA, "between zero and 300"),
+            ({"wait_seconds": 301}, self.GHSA, "between zero and 300"),
+            ({"poll_seconds": -1}, self.GHSA, "non-negative"),
+            ({}, (), "attested GHSA set is invalid"),
+            ({}, ("CVE-1",), "attested GHSA set is invalid"),
+            ({}, ("GHSA-z", "GHSA-a"), "attested GHSA set is invalid"),
+            ({}, ("GHSA-a", "GHSA-a"), "attested GHSA set is invalid"),
+        )
+        for arguments, ghsas, error in invalid:
+            with self.subTest(arguments=arguments, ghsas=ghsas):
+                api = SecurityAlertSequenceApi([])
+                with self.assertRaisesRegex(security_patch.PolicyError, error):
+                    security_patch.wait_for_attested_security_ghsas(
+                        api,
+                        "ForgingAlpha/analyzingalpha-site",
+                        40,
+                        ghsas,
+                        **arguments,
+                    )
+                self.assertFalse(api.security_calls)
 
 
 class SecurityPatchSourceWorkflowTest(unittest.TestCase):
@@ -1355,6 +1490,35 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
         self.assertFalse(api.posts)
         self.assertFalse(api.patches)
 
+    def test_merge_rerun_reconciles_delayed_fixed_alert_then_adopts_without_any_write(self):
+        api = source_candidate_fixture()
+        api.did_merge = True
+        api.security_evidence_sequence = [
+            ((), ("GHSA-unrelated-live-alert",)),
+            ((), api.ghsas),
+        ]
+
+        with patch.object(security_patch.time, "sleep", return_value=None):
+            merge_sha = security_patch.merge_source_candidate(
+                api,
+                "ForgingAlpha/alphaapps-site",
+                901,
+                "dev",
+                "package.json",
+                "package-lock.json",
+                17,
+                sha("b"),
+                sha("a"),
+                adoption_wait_seconds=1,
+                adoption_poll_seconds=0,
+            )
+
+        self.assertEqual(merge_sha, sha("c"))
+        self.assertEqual(api.security_evidence_calls, 2)
+        self.assertFalse(api.puts)
+        self.assertFalse(api.posts)
+        self.assertFalse(api.patches)
+
     def test_merge_rerun_rejects_malformed_or_duplicate_association_pointers_without_writing(self):
         malformed_pages = (
             [[None]],
@@ -1694,6 +1858,8 @@ class SecurityPatchSourceTest(unittest.TestCase):
             "dev",
             "package.json",
             "package-lock.json",
+            alert_wait_seconds=0,
+            alert_poll_seconds=0,
         )
 
     def test_accepts_exact_transitive_only_merge_source(self):
@@ -1719,11 +1885,11 @@ class SecurityPatchSourceTest(unittest.TestCase):
         api = source_fixture()
         api.ghsas = ()
         api.repository_ghsas = ()
-        with self.assertRaisesRegex(security_patch.PolicyError, "no longer visible"):
+        with self.assertRaisesRegex(security_patch.PolicyError, "bounded reconciliation deadline"):
             self.build(api)
 
         api.repository_ghsas = ("GHSA-wrong-wrong-wrong",)
-        with self.assertRaisesRegex(security_patch.PolicyError, "no longer visible"):
+        with self.assertRaisesRegex(security_patch.PolicyError, "bounded reconciliation deadline"):
             self.build(api)
 
     def test_rejects_post_merge_classification_identity_or_timing_drift(self):

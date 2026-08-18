@@ -39,6 +39,8 @@ CODEQL_CHECK = "CodeQL"
 PULL_FILES_API_LIMIT = 3000
 SOURCE_MERGE_ADOPTION_WAIT_SECONDS = 30
 SOURCE_MERGE_ADOPTION_POLL_SECONDS = 2
+SOURCE_ALERT_RECONCILIATION_WAIT_SECONDS = 300
+SOURCE_ALERT_RECONCILIATION_POLL_SECONDS = 5
 
 
 class PolicyError(RuntimeError):
@@ -357,6 +359,39 @@ def github_timestamp(value: Any, label: str) -> datetime:
         return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except ValueError as error:
         raise PolicyError(f"{label} must be a GitHub UTC timestamp") from error
+
+
+def wait_for_attested_security_ghsas(
+    api: GhApi,
+    repository: str,
+    pull_request: int,
+    attested_ghsas: tuple[str, ...],
+    wait_seconds: int = SOURCE_ALERT_RECONCILIATION_WAIT_SECONDS,
+    poll_seconds: int = SOURCE_ALERT_RECONCILIATION_POLL_SECONDS,
+) -> tuple[str, ...]:
+    """Reconcile GitHub's post-merge alert index without weakening source proof."""
+    require(0 <= wait_seconds <= 300, "security-alert reconciliation wait must be between zero and 300 seconds")
+    require(poll_seconds >= 0, "security-alert reconciliation poll interval must be non-negative")
+    require(
+        bool(attested_ghsas)
+        and all(isinstance(value, str) and value.startswith("GHSA-") for value in attested_ghsas)
+        and attested_ghsas == tuple(sorted(set(attested_ghsas))),
+        "attested GHSA set is invalid",
+    )
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        associated_ghsas, repository_ghsas = api.security_ghsa_evidence(repository, pull_request)
+        if associated_ghsas:
+            require(attested_ghsas == associated_ghsas, "live GHSA set does not equal source attestation")
+            return attested_ghsas
+        if set(attested_ghsas) <= set(repository_ghsas):
+            return attested_ghsas
+        if time.monotonic() >= deadline:
+            raise PolicyError(
+                "attested GHSA set did not become visible in official repository alerts "
+                "before the bounded reconciliation deadline"
+            )
+        time.sleep(min(poll_seconds, max(0.0, deadline - time.monotonic())))
 
 
 def git_commit(api: GhApi, repository: str, sha: str) -> dict[str, Any]:
@@ -1215,6 +1250,8 @@ def build_source_evidence_from_pull(
     manifest_path: str,
     lock_path: str,
     pull: dict[str, Any],
+    alert_wait_seconds: int = SOURCE_ALERT_RECONCILIATION_WAIT_SECONDS,
+    alert_poll_seconds: int = SOURCE_ALERT_RECONCILIATION_POLL_SECONDS,
 ) -> SourceEvidence:
     repository = require_repository(repository)
     source_merge = require_sha(source_merge, "source merge")
@@ -1271,19 +1308,19 @@ def build_source_evidence_from_pull(
     require(source_tree == head_commit["tree"]["sha"], "source merge tree does not equal source head tree")
     require(pull.get("merged_by", {}).get("login") == f"{app_slug}[bot]", "source PR was not merged by the classification App")
 
-    associated_ghsas, repository_ghsas = api.security_ghsa_evidence(repository, pull_number)
-    if associated_ghsas:
-        require(tuple(attested_ghsas) == associated_ghsas, "live GHSA set does not equal source attestation")
-    else:
-        # GitHub may clear vulnerabilityAlert.dependabotUpdate after the exact
-        # source PR merges. The exact trusted pre-merge classification retains
-        # that historical association, while this readback proves every
-        # attested advisory remains an official repository alert.
-        require(
-            set(attested_ghsas) <= set(repository_ghsas),
-            "attested GHSA set is no longer visible in official repository alerts",
-        )
-    live_ghsas = tuple(attested_ghsas)
+    # GitHub may clear vulnerabilityAlert.dependabotUpdate after the exact
+    # source PR merges, and its repository alert index may briefly lag that
+    # OPEN-to-FIXED transition. The immutable trusted pre-merge classification
+    # retains the historical PR association. Fresh, strictly parsed GraphQL
+    # reads must still reconcile every attested advisory within a bounded wait.
+    live_ghsas = wait_for_attested_security_ghsas(
+        api,
+        repository,
+        pull_number,
+        tuple(attested_ghsas),
+        alert_wait_seconds,
+        alert_poll_seconds,
+    )
 
     _, pre = load_pair(api, repository, source_base, manifest_path, lock_path)
     _, post = load_pair(api, repository, source_head, manifest_path, lock_path)
@@ -1316,6 +1353,9 @@ def build_source_evidence(
     source_branch: str,
     manifest_path: str,
     lock_path: str,
+    *,
+    alert_wait_seconds: int = SOURCE_ALERT_RECONCILIATION_WAIT_SECONDS,
+    alert_poll_seconds: int = SOURCE_ALERT_RECONCILIATION_POLL_SECONDS,
 ) -> SourceEvidence:
     repository = require_repository(repository)
     source_merge = require_sha(source_merge, "source merge")
@@ -1329,6 +1369,8 @@ def build_source_evidence(
         manifest_path,
         lock_path,
         pull,
+        alert_wait_seconds,
+        alert_poll_seconds,
     )
 
 
