@@ -49,5 +49,6 @@ runs:
       shell: bash
       env:
         DEPENDENCY_CHANGES: ${{ steps.review.outputs.dependency-changes }}
+        DEPENDENCY_WORKSPACE: ${{ github.workspace }}
         GITHUB_LICENSE_TOKEN: ${{ github.token }}
       run: python3 "$GITHUB_ACTION_PATH/scripts/validate_license_evidence.py"
