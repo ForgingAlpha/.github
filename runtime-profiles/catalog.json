@@ -25,6 +25,10 @@
     "ForgingAlpha/alphaapps-site": {
       "profile": "node-24-site",
       "status": "active"
+    },
+    "ForgingAlpha/analyzingalpha-site": {
+      "profile": "node-24-site",
+      "status": "active"
     }
   }
 }
