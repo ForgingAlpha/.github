@@ -346,13 +346,25 @@ gate through strict ownership and release provenance: the evidence record
 SHALL match the fixed repository and major channel exactly, the protected `v1`
 reference SHALL resolve directly to a commit, and that exact commit SHALL
 contain the named action. Callers SHALL NOT select or broaden this first-party
-evidence class.
+evidence class. When GitHub reports a null license for an exact pinned root npm
+alias, the central gate MAY normalize it to the underlying package only when the
+manifest and npm v3 lock agree on the exact alias, target name and version, canonical
+registry artifact, sha512 integrity, and centrally approved SPDX license. Evidence
+SHALL come from either one exact concrete dependency-review record or one anonymous,
+bounded, non-redirecting lookup of the internally constructed npm exact-release
+endpoint whose identity, artifact, integrity, and license match the lock. No caller
+URL, alternate registry, credential, package exception, or executable package content
+SHALL enter the resolver. Ranged, tagged, malformed, or non-root aliases SHALL fail
+closed.
 
 **Fit:** Approved third-party SPDX evidence passes; non-approved evidence
 fails; the exact-revision third-party resolver fails closed on malformed
 identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
 first-party resolver fails closed on any schema, repository, channel, commit,
-tree, or action-path mismatch; unknown evidence classes fail with WHAT-WHY-HOW
+tree, or action-path mismatch; npm alias normalization fails closed on any manifest,
+PURL, spec, lock format, target, registry, artifact, integrity, license, redirect,
+availability, response-size, or lookup-count mismatch;
+unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
 

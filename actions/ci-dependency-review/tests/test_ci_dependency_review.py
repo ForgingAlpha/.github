@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -33,12 +34,14 @@ class CiDependencyReviewTest(unittest.TestCase):
     def load_action(self):
         return yaml.safe_load(ACTION.read_text(encoding="utf-8"))
 
-    def run_validator(self, changes, token=None):
+    def run_validator(self, changes, token=None, extra_env=None):
         value = changes if isinstance(changes, str) else json.dumps(changes)
         env = {**os.environ, "DEPENDENCY_CHANGES": value}
         env.pop("GITHUB_LICENSE_TOKEN", None)
         if token is not None:
             env["GITHUB_LICENSE_TOKEN"] = token
+        if extra_env is not None:
+            env.update(extra_env)
         return subprocess.run(
             ["python3", str(SCRIPT)],
             check=False,
@@ -48,12 +51,15 @@ class CiDependencyReviewTest(unittest.TestCase):
             env=env,
         )
 
-    def run_main(self, changes, token="test-token"):
+    def run_main(self, changes, token="test-token", extra_env=None):
         stdout = io.StringIO()
         stderr = io.StringIO()
+        env = {"DEPENDENCY_CHANGES": json.dumps(changes), "GITHUB_LICENSE_TOKEN": token}
+        if extra_env is not None:
+            env.update(extra_env)
         with mock.patch.dict(
             os.environ,
-            {"DEPENDENCY_CHANGES": json.dumps(changes), "GITHUB_LICENSE_TOKEN": token},
+            env,
             clear=True,
         ):
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
@@ -90,6 +96,84 @@ class CiDependencyReviewTest(unittest.TestCase):
             io.BytesIO(json.dumps(ref).encode()),
             io.BytesIO(json.dumps(tree).encode()),
         ]
+
+    def npm_alias_change(self, alias, target, version):
+        encoded_alias = f"%40{alias[1:]}" if alias.startswith("@") else alias
+        return {
+            "change_type": "added",
+            "ecosystem": "npm",
+            "manifest": "package.json",
+            "name": alias,
+            "version": f"npm:{target}@{version}",
+            "package_url": f"pkg:npm/{encoded_alias}",
+            "license": None,
+            "source_repository_url": None,
+            "scope": "development",
+            "vulnerabilities": [],
+        }
+
+    @contextlib.contextmanager
+    def npm_alias_workspace(self, aliases):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            exact_specs = {
+                alias: f"npm:{target}@{version}" for alias, target, version in aliases
+            }
+            descriptors = {}
+            for alias, target, version in aliases:
+                basename = target.split("/", 1)[-1]
+                descriptors[f"node_modules/{alias}"] = {
+                    "name": target,
+                    "version": version,
+                    "resolved": (
+                        f"https://registry.npmjs.org/{target}/-/"
+                        f"{basename}-{version}.tgz"
+                    ),
+                    "integrity": "sha512-" + "A" * 86 + "==",
+                    "dev": True,
+                    "license": "Apache-2.0",
+                }
+            manifest = {
+                "name": "alias-test",
+                "version": "1.0.0",
+                "devDependencies": exact_specs,
+            }
+            lock = {
+                "name": "alias-test",
+                "version": "1.0.0",
+                "lockfileVersion": 3,
+                "requires": True,
+                "packages": {
+                    "": {
+                        "name": "alias-test",
+                        "version": "1.0.0",
+                        "devDependencies": exact_specs,
+                    },
+                    **descriptors,
+                },
+            }
+            (workspace / "package.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            (workspace / "package-lock.json").write_text(
+                json.dumps(lock), encoding="utf-8"
+            )
+            yield workspace
+
+    def npm_registry_payload(self, target, version, license_value="Apache-2.0"):
+        basename = target.split("/", 1)[-1]
+        return {
+            "name": target,
+            "version": version,
+            "license": license_value,
+            "dist": {
+                "tarball": (
+                    f"https://registry.npmjs.org/{target}/-/"
+                    f"{basename}-{version}.tgz"
+                ),
+                "integrity": "sha512-" + "A" * 86 + "==",
+            },
+        }
 
     def test_contract_has_no_caller_bypass_or_license_override(self):
         action = self.load_action()
@@ -145,6 +229,11 @@ class CiDependencyReviewTest(unittest.TestCase):
             "${{ steps.review.outputs.dependency-changes }}",
         )
         self.assertEqual(guard["env"]["GITHUB_LICENSE_TOKEN"], "${{ github.token }}")
+        self.assertNotIn("DEPENDENCY_BASE_SHA", guard["env"])
+        self.assertEqual(
+            guard["env"]["DEPENDENCY_WORKSPACE"],
+            "${{ github.workspace }}",
+        )
 
     def test_validator_accepts_known_license_and_ignores_removals(self):
         result = self.run_validator(
@@ -411,6 +500,355 @@ class CiDependencyReviewTest(unittest.TestCase):
         self.assertNotEqual(returncode, 0)
         self.assertIn("pkg:npm/unknown@1", stderr)
         fetch.assert_not_called()
+
+    def test_exact_pinned_npm_aliases_use_registry_bound_lock_evidence(self):
+        aliases = (
+            ("@typescript/native", "typescript", "7.0.2"),
+            ("typescript", "@typescript/typescript6", "6.0.2"),
+        )
+        changes = [self.npm_alias_change(*alias) for alias in aliases]
+        payloads = {
+            (target, version): self.npm_registry_payload(target, version)
+            for _, target, version in aliases
+        }
+        with self.npm_alias_workspace(aliases) as workspace, mock.patch.object(
+            validator,
+            "fetch_npm_registry_release",
+            side_effect=lambda identity: payloads[(identity.target, identity.version)],
+        ) as fetch:
+            returncode, stdout, stderr = self.run_main(
+                changes, extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+            )
+
+        self.assertEqual(returncode, 0, stderr)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(stdout.count("exact npm registry release"), 2)
+        self.assertIn("pkg:npm/typescript@7.0.2", stdout)
+        self.assertIn("pkg:npm/%40typescript/typescript6@6.0.2", stdout)
+
+    def test_npm_alias_reuses_exact_concrete_record_without_network(self):
+        aliases = (("tool-alias", "real-tool", "1.2.3"),)
+        alias_change = self.npm_alias_change(*aliases[0])
+        concrete = {
+            "change_type": "added",
+            "ecosystem": "npm",
+            "manifest": "package-lock.json",
+            "name": "real-tool",
+            "version": "1.2.3",
+            "package_url": "pkg:npm/real-tool@1.2.3",
+            "license": "Apache-2.0",
+        }
+        with self.npm_alias_workspace(aliases) as workspace, mock.patch.object(
+            validator, "fetch_npm_registry_release"
+        ) as fetch:
+            returncode, stdout, stderr = self.run_main(
+                [alias_change, concrete],
+                extra_env={"DEPENDENCY_WORKSPACE": str(workspace)},
+            )
+
+        self.assertEqual(returncode, 0, stderr)
+        self.assertIn("concrete dependency evidence", stdout)
+        fetch.assert_not_called()
+
+    def test_npm_alias_registry_lookups_are_deduplicated_and_capped(self):
+        aliases = (
+            ("tool-one", "real-tool", "1.2.3"),
+            ("tool-two", "real-tool", "1.2.3"),
+        )
+        changes = [self.npm_alias_change(*alias) for alias in aliases]
+        with self.npm_alias_workspace(aliases) as workspace, mock.patch.object(
+            validator,
+            "fetch_npm_registry_release",
+            return_value=self.npm_registry_payload("real-tool", "1.2.3"),
+        ) as fetch:
+            returncode, _, stderr = self.run_main(
+                changes, extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+            )
+        self.assertEqual(returncode, 0, stderr)
+        fetch.assert_called_once()
+
+        many = tuple(
+            (f"alias-{index}", f"target-{index}", "1.2.3")
+            for index in range(validator.LICENSE_LOOKUP_LIMIT + 1)
+        )
+        with self.npm_alias_workspace(many) as workspace, mock.patch.object(
+            validator, "fetch_npm_registry_release"
+        ) as fetch:
+            returncode, _, stderr = self.run_main(
+                [self.npm_alias_change(*alias) for alias in many],
+                extra_env={"DEPENDENCY_WORKSPACE": str(workspace)},
+            )
+        self.assertNotEqual(returncode, 0)
+        self.assertIn("exceeds limit", stderr)
+        fetch.assert_not_called()
+
+    def test_npm_alias_rejects_ambiguous_concrete_evidence(self):
+        aliases = (("tool", "real-tool", "1.2.3"),)
+        concrete = {
+            "change_type": "added",
+            "ecosystem": "npm",
+            "name": "real-tool",
+            "version": "1.2.3",
+            "package_url": "pkg:npm/real-tool@1.2.3",
+            "license": "Apache-2.0",
+        }
+        with self.npm_alias_workspace(aliases) as workspace, mock.patch.object(
+            validator, "fetch_npm_registry_release"
+        ) as fetch:
+            returncode, _, stderr = self.run_main(
+                [self.npm_alias_change(*aliases[0]), concrete, dict(concrete)],
+                extra_env={"DEPENDENCY_WORKSPACE": str(workspace)},
+            )
+        self.assertNotEqual(returncode, 0)
+        self.assertIn("ambiguous", stderr)
+        fetch.assert_not_called()
+
+    def test_npm_registry_lookup_is_anonymous_fixed_and_bounded(self):
+        identity = validator.NpmAliasIdentity(
+            "typescript",
+            "@typescript/typescript6",
+            "6.0.2",
+            "npm:@typescript/typescript6@6.0.2",
+            "pkg:npm/typescript",
+        )
+
+        class Response(io.BytesIO):
+            headers = {"Content-Length": "256"}
+
+            def geturl(self):
+                return validator.npm_registry_endpoint(identity.target, identity.version)
+
+            def getcode(self):
+                return 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+        response = Response(json.dumps(self.npm_registry_payload(
+            identity.target, identity.version
+        )).encode())
+        opener = mock.Mock()
+        opener.open.return_value = response
+        with mock.patch.object(validator.urllib.request, "build_opener", return_value=opener) as build:
+            payload = validator.fetch_npm_registry_release(identity)
+
+        self.assertEqual(payload["name"], identity.target)
+        request = opener.open.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://registry.npmjs.org/%40typescript%2Ftypescript6/6.0.2",
+        )
+        self.assertEqual(request.method, "GET")
+        self.assertEqual(request.get_header("Accept"), "application/json")
+        self.assertIsNone(request.get_header("Authorization"))
+        self.assertIsNone(request.get_header("Cookie"))
+        self.assertEqual(
+            opener.open.call_args.kwargs["timeout"],
+            validator.LICENSE_LOOKUP_TIMEOUT_SECONDS,
+        )
+        proxy_handler, redirect_handler = build.call_args.args
+        self.assertIsInstance(proxy_handler, validator.urllib.request.ProxyHandler)
+        self.assertEqual(proxy_handler.proxies, {})
+        self.assertIsInstance(redirect_handler, validator.RejectRedirects)
+
+    def test_npm_registry_lookup_rejects_redirect_size_and_invalid_json(self):
+        identity = validator.NpmAliasIdentity(
+            "tool", "real-tool", "1.2.3", "npm:real-tool@1.2.3", "pkg:npm/tool"
+        )
+        endpoint = validator.npm_registry_endpoint(identity.target, identity.version)
+
+        class Response(io.BytesIO):
+            def __init__(self, body, url=endpoint, headers=None):
+                super().__init__(body)
+                self._url = url
+                self.headers = headers or {}
+
+            def geturl(self):
+                return self._url
+
+            def getcode(self):
+                return 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+        cases = (
+            Response(b"{}", url="https://example.test/redirect"),
+            Response(b"{}", headers={"Content-Length": str(validator.NPM_REGISTRY_RESPONSE_LIMIT + 1)}),
+            Response(b"x" * (validator.NPM_REGISTRY_RESPONSE_LIMIT + 1)),
+            Response(b"not-json"),
+        )
+        for response in cases:
+            with self.subTest(response=response), mock.patch.object(
+                validator.urllib.request, "build_opener"
+            ) as build:
+                build.return_value.open.return_value = response
+                with self.assertRaises(validator.EvidenceError):
+                    validator.fetch_npm_registry_release(identity)
+
+    def test_npm_alias_rejects_registry_identity_artifact_integrity_and_license_mismatch(self):
+        aliases = (("tool", "real-tool", "1.2.3"),)
+        change = self.npm_alias_change(*aliases[0])
+        mutations = {
+            "name": lambda item: item.update(name="other-tool"),
+            "version": lambda item: item.update(version="1.2.4"),
+            "tarball": lambda item: item["dist"].update(tarball="https://registry.npmjs.org/other.tgz"),
+            "integrity": lambda item: item["dist"].update(integrity="sha512-wrong=="),
+            "license": lambda item: item.update(license="MIT"),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label), self.npm_alias_workspace(aliases) as workspace:
+                payload = self.npm_registry_payload("real-tool", "1.2.3")
+                mutate(payload)
+                with mock.patch.object(
+                    validator, "fetch_npm_registry_release", return_value=payload
+                ):
+                    returncode, _, stderr = self.run_main(
+                        [change], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+                    )
+            self.assertNotEqual(returncode, 0)
+            self.assertIn("WHAT:", stderr)
+
+    def test_npm_alias_rejects_changed_or_incomplete_lock_evidence(self):
+        aliases = (("tool", "real-tool", "1.2.3"),)
+        change = self.npm_alias_change(*aliases[0])
+        mutations = {
+            "target": lambda item: item.update(name="other-tool"),
+            "version": lambda item: item.update(version="1.2.4"),
+            "registry": lambda item: item.update(resolved="https://example.test/tool.tgz"),
+            "integrity": lambda item: item.update(integrity="sha256-forged"),
+            "license": lambda item: item.update(license="GPL-3.0-only"),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label), self.npm_alias_workspace(aliases) as workspace:
+                lock_path = workspace / "package-lock.json"
+                lock = json.loads(lock_path.read_text(encoding="utf-8"))
+                mutate(lock["packages"]["node_modules/tool"])
+                lock_path.write_text(json.dumps(lock), encoding="utf-8")
+                with mock.patch.object(validator, "fetch_npm_registry_release") as fetch:
+                    returncode, _, stderr = self.run_main(
+                        [change], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+                    )
+            self.assertNotEqual(returncode, 0)
+            self.assertIn("WHAT:", stderr)
+            fetch.assert_not_called()
+
+    def test_npm_alias_rejects_manifest_lock_and_base_ambiguity(self):
+        aliases = (("tool", "real-tool", "1.2.3"),)
+        change = self.npm_alias_change(*aliases[0])
+        with self.npm_alias_workspace(aliases) as workspace:
+            manifest = json.loads((workspace / "package.json").read_text(encoding="utf-8"))
+            manifest["dependencies"] = {"tool": "npm:real-tool@1.2.3"}
+            (workspace / "package.json").write_text(json.dumps(manifest), encoding="utf-8")
+            duplicate = self.run_validator(
+                [change], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+            )
+        self.assertNotEqual(duplicate.returncode, 0)
+
+    def test_npm_alias_requires_regular_bounded_root_files_and_lock_v3(self):
+        aliases = (("tool", "real-tool", "1.2.3"),)
+        change = self.npm_alias_change(*aliases[0])
+        with self.npm_alias_workspace(aliases) as workspace:
+            lock_path = workspace / "package-lock.json"
+            lock = json.loads(lock_path.read_text(encoding="utf-8"))
+            lock["lockfileVersion"] = 2
+            lock_path.write_text(json.dumps(lock), encoding="utf-8")
+            result = self.run_validator(
+                [change], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("lockfileVersion 3", result.stderr)
+
+        with self.npm_alias_workspace(aliases) as workspace:
+            manifest_path = workspace / "package.json"
+            real_manifest = workspace / "real-package.json"
+            manifest_path.rename(real_manifest)
+            manifest_path.symlink_to(real_manifest)
+            result = self.run_validator(
+                [change], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("bounded regular file", result.stderr)
+
+    def test_npm_alias_rejects_duplicate_manifest_and_lock_keys(self):
+        aliases = (("tool", "real-tool", "1.2.3"),)
+        change = self.npm_alias_change(*aliases[0])
+        duplicate_manifest = (
+            '{"devDependencies":{"tool":"npm:real-tool@1.2.3",'
+            '"tool":"npm:real-tool@1.2.3"}}'
+        )
+        with self.npm_alias_workspace(aliases) as workspace:
+            (workspace / "package.json").write_text(duplicate_manifest, encoding="utf-8")
+            result = self.run_validator(
+                [change], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate key", result.stderr)
+
+        with self.npm_alias_workspace(aliases) as workspace:
+            lock_path = workspace / "package-lock.json"
+            descriptor = json.loads(lock_path.read_text(encoding="utf-8"))["packages"][
+                "node_modules/tool"
+            ]
+            duplicate_lock = (
+                '{"lockfileVersion":3,"packages":{"":'
+                '{"devDependencies":{"tool":"npm:real-tool@1.2.3"}},'
+                '"node_modules/tool":'
+                + json.dumps(descriptor)
+                + ',"node_modules/tool":'
+                + json.dumps(descriptor)
+                + "}}"
+            )
+            lock_path.write_text(duplicate_lock, encoding="utf-8")
+            result = self.run_validator(
+                [change], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)}
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate key", result.stderr)
+
+    def test_npm_alias_requires_exact_schema_purl_and_version(self):
+        valid = self.npm_alias_change("tool", "real-tool", "1.2.3")
+        invalid = []
+        for field, value in (
+            ("manifest", "packages/app/package.json"),
+            ("ecosystem", "npm-lock"),
+            ("package_url", "pkg:npm/real-tool"),
+            ("name", "Tool"),
+            ("version", "npm:real-tool@^1.2.3"),
+            ("version", "npm:real-tool@latest"),
+            ("version", "npm:real-tool@1.2.3-01"),
+            ("source_repository_url", "https://github.com/example/real-tool"),
+            ("license", ""),
+            ("scope", "build"),
+            ("vulnerabilities", None),
+        ):
+            record = dict(valid)
+            record[field] = value
+            invalid.append(record)
+        invalid.append(valid)
+        invalid.append(valid)
+
+        for record in invalid[:-2]:
+            with self.subTest(record=record):
+                result = self.run_validator([record])
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("WHAT:", result.stderr)
+
+        duplicate = self.run_validator(invalid[-2:])
+        self.assertNotEqual(duplicate.returncode, 0)
+        self.assertIn("appears more than once", duplicate.stderr)
+
+        missing_source = dict(valid)
+        del missing_source["source_repository_url"]
+        missing = self.run_validator([missing_source])
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("missing fields", missing.stderr)
 
     def test_fallback_deduplicates_and_caps_exact_revision_lookups(self):
         change = {

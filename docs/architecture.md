@@ -117,6 +117,19 @@ caller's read-only GitHub token, and accepts only an SPDX identifier from the
 same central allowlist. External lookups have a fixed timeout, are deduplicated,
 and are capped at 20 unique revisions per pull request.
 
+The other constrained normalization is an exact pinned npm alias whose official
+dependency-change record names the alias but omits its target license. The checker
+accepts only root `package.json` aliases of the form `npm:<target>@<exact-version>`
+whose canonical alias PURL and root package-lock spec agree. The lock must use npm
+format 3 and contain the alias install path with the exact target name, version,
+canonical registry tarball, sha512 integrity, and an SPDX identifier from the central
+allowlist. The checker first reuses an exact concrete dependency-review record for the
+underlying package. Otherwise it makes one anonymous, bounded request to an internally
+constructed `registry.npmjs.org` exact-release endpoint, rejects redirects, and requires
+the registry name, version, tarball, integrity, and license to match the lock exactly.
+No token, caller URL, alternate registry, package exception, or executable package
+content enters this evidence path; unavailable or inconsistent evidence fails closed.
+
 The separate first-party evidence class is fixed in central code to
 `ForgingAlpha/.github/actions/<action>@v1`; callers cannot select an owner,
 repository, channel, or exception. The checker requires the dependency record
