@@ -255,8 +255,9 @@ First-principles conclusion:
   is ready or the operator explicitly approves release.
 - **Remote probe default-branch landing** - `workflow_dispatch` probe workflows
   must exist on the default branch before they can be manually run. Status:
-  TODO in consumer repos; Phase 6 documents the shared standard and private
-  consumer-repo pilot path.
+  verified for the shared `.github` template on `main`; concrete consumer
+  adoption remains a rollout task in the consumer repository before operators
+  dispatch that consumer workflow.
 - **Public disclosure review** - because `ForgingAlpha/.github` is public,
   implementation must remove or relocate private worktree paths, private
   branch/test details, and non-public operational notes before any PR branch is
@@ -1732,13 +1733,15 @@ safety contract only; repo-specific failure details stay in private evidence.
 
 #### Manual Verification
 
-- [ ] Confirm the consumer probe workflow is available as a manual
+- [x] Confirm the shared consumer probe template is available as a manual
   `workflow_dispatch` diagnostic tool and is not configured as a required
   branch-protection or ruleset status.
-- [ ] Confirm the pilot consumer repo uses the same runtime setup as required
-  CI.
-- [ ] Confirm the workflow lands on the default branch before operators attempt
-  `gh workflow run`.
+- [x] Confirm the pilot consumer runtime parity target is known from required
+  CI, and defer concrete consumer workflow adoption until the consumer repo's
+  lifecycle baseline allows ordinary implementation there.
+- [x] Confirm the shared template lands on the trusted default branch, and
+  record that concrete consumer workflows must land on the consumer default
+  branch before operators attempt `gh workflow run`.
 
 #### Plan Alignment Verification
 
@@ -1843,13 +1846,25 @@ as a required check.
   unavailable earlier in this session, so Phase 6 reviewer gates used
   same-runtime reduced-independence fallback reviews. The public plan records
   only the reduced-independence fact, not exact transport failure details.
-- **Manual Verification**: still awaiting operator confirmation for manual
-  probe availability without branch-protection or ruleset merge authority,
-  pilot consumer runtime parity, and default-branch landing before
-  `gh workflow run`; manual checkboxes remain unchecked.
-- **Plan Checkboxes Updated**: automated verification, test durability, plan
-  alignment, and all Phase 6 reviewer gates are checked. Manual verification
-  remains unchecked.
+- **Manual Verification**: operator accepted static/template-level verification
+  on 2026-07-02. The shared template is present on `.github/main` at
+  `workflow-templates/ci-probe.yml`, uses `workflow_dispatch`, read-only
+  permissions, constrained selector inputs, guard-before-checkout, explicit
+  concurrency, bounded timeout, shell-array command construction,
+  `if: always()` artifact upload, and a step summary. GitHub workflow and
+  ruleset inspection showed neither `.github` nor the pilot consumer repo has
+  a required probe status; protected rules require `CI`, not `CI Probe`.
+  The pilot consumer's required CI runtime target is identified from
+  `turnkeyleads-app` required CI: `ubuntu-latest`, `pgvector/pgvector:pg18`,
+  explicit provided test environment, `ci-elixir@v1`, runtime preparation,
+  split database bootstrap, and `./bin/dev test lanes --out
+  docs/testing/throughput/lane-runs/ci-lanes-full`. A concrete
+  `turnkeyleads-app` probe workflow was not added or dispatched in this plan
+  because that repo's baseline source-truth status currently blocks ordinary
+  implementation; consumer workflow adoption remains a rollout task that must
+  land on the consumer default branch before `gh workflow run`.
+- **Plan Checkboxes Updated**: automated verification, test durability, manual
+  verification, plan alignment, and all Phase 6 reviewer gates are checked.
 - **Upstream Amendments / Backfills**: no intent, requirements, architecture,
   glossary, design, story, or ADR changes were made. Product Evidence was
   updated downstream for REQ-011, REQ-012, REQ-014, and REQ-015 to cover the
@@ -1925,8 +1940,10 @@ as a required check.
 3. Confirm ShellCheck `style` severity is accepted as the org default.
 4. Confirm baseline enforcement freezing non-backfilled repos is intentional
    before release.
-5. Confirm remote probe workflows remain diagnostic and are not required
-   branch-protection or ruleset status checks.
+5. Before a consumer repo's first live probe, confirm its concrete
+   `.github/workflows/ci-probe.yml` has landed on the trusted default branch,
+   remains diagnostic, and is not a required branch-protection or ruleset
+   status check.
 
 ## Migration Notes
 
