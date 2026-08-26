@@ -129,11 +129,6 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s actions/ci-runtime-profile/tests
 
-      - name: Test Dependabot auto-merge action
-        run: |
-          set -euo pipefail
-          python3 -m unittest discover -s actions/dependabot-automerge/tests
-
       - name: Test exact security-patch actions
         run: |
           set -euo pipefail

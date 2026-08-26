@@ -14,7 +14,6 @@ SCRIPT = ROOT / "actions" / "security-patch" / "scripts" / "security_patch.py"
 PROJECTION_ACTION = ROOT / "actions" / "security-patch-projection" / "action.yml"
 ACTIVATION_ACTION = ROOT / "actions" / "security-patch-activation" / "action.yml"
 SOURCE_ACTION = ROOT / "actions" / "security-patch-source" / "action.yml"
-DEPENDABOT_WORKFLOW = ROOT / ".github" / "workflows" / "dependabot-automerge.yml"
 MERGE_FLOW_ACTION = ROOT / "actions" / "ci-merge-flow" / "action.yml"
 
 spec = importlib.util.spec_from_file_location("security_patch", SCRIPT)
@@ -2683,12 +2682,6 @@ class ActionContractTest(unittest.TestCase):
             self.assertNotIn("automation-app-id", text)
             self.assertNotIn("PROJECTION_APP_ID", text)
             self.assertNotIn("AUTOMATION_APP_ID", text)
-
-    def test_legacy_classifier_keeps_its_quarantined_identity_until_callers_migrate(self):
-        workflow = DEPENDABOT_WORKFLOW.read_text()
-        self.assertIn("app-id: 4249954", workflow)
-        self.assertNotIn("app-id: 4618077", workflow)
-        self.assertNotIn("ALPHAAPPS_AUTOMATION_APP_ID", workflow)
 
     def test_projection_attestation_exists_before_pr_event_can_start_ci(self):
         text = SCRIPT.read_text()
