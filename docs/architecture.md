@@ -351,12 +351,12 @@ Current migration status: the central exact source-classification, protected
 has enrolled the required environment or ruleset authority. Production
 activation is not active. `alphaapps-site` is the first observation-mode canary;
 unattended authority follows only after its exact projection, checks, rulesets,
-credential boundary, merge, and production deployment are proven. The legacy
-`pull_request_target` Dependabot action remains only for unmigrated callers and
-is not a valid enrollment path because Dependabot-triggered workflows cannot
-receive its Actions secret. It is retired after the last caller migrates. The
-legacy whole-branch reusable promotion workflow remains only for existing callers
-pending separate migration and is not security authority for new enrollments.
+credential boundary, merge, and production deployment are proven. The retired
+`pull_request_target` Dependabot caller and self-approving shared action are
+absent. Any remaining consumer reference fails until that repository migrates;
+no compatibility path may restore self-approval. The legacy whole-branch
+reusable promotion workflow remains only for existing callers pending separate
+migration and is not security authority for new enrollments.
 
 Privileged jobs process trusted GitHub metadata only. They never check out,
 execute, or consume artifacts from pull-request code.

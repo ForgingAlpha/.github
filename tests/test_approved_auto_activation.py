@@ -14,6 +14,9 @@ ACTION = ROOT / "actions" / "approved-automerge" / "action.yml"
 CALLER = ROOT / ".github" / "workflows" / "approved-auto-activation.yml"
 SIGNAL = ROOT / ".github" / "workflows" / "approval-signal.yml"
 REMOVED_REUSABLE = ROOT / ".github" / "workflows" / "approved-automerge.yml"
+REMOVED_DEPENDABOT_CALLER = ROOT / ".github" / "workflows" / "dependabot-automerge.yml"
+REMOVED_DEPENDABOT_ACTION = ROOT / "actions" / "dependabot-automerge" / "action.yml"
+REMOVED_DEPENDABOT_ALLOWLIST = ROOT / ".github" / "alphaapps-github-actions-allowlist.yml"
 
 
 class ApprovedAutoActivationContractTest(unittest.TestCase):
@@ -36,6 +39,25 @@ class ApprovedAutoActivationContractTest(unittest.TestCase):
         self.assertNotIn("actions/checkout", combined)
         self.assertNotIn("release_app_private_key", SIGNAL.read_text(encoding="utf-8"))
         self.assertEqual(signal["jobs"]["signal"]["timeout-minutes"], 5)
+
+    def test_legacy_dependabot_self_approval_surface_is_absent(self):
+        for path in (
+            REMOVED_DEPENDABOT_CALLER,
+            REMOVED_DEPENDABOT_ACTION,
+            REMOVED_DEPENDABOT_ALLOWLIST,
+        ):
+            self.assertFalse(path.exists(), f"retired authority surface returned: {path}")
+
+        workflow_yaml = list((ROOT / ".github" / "workflows").glob("*.yml"))
+        action_yaml = list((ROOT / "actions").glob("**/action.yml"))
+        workflow_text = "\n".join(
+            path.read_text(encoding="utf-8") for path in workflow_yaml
+        )
+        combined = workflow_text + "\n" + "\n".join(
+            path.read_text(encoding="utf-8") for path in action_yaml
+        )
+        self.assertNotIn("gh pr review", combined)
+        self.assertNotIn("pull_request_target", workflow_text)
 
     def test_local_job_owns_environment_and_shared_action_owns_steps(self):
         caller = self.load(CALLER)

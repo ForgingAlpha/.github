@@ -36,12 +36,11 @@ cutover, so the merge cannot move `v1` before the release controls are proven:
   into each enrolled repository's branch-restricted `security-automation`
   environment. Do not create an organization Dependabot secret or a broadly
   available organization/repository Actions secret for this credential.
-- Treat the existing `pull_request_target` Dependabot auto-merge workflow and
-  `dependabot-automerge` action as a legacy live-caller contract only. GitHub
-  withholds Actions secrets from Dependabot-triggered workflows, so it is not
-  the enrollment path for this design. Add no new callers or routing labels;
-  migrate each live consumer to the `workflow_run` source action, then retire
-  the legacy workflow/action after the final caller is proven migrated.
+- The `pull_request_target` Dependabot auto-merge workflow and shared
+  `dependabot-automerge` action are removed. A repository that still references
+  the removed action is blocked until it migrates; no compatibility route may
+  manufacture approval. Control-plane dependency updates use the ordinary
+  exact-head human approval and protected release-App activation path.
 - Treat the existing whole-branch promotion workflow and `prod-*` tags as a
   legacy caller contract only. Do not enroll a new security flow in that
   workflow. Retain its protection until any verified live callers are migrated,
