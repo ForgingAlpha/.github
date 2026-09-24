@@ -508,6 +508,22 @@ class SharedCiContractTest(unittest.TestCase):
                     "HOW: keep execution in the repo-owned adapter without eval.",
                 )
 
+    def test_postgres_probe_accepts_optional_caller_startup_configuration(self):
+        path = ROOT / ".github" / "workflows" / "ci-probe-elixir-postgres.yml"
+        workflow = self.load_workflow(path)
+        triggers = workflow.get("on", workflow.get(True, {}))
+        inputs = triggers["workflow_call"]["inputs"]
+        self.assertIn("postgres_initdb_args", inputs)
+        startup = inputs["postgres_initdb_args"]
+        self.assertEqual(startup["type"], "string")
+        self.assertFalse(startup["required"])
+        self.assertEqual(startup["default"], "")
+        self.assertEqual(
+            workflow["jobs"]["probe"]["services"]["postgres"]["env"]["POSTGRES_INITDB_ARGS"],
+            "${{ inputs.postgres_initdb_args }}",
+            "Caller sizing must reach service initialization; SQL cannot change restart-only settings.",
+        )
+
     def test_probe_template_is_thin_latest_green_wrapper(self):
         template_path = ROOT / "workflow-templates" / "ci-probe.yml"
         workflow = yaml.safe_load(template_path.read_text(encoding="utf-8"))

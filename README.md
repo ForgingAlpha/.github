@@ -74,6 +74,16 @@ parallel `test` jobs, and one required `CI` fan-in.
 Runtime versions come from committed `mise.toml` and `mise.lock`; workflow YAML
 does not duplicate Elixir, OTP, Node, or npm versions.
 
+## Elixir PostgreSQL Probe
+
+The reusable `.github/workflows/ci-probe-elixir-postgres.yml` workflow delegates
+diagnostic execution to the caller's `bin/ci-probe` adapter. Callers can set the
+optional string input `postgres_initdb_args` to configure PostgreSQL
+initialization. Its default is an empty string, which adds no initialization
+arguments. The workflow forwards the value to the service's
+`POSTGRES_INITDB_ARGS` environment variable; database sizing remains owned by
+the caller.
+
 ## Dependency Automation Rollout
 
 The approved target architecture makes Renovate the owner of normal version
