@@ -49,6 +49,11 @@ on:
         required: false
         type: string
         default: postgres:16
+      postgres_initdb_args:
+        description: Caller-owned PostgreSQL initialization arguments
+        required: false
+        type: string
+        default: ""
       artifact_retention_days:
         description: Diagnostic artifact retention in days
         required: false
@@ -75,6 +80,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
+          POSTGRES_INITDB_ARGS: ${{ inputs.postgres_initdb_args }}
         ports:
           - 5432:5432
         options: >-
