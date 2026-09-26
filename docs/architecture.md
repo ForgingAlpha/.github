@@ -106,8 +106,9 @@ Markdown validation always enumerates all tracked `.md` and `.markdown` files;
 there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
 low-or-higher vulnerabilities and licenses outside a centrally owned permissive
-commercial-use SPDX allowlist. A following fail-closed check inspects the
-official dependency-change output. Recognized licenses need no additional
+commercial-use SPDX allowlist, subject to the central artifact exception below.
+A following fail-closed check inspects the official dependency-change output.
+Recognized licenses need no additional
 network lookup. Null or empty third-party licenses still fail except for GitHub
 Actions whose package URL names an exact 40-character commit SHA and whose
 canonical GitHub source identity matches that package URL. For only that
@@ -142,8 +143,34 @@ governed release ceremony; it composes with the protected `v1` rollout. All
 endpoints are constructed internally rather than taken from dependency data,
 both first-party requests are cached per validation, and every identity, API,
 schema, tree, or policy error fails closed.
-Package-specific license exceptions require a reviewed control-plane policy
-change rather than a consumer input.
+
+`license_policy.py` also owns the closed artifact exception for
+`ForgingAlpha/turnkeyleads-app`, `assets/customer/package-lock.json`, and
+`mapbox-gl@3.31.0`. Its record binds the canonical npm tarball, exact sha512
+integrity, and reviewed `package/LICENSE.txt` digest. Proposal preparation verifies
+that digest inside the integrity-checked, bounded archive without executing package
+content. CI compares the checked-out manifest, npm v3 lock, and dependency-review
+record with this central immutable evidence; it does not download the archive again.
+The source-bound preparation receipt is retained in
+`docs/audits/2026-09-26-mapbox-3.31.0-artifact.json`; an offline test binds it to
+the policy record and checks canonical identities and digest formats. The record's
+license-member path, license digest and archive digest document that reviewed
+preparation evidence. They are not claims that routine CI rereads the archive.
+Matching license-file bytes do not establish acceptance of external vendor terms or
+account entitlement; those remain a separate human admission decision under REQ-024.
+
+Both scripts receive repository identity directly from GitHub context. Only the
+fixed repository receives the official action's Mapbox license exclusion. That
+upstream exclusion ignores versions and compares decoded names case-insensitively,
+so the following `always()` guard checks its entire matching family **before** the
+normal nonempty-license shortcut. It requires the one canonical record, a matching
+runtime manifest/root-lock declaration (`3.31.0` or `^3.31.0`), and the exact locked
+artifact. Additional versions, manifests, installations, contradictory names,
+noncanonical PURLs, missing evidence, and unsafe manifest files fail closed.
+Vulnerability checks remain independent and unchanged. Other repositories receive
+no exclusion; no caller input selects an exception. Any later artifact needs a new
+reviewed central policy change.
+
 Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.
 

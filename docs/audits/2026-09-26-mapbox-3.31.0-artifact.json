@@ -1,0 +1,33 @@
+{
+  "started_at": "2026-09-26T19:11:11.085136+00:00",
+  "completed_at": "2026-09-26T19:11:12.583119+00:00",
+  "source_url": "https://registry.npmjs.org/mapbox-gl/-/mapbox-gl-3.31.0.tgz",
+  "version": "3.31.0",
+  "authentication": "anonymous; no credentials or proxy",
+  "redirects": "rejected",
+  "archive_bytes": 14677512,
+  "declared_content_length": "14677512",
+  "archive_sha256": "597c8eb058342941fc97857f69ebdcf3e7dcf5a1b2705abd63782f996da418ae",
+  "expected_sri": "sha512-7i25NyCPW5jnqsqJq3irgBBEoVTJgfZqTJJS446Q3ZuxyAb5Om75UIcxYIo38oz9eDswnBXr0riz+M/C8V7g3Q==",
+  "actual_sri": "sha512-7i25NyCPW5jnqsqJq3irgBBEoVTJgfZqTJJS446Q3ZuxyAb5Om75UIcxYIo38oz9eDswnBXr0riz+M/C8V7g3Q==",
+  "sri_verified": true,
+  "archive_retained": false,
+  "archive_members_scanned": 53,
+  "expanded_bytes_read": 66372608,
+  "member": "package/LICENSE.txt",
+  "member_type": "regular",
+  "unique_member": true,
+  "license_bytes": 5727,
+  "license_sha256": "c24eff481bf098c82fda9949b2d982589df8b36db11fffa49653d4afe1903998",
+  "license_hash_verified": true,
+  "bounds": {
+    "compressed_bytes": 33554432,
+    "expanded_bytes": 268435456,
+    "member_count": 20000,
+    "license_bytes": 65536,
+    "total_seconds": 60,
+    "socket_timeout_seconds": 30
+  },
+  "effects": "License bytes and compact receipt retained only; no archive extraction, execution or package/worktree mutation",
+  "limits": "Artifact integrity and license identity only; no vendor/account/legal approval or policy exception"
+}

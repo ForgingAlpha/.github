@@ -1,4 +1,5 @@
 import contextlib
+import copy
 import importlib.util
 import io
 import json
@@ -36,7 +37,7 @@ class CiDependencyReviewTest(unittest.TestCase):
 
     def run_validator(self, changes, token=None, extra_env=None):
         value = changes if isinstance(changes, str) else json.dumps(changes)
-        env = {**os.environ, "DEPENDENCY_CHANGES": value}
+        env = {**os.environ, "DEPENDENCY_CHANGES": value, "DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"}
         env.pop("GITHUB_LICENSE_TOKEN", None)
         if token is not None:
             env["GITHUB_LICENSE_TOKEN"] = token
@@ -54,7 +55,7 @@ class CiDependencyReviewTest(unittest.TestCase):
     def run_main(self, changes, token="test-token", extra_env=None):
         stdout = io.StringIO()
         stderr = io.StringIO()
-        env = {"DEPENDENCY_CHANGES": json.dumps(changes), "GITHUB_LICENSE_TOKEN": token}
+        env = {"DEPENDENCY_CHANGES": json.dumps(changes), "GITHUB_LICENSE_TOKEN": token, "DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"}
         if extra_env is not None:
             env.update(extra_env)
         with mock.patch.dict(
@@ -175,11 +176,241 @@ class CiDependencyReviewTest(unittest.TestCase):
             },
         }
 
+    def artifact_change(self):
+        # Actual dependency-review identity; independent constants avoid deriving
+        # all positive evidence from the policy under test.
+        return {
+            "change_type": "added", "ecosystem": "npm", "name": "mapbox-gl",
+            "version": "3.31.0", "manifest": "assets/customer/package-lock.json",
+            "package_url": "pkg:npm/mapbox-gl@3.31.0",
+            "source_repository_url": "https://github.com/mapbox/mapbox-gl-js",
+            "license": "LicenseRef-bad-see-license-in-license.txt",
+            "scope": "runtime", "vulnerabilities": [],
+        }
+
+    @contextlib.contextmanager
+    def artifact_workspace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            customer = workspace / "assets/customer"
+            customer.mkdir(parents=True)
+            manifest = {"dependencies": {"mapbox-gl": "^3.31.0"}}
+            lock = {
+                "lockfileVersion": 3,
+                "packages": {
+                    "": copy.deepcopy(manifest),
+                    "node_modules/mapbox-gl": {
+                        "version": "3.31.0",
+                        "resolved": "https://registry.npmjs.org/mapbox-gl/-/mapbox-gl-3.31.0.tgz",
+                        "integrity": "sha512-7i25NyCPW5jnqsqJq3irgBBEoVTJgfZqTJJS446Q3ZuxyAb5Om75UIcxYIo38oz9eDswnBXr0riz+M/C8V7g3Q==",
+                        "license": "SEE LICENSE IN LICENSE.txt",
+                    },
+                },
+            }
+            (customer / "package.json").write_text(json.dumps(manifest))
+            (customer / "package-lock.json").write_text(json.dumps(lock))
+            yield workspace
+
+    def run_artifact(self, workspace, changes=None):
+        return self.run_main(
+            [self.artifact_change()] if changes is None else changes,
+            extra_env={"DEPENDENCY_WORKSPACE": str(workspace),
+                       "DEPENDENCY_REPOSITORY": "ForgingAlpha/turnkeyleads-app"},
+        )
+
+    def test_artifact_exclusion_is_emitted_only_for_exact_central_repository(self):
+        for repository, expected in [
+            ("ForgingAlpha/turnkeyleads-app", "pkg:npm/mapbox-gl"),
+            ("ForgingAlpha/test-repo", ""),
+            ("someone/turnkeyleads-app", ""),
+            ("forgingalpha/turnkeyleads-app", ""),
+        ]:
+            with self.subTest(repository=repository):
+                result = subprocess.run(
+                    ["python3", str(POLICY)], capture_output=True, text=True,
+                    env={**os.environ, "DEPENDENCY_REPOSITORY": repository}, check=True,
+                )
+                outputs = dict(line.split("=", 1) for line in result.stdout.splitlines())
+                self.assertEqual(outputs["allow_dependencies_licenses"], expected)
+                self.assertNotIn("LicenseRef", outputs["allow_licenses"])
+
+    def test_both_policy_stages_reject_missing_or_malformed_repository(self):
+        for repository in ("", "owner", "owner/repo/extra", "owner/repo\n"):
+            with self.subTest(repository=repository):
+                result = subprocess.run(
+                    ["python3", str(POLICY)], capture_output=True, text=True,
+                    env={**os.environ, "DEPENDENCY_REPOSITORY": repository},
+                )
+                self.assertNotEqual(result.returncode, 0)
+                code, _, stderr = self.run_main([], extra_env={"DEPENDENCY_REPOSITORY": repository})
+                self.assertEqual(code, 1)
+                self.assertIn("repository identity", stderr)
+
+    def test_exact_artifact_passes_without_network_and_ignores_removed_old_version(self):
+        with self.artifact_workspace() as workspace:
+            removed = {**self.artifact_change(), "change_type": "removed", "version": "3.22.0"}
+            with mock.patch.object(
+                validator.urllib.request, "urlopen", side_effect=AssertionError("network lookup")
+            ) as lookup, mock.patch.object(
+                validator.urllib.request, "build_opener", side_effect=AssertionError("network opener")
+            ) as opener:
+                code, stdout, stderr = self.run_artifact(workspace, [removed, self.artifact_change()])
+            self.assertEqual(code, 0, stderr)
+            self.assertIn("Verified reviewed artifact pkg:npm/mapbox-gl@3.31.0", stdout)
+            lookup.assert_not_called()
+            opener.assert_not_called()
+
+    def test_artifact_policy_agrees_with_retained_preparation_receipt(self):
+        policy = validator.artifact_exception("ForgingAlpha/turnkeyleads-app")
+        receipt = json.loads(
+            (ROOT / "docs/audits/2026-09-26-mapbox-3.31.0-artifact.json").read_text()
+        )
+        for policy_field, receipt_field in (
+            ("resolved", "source_url"), ("version", "version"),
+            ("integrity", "expected_sri"), ("integrity", "actual_sri"),
+            ("archive_sha256", "archive_sha256"), ("license_member", "member"),
+            ("license_sha256", "license_sha256"),
+        ):
+            self.assertEqual(policy[policy_field], receipt[receipt_field])
+        self.assertTrue(validator.is_sha512_integrity(policy["integrity"]))
+        for field in ("archive_sha256", "license_sha256"):
+            self.assertRegex(policy[field], r"^[0-9a-f]{64}$")
+        self.assertEqual(policy["resolved"], validator.npm_registry_tarball(policy["name"], policy["version"]))
+        self.assertEqual(policy["package_url"], f"{validator.npm_purl(policy['name'])}@{policy['version']}")
+        self.assertEqual(policy["package_path"], f"node_modules/{policy['name']}")
+        self.assertIs(receipt["sri_verified"], True)
+        self.assertIs(receipt["license_hash_verified"], True)
+        self.assertIs(receipt["unique_member"], True)
+        self.assertEqual(receipt["member_type"], "regular")
+        for measured, limit in (
+            ("archive_bytes", "compressed_bytes"), ("expanded_bytes_read", "expanded_bytes"),
+            ("archive_members_scanned", "member_count"), ("license_bytes", "license_bytes"),
+        ):
+            self.assertGreater(receipt[measured], 0)
+            self.assertLessEqual(receipt[measured], receipt["bounds"][limit])
+
+    def test_other_repository_does_not_claim_artifact_approval(self):
+        # The official SPDX action still owns rejecting this custom license there;
+        # the supplementary evidence guard must not claim the central exception.
+        code, stdout, stderr = self.run_main([self.artifact_change()], token="")
+        self.assertEqual(code, 0, stderr)
+        self.assertNotIn("Verified reviewed artifact", stdout)
+
+    def test_artifact_guard_rejects_mismatched_or_missing_change_evidence(self):
+        mutations = {
+            "version": "3.32.0", "manifest": "other/package-lock.json", "name": "other",
+            "package_url": "pkg:npm/mapbox-gl@3.32.0", "ecosystem": "pypi",
+            "source_repository_url": "https://github.com/someone/mapbox-gl-js",
+            "license": "GPL-3.0-only", "scope": "development", "vulnerabilities": None,
+        }
+        with self.artifact_workspace() as workspace:
+            for field, value in mutations.items():
+                for missing in (False, True):
+                    with self.subTest(field=field, missing=missing):
+                        change = self.artifact_change()
+                        if missing:
+                            change.pop(field)
+                        else:
+                            change[field] = value
+                        code, _, stderr = self.run_artifact(workspace, [change])
+                        self.assertEqual(code, 1, stderr)
+
+    def test_version_blind_encoded_and_case_exclusions_cannot_skip_artifact_guard(self):
+        # Pinned official purlsMatch compares decoded, case-insensitive names and
+        # ignores version. The independent guard must run before nonempty license.
+        purls = [
+            "pkg:npm/mapbox-gl@3.32.0", "pkg:NPM/MAPBOX-GL@3.22.0",
+            "pkg:npm/%6dapbox-gl@3.32.0", "pkg:npm/mapbox%2Dgl@3.32.0",
+            "pkg:npm/@mapbox-gl", "pkg:npm/mapbox-gl?x=1",
+            "pkg:npm/mapbox-gl/#", "pkg:npm/mapbox-gl@3.31.0#subpath",
+        ]
+        with self.artifact_workspace() as workspace:
+            for purl in purls:
+                with self.subTest(purl=purl):
+                    change = {**self.artifact_change(), "name": "contradictory-name",
+                              "package_url": purl, "license": "GPL-3.0-only"}
+                    self.assertTrue(validator.matches_exception_family(change, "mapbox-gl"))
+                    self.assertEqual(self.run_artifact(workspace, [change])[0], 1)
+
+    def test_valid_artifact_cannot_cover_duplicate_or_additional_package_evidence(self):
+        with self.artifact_workspace() as workspace:
+            for extra in [self.artifact_change(), {**self.artifact_change(), "version": "3.32.0"},
+                          {**self.artifact_change(), "manifest": "another/package-lock.json"}]:
+                code, _, stderr = self.run_artifact(workspace, [self.artifact_change(), extra])
+                self.assertEqual(code, 1, stderr)
+                self.assertIn("duplicate", stderr)
+
+    def test_artifact_lock_rejects_changed_bytes_location_or_additional_install(self):
+        descriptor_mutations = [
+            {"version": "3.32.0"}, {"resolved": "https://example.com/mapbox.tgz"},
+            {"integrity": "sha512-" + "A" * 86 + "=="}, {"license": "MIT"},
+            {"name": "other"},
+            *({"link": value} for value in (True, [], {}, "", 0, None)),
+        ]
+        for mutation in descriptor_mutations + ["missing", "nested", "alias", "old-format"]:
+            with self.subTest(mutation=mutation), self.artifact_workspace() as workspace:
+                path = workspace / "assets/customer/package-lock.json"
+                lock = json.loads(path.read_text())
+                descriptor = lock["packages"]["node_modules/mapbox-gl"]
+                if isinstance(mutation, dict):
+                    descriptor.update(mutation)
+                elif mutation == "missing":
+                    del lock["packages"]["node_modules/mapbox-gl"]
+                elif mutation == "nested":
+                    lock["packages"]["node_modules/other/node_modules/mapbox-gl"] = descriptor.copy()
+                elif mutation == "alias":
+                    lock["packages"]["node_modules/alias"] = {**descriptor, "name": "mapbox-gl"}
+                else:
+                    lock["lockfileVersion"] = 2
+                path.write_text(json.dumps(lock))
+                self.assertEqual(self.run_artifact(workspace)[0], 1)
+
+    def test_artifact_manifest_and_root_lock_must_agree_with_reviewed_version(self):
+        for spec, root_spec, extra, expected in [
+            ("3.31.0", "3.31.0", False, 0), ("^3.31.0", "^3.31.0", False, 0),
+            ("^3.31.0", "3.31.0", False, 1), ("^3.32.0", "^3.32.0", False, 1),
+            ("^3.31.0", "^3.31.0", True, 1),
+        ]:
+            with self.subTest(spec=spec, root_spec=root_spec, extra=extra), self.artifact_workspace() as workspace:
+                manifest_path = workspace / "assets/customer/package.json"
+                lock_path = workspace / "assets/customer/package-lock.json"
+                manifest = json.loads(manifest_path.read_text())
+                lock = json.loads(lock_path.read_text())
+                manifest["dependencies"]["mapbox-gl"] = spec
+                lock["packages"][""]["dependencies"]["mapbox-gl"] = root_spec
+                if extra:
+                    manifest["devDependencies"] = {"mapbox-gl": spec}
+                manifest_path.write_text(json.dumps(manifest))
+                lock_path.write_text(json.dumps(lock))
+                code, _, stderr = self.run_artifact(workspace)
+                self.assertEqual(code, expected, stderr)
+
+    def test_artifact_evidence_rejects_missing_duplicate_oversized_and_symlink_files(self):
+        for invalid in ("missing", "duplicate", "oversized", "file-link", "directory-link"):
+            with self.subTest(invalid=invalid), self.artifact_workspace() as workspace:
+                path = workspace / "assets/customer/package-lock.json"
+                if invalid == "missing":
+                    path.unlink()
+                elif invalid == "duplicate":
+                    path.write_text('{"lockfileVersion":3,"lockfileVersion":3}')
+                elif invalid == "oversized":
+                    with path.open("wb") as handle:
+                        handle.truncate(validator.MAX_NPM_JSON_BYTES + 1)
+                elif invalid == "file-link":
+                    real = workspace / "real-lock.json"
+                    path.rename(real)
+                    path.symlink_to(real)
+                else:
+                    real = workspace / "real-customer"
+                    path.parent.rename(real)
+                    path.parent.symlink_to(real, target_is_directory=True)
+                self.assertEqual(self.run_artifact(workspace)[0], 1)
+
     def test_contract_has_no_caller_bypass_or_license_override(self):
         action = self.load_action()
         self.assertNotIn("inputs", action)
         text = ACTION.read_text(encoding="utf-8")
-        for obsolete in ("enabled", "deny-licenses", "allow-dependencies-licenses"):
+        for obsolete in ("enabled", "deny-licenses", "warn-only"):
             self.assertNotIn(obsolete, text)
 
     def test_official_review_uses_strict_central_policy(self):
@@ -191,6 +422,11 @@ class CiDependencyReviewTest(unittest.TestCase):
         self.assertEqual(
             policy["run"],
             'python3 "$GITHUB_ACTION_PATH/scripts/license_policy.py" >> "$GITHUB_OUTPUT"',
+        )
+        self.assertEqual(policy["env"]["DEPENDENCY_REPOSITORY"], "${{ github.repository }}")
+        self.assertEqual(
+            review["with"]["allow-dependencies-licenses"],
+            "${{ steps.license-policy.outputs.allow_dependencies_licenses }}",
         )
         self.assertEqual(review["id"], "review")
         self.assertEqual(review["if"], "${{ github.event_name == 'pull_request' }}")
@@ -206,8 +442,11 @@ class CiDependencyReviewTest(unittest.TestCase):
             check=True,
             text=True,
             stdout=subprocess.PIPE,
+            env={**os.environ, "DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"},
         )
-        allowlist = policy_result.stdout.strip().removeprefix("allow_licenses=").split(",")
+        outputs = dict(line.split("=", 1) for line in policy_result.stdout.splitlines())
+        self.assertEqual(outputs["allow_dependencies_licenses"], "")
+        allowlist = outputs["allow_licenses"].split(",")
         for expected in ("MIT", "Apache-2.0", "BSD-3-Clause", "ISC"):
             self.assertIn(expected, allowlist)
 
@@ -224,6 +463,7 @@ class CiDependencyReviewTest(unittest.TestCase):
             step for step in action["runs"]["steps"] if step.get("name") == "Reject missing license evidence"
         )
         self.assertIn("always()", guard["if"])
+        self.assertEqual(guard["env"]["DEPENDENCY_REPOSITORY"], "${{ github.repository }}")
         self.assertEqual(
             guard["env"]["DEPENDENCY_CHANGES"],
             "${{ steps.review.outputs.dependency-changes }}",
@@ -249,7 +489,8 @@ class CiDependencyReviewTest(unittest.TestCase):
         with mock.patch.object(validator, "fetch_github_license") as fetch, mock.patch.object(
             validator, "fetch_first_party_release_tree"
         ) as first_party_fetch:
-            validator.validate_changes(changes)
+            code, _, stderr = self.run_main(changes, token="")
+            self.assertEqual(code, 0, stderr)
         fetch.assert_not_called()
         first_party_fetch.assert_not_called()
 
