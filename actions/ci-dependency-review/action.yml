@@ -33,6 +33,8 @@ runs:
       id: license-policy
       if: ${{ github.event_name == 'pull_request' }}
       shell: bash
+      env:
+        DEPENDENCY_REPOSITORY: ${{ github.repository }}
       run: python3 "$GITHUB_ACTION_PATH/scripts/license_policy.py" >> "$GITHUB_OUTPUT"
 
     - name: Dependency Review
@@ -43,11 +45,13 @@ runs:
         fail-on-severity: low
         fail-on-scopes: runtime,development,unknown
         allow-licenses: ${{ steps.license-policy.outputs.allow_licenses }}
+        allow-dependencies-licenses: ${{ steps.license-policy.outputs.allow_dependencies_licenses }}
 
     - name: Reject missing license evidence
       if: ${{ github.event_name == 'pull_request' && always() }}
       shell: bash
       env:
+        DEPENDENCY_REPOSITORY: ${{ github.repository }}
         DEPENDENCY_CHANGES: ${{ steps.review.outputs.dependency-changes }}
         DEPENDENCY_WORKSPACE: ${{ github.workspace }}
         GITHUB_LICENSE_TOKEN: ${{ github.token }}

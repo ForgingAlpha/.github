@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from license_policy import APPROVED_SPDX
+from license_policy import APPROVED_SPDX, artifact_exception, repository_identity
 
 
 GITHUB_ACTION_PURL = re.compile(
@@ -645,14 +645,116 @@ def load_changes() -> list[dict[str, Any]]:
     return changes
 
 
+def matches_exception_family(change: dict[str, Any], name: str) -> bool:
+    """Cover the pinned official action's version-blind, decoded PURL comparison.
+
+    Detection is deliberately broader than acceptance: only the exact canonical
+    approved record passes. Also reject a contradictory package-name field.
+    """
+    if isinstance(change.get("name"), str) and change["name"].lower() == name:
+        return True
+    purl = change.get("package_url")
+    if not isinstance(purl, str) or not purl.startswith("pkg:"):
+        return False
+    type_match = re.search(r"pkg:([a-zA-Z0-9-_]+)/.*", purl)
+    if type_match is None or type_match[1].lower() != "npm":
+        return False
+    parts = purl.split("/")
+    if len(parts) < 2 or not parts[1]:
+        return False
+    namespace = urllib.parse.unquote(parts[1]) if len(parts) > 2 else None
+    name_rest = "/".join(parts[2:]) if namespace is not None else parts[1]
+    name_match = re.search(r"([^@#?]+)[@#?]?.*", name_rest)
+    parsed_name = urllib.parse.unquote(name_match[1]) if name_match else None
+    full_name = (
+        f"{namespace}/{parsed_name}" if namespace and parsed_name else parsed_name or namespace
+    )
+    return isinstance(full_name, str) and full_name.lower() == name
+
+
+def load_artifact_json(workspace: Path, relative: str) -> dict[str, Any]:
+    path = workspace
+    try:
+        for index, part in enumerate(Path(relative).parts):
+            path = path / part
+            metadata = path.lstat()
+            if index < len(Path(relative).parts) - 1 and not stat.S_ISDIR(metadata.st_mode):
+                raise EvidenceError("Approved artifact paths require real workspace directories.")
+    except OSError as error:
+        raise EvidenceError("Approved artifact manifest or lock is unavailable.") from error
+    return load_json_file(path, relative)
+
+
+def verify_artifact_exception(change: dict[str, Any], approved: dict[str, str]) -> None:
+    for field in ("name", "version", "manifest", "package_url", "source_repository_url", "license"):
+        if change.get(field) != approved[field]:
+            raise EvidenceError(f"Dependency artifact exception has mismatched {field} evidence.")
+    if change.get("ecosystem") != "npm" or change.get("scope") != "runtime":
+        raise EvidenceError("Dependency artifact exception requires its approved npm runtime scope.")
+    if not isinstance(change.get("vulnerabilities"), list):
+        raise EvidenceError("Dependency artifact exception has missing vulnerability evidence.")
+    root = os.environ.get("DEPENDENCY_WORKSPACE", "")
+    if not root:
+        raise EvidenceError("Dependency artifact exception requires the checked-out workspace.")
+    workspace = Path(root)
+    manifest = load_artifact_json(workspace, approved["package_manifest"])
+    lock = load_artifact_json(workspace, approved["manifest"])
+    packages = npm_lock_packages(lock, approved["manifest"])
+
+    declarations = []
+    for payload in (manifest, packages[""]):
+        found = [
+            (section, payload[section][approved["name"]])
+            for section in NPM_DEPENDENCY_SECTIONS
+            if isinstance(payload.get(section), dict) and approved["name"] in payload[section]
+        ]
+        if len(found) != 1 or found[0][0] != "dependencies":
+            raise EvidenceError("Approved artifact requires one unambiguous runtime declaration.")
+        declarations.append(found[0][1])
+    if declarations[0] != declarations[1] or declarations[0] not in (
+        approved["version"], f"^{approved['version']}"
+    ):
+        raise EvidenceError("Approved artifact manifest and root lock declarations disagree.")
+
+    descriptor = packages.get(approved["package_path"])
+    if not isinstance(descriptor, dict) or (
+        "link" in descriptor and descriptor["link"] is not False
+    ):
+        raise EvidenceError("Approved artifact requires one registry package at its fixed lock path.")
+    for field in ("version", "resolved", "integrity"):
+        if descriptor.get(field) != approved[field]:
+            raise EvidenceError(f"Approved artifact lock has mismatched {field} evidence.")
+    if descriptor.get("license") != approved["lock_license"] or descriptor.get("name", approved["name"]) != approved["name"]:
+        raise EvidenceError("Approved artifact lock has mismatched package or license identity.")
+    for path, other in packages.items():
+        if path == approved["package_path"]:
+            continue
+        if path.endswith("/" + approved["package_path"]) or (
+            isinstance(other, dict) and other.get("name") == approved["name"]
+        ):
+            raise EvidenceError("Approved artifact lock contains another install of the exempted package.")
+    print(f"✓ Verified reviewed artifact {approved['package_url']} for {approved['repository']}.")
+
+
 def validate_changes(changes: list[dict[str, Any]]) -> None:
+    try:
+        approved = artifact_exception(repository_identity())
+    except ValueError as error:
+        raise EvidenceError(str(error)) from error
     missing: list[str] = []
     identities: dict[tuple[str, str, str], GitHubActionIdentity] = {}
     first_party_identities: dict[str, FirstPartyActionIdentity] = {}
     npm_aliases: dict[str, NpmAliasIdentity] = {}
+    artifact_seen = False
 
     for change in changes:
         if change["change_type"] == "removed":
+            continue
+        if approved and matches_exception_family(change, approved["name"]):
+            if artifact_seen:
+                raise EvidenceError("Dependency artifact exception has duplicate package evidence.")
+            artifact_seen = True
+            verify_artifact_exception(change, approved)
             continue
         license_value = change.get("license")
         if isinstance(license_value, str) and license_value.strip():
