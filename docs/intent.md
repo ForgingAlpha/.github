@@ -50,8 +50,9 @@ automation without copying workflow logic between repositories.
 - External automation dependencies are immutable and integrity-verifiable.
 - Required CI, rather than diagnostics or human memory, is merge authority.
 - Every introduced or updated third-party package has license evidence approved
-  by one central commercial-use allowlist; fixed first-party actions have
-  governed ownership and release provenance; unknown evidence fails closed.
+  by central policy: a permissive commercial-use SPDX allowlist or a reviewed
+  exception for one repository and immutable artifact. Fixed first-party actions
+  have governed ownership and release provenance; unknown evidence fails closed.
 
 ## Boundaries
 

@@ -343,7 +343,8 @@ Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
 commercial-use allowlist; callers SHALL NOT disable the review, substitute a
 denylist, or exempt individual packages. Missing, unknown, or custom license
-evidence SHALL fail closed for third-party dependencies. When GitHub omits
+evidence SHALL fail closed for third-party dependencies except for a reviewed
+central repository-and-artifact exception as specified below. When GitHub omits
 license metadata for a third-party GitHub Action pinned to an exact commit SHA,
 the central gate MAY resolve the repository license at that exact revision
 through GitHub's official license API and SHALL accept only an SPDX identifier
@@ -364,6 +365,30 @@ URL, alternate registry, credential, package exception, or executable package co
 SHALL enter the resolver. Ranged, tagged, malformed, or non-root aliases SHALL fail
 closed.
 
+The control plane MAY admit a custom-licensed artifact through a reviewed policy
+change binding one repository, canonical dependency identity, exact version,
+manifest and install path, canonical registry URL, sha512 integrity, and reviewed
+license-file digest. Preparation SHALL verify the license file within the bounded
+registry artifact against that integrity. Each exception proposal SHALL retain a
+source-bound verification receipt in central source with its policy review,
+recording the canonical source URL, verified SHA512 integrity, archive digest,
+license-member path and digest, retrieval time, and applied resource limits. These
+are reviewed preparation evidence; routine CI SHALL enforce the approved artifact
+through its exact identity and lock integrity without downloading the archive
+again. File identity alone SHALL NOT establish vendor terms acceptance
+or account entitlement. Human approval SHALL resolve that separate basis before
+adoption under REQ-024. Callers SHALL NOT supply or broaden exceptions.
+
+If the official action's package exclusion ignores versions, the independent,
+mandatory evidence guard SHALL inspect every added dependency in its normalized
+matching family before accepting nonempty license metadata. Only the single
+approved canonical record, matching manifest and npm v3 lock, exact artifact, and
+unambiguous runtime declaration SHALL pass. Other versions, manifests, duplicate
+records, conflicting identities, additional installs, missing evidence, symlinks,
+and malformed or oversized files SHALL fail closed. This exception SHALL NOT relax
+vulnerability review, the SPDX default, or other evidence classes. Later artifact
+updates SHALL require a new reviewed central policy change.
+
 **Fit:** Approved third-party SPDX evidence passes; non-approved evidence
 fails; the exact-revision third-party resolver fails closed on malformed
 identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
@@ -371,6 +396,8 @@ first-party resolver fails closed on any schema, repository, channel, commit,
 tree, or action-path mismatch; npm alias normalization fails closed on any manifest,
 PURL, spec, lock format, target, registry, artifact, integrity, license, redirect,
 availability, response-size, or lookup-count mismatch;
+the artifact exception accepts only its reviewed repository and immutable artifact,
+including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
