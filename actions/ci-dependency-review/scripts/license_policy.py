@@ -20,6 +20,7 @@ APPROVED_SPDX = (
     "MIT",
     "MIT-0",
     "PostgreSQL",
+    "PSF-2.0",  # https://spdx.org/licenses/PSF-2.0.html
     "Python-2.0",
     "Unicode-3.0",
     "Unicode-DFS-2016",
