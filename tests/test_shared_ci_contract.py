@@ -339,6 +339,7 @@ class SharedCiContractTest(unittest.TestCase):
             "./actions/ci-merge-flow",
             "./actions/ci-alphaapps-policy",
             "./actions/ci-markdown",
+            "./actions/ci-dependency-review",
             "./actions/ci-github-actions",
             "./actions/ci-dependabot-coverage",
         ):

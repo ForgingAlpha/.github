@@ -28,6 +28,9 @@ jobs:
       - name: Validate Alpha Apps policy
         uses: ./actions/ci-alphaapps-policy
 
+      - name: Review dependency changes
+        uses: ./actions/ci-dependency-review
+
       - name: Validate Markdown
         uses: ./actions/ci-markdown
 
