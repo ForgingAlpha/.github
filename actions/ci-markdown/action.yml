@@ -14,7 +14,7 @@
 #         - uses: ForgingAlpha/.github/actions/ci-markdown@v1
 
 name: CI Markdown
-description: "Markdown CI: markdownlint-cli2 for repo docs"
+description: "Linux Markdown CI: all tracked inputs under repo policy; unsupported or unreadable paths fail"
 
 inputs:
   config-path:
@@ -37,31 +37,5 @@ runs:
     - name: Run Markdown lint
       env:
         MARKDOWN_CONFIG_PATH: ${{ inputs.config-path }}
-      run: |
-        set -euo pipefail
-
-        if [ -z "${MARKDOWN_CONFIG_PATH}" ]; then
-          echo "✗ Invalid config-path input: empty string."
-          echo "  WHAT: config-path was empty."
-          echo "  WHY: ci-markdown requires an explicit markdownlint-cli2 config."
-          echo "  HOW: set config-path to .markdownlint-cli2.yaml or another tracked config."
-          exit 1
-        fi
-
-        if [ ! -f "${MARKDOWN_CONFIG_PATH}" ]; then
-          echo "✗ Markdown config '${MARKDOWN_CONFIG_PATH}' was not found."
-          echo "  WHAT: ci-markdown could not read '${MARKDOWN_CONFIG_PATH}'."
-          echo "  WHY: shared Markdown linting must run from a repo-owned policy file."
-          echo "  HOW: add the config file or update config-path to the checked-in config."
-          exit 1
-        fi
-
-        mapfile -t markdown_files < <("$GITHUB_ACTION_PATH/scripts/tracked_markdown.sh")
-
-        if [ "${#markdown_files[@]}" -eq 0 ]; then
-          echo "✓ No tracked Markdown files found."
-          exit 0
-        fi
-
-        npx --yes markdownlint-cli2@0.22.1 --config "${MARKDOWN_CONFIG_PATH}" "${markdown_files[@]}"
+      run: node "$GITHUB_ACTION_PATH/scripts/lint_markdown.mjs"
       shell: bash

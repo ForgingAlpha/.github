@@ -39,7 +39,7 @@ described below and never carries unrelated `dev` work.
 | Action | Contract |
 | --- | --- |
 | `ci-alphaapps-policy` | Approved source truth and fail-closed human CODEOWNERS boundaries |
-| `ci-markdown` | Pinned validation of every tracked Markdown file |
+| `ci-markdown` | Locked validation of tracked Markdown under repository policy on Linux |
 | `ci-github-actions` | Actionlint, immutable refs, permissions, and trigger safety |
 | `ci-dependabot-coverage` | Current pre-cutover update coverage; replaced by the updater-neutral gate in the Renovate plan |
 | `ci-update-ownership` | Sole normal-updater ownership and security-only Dependabot cutover |
@@ -59,6 +59,28 @@ External Actions are Renovate-owned and use immutable full SHAs with adjacent
 release comments. Internal `ForgingAlpha/.github` shared Actions are excluded
 from Renovate and use `@v1`, the current approved control-plane rollout
 channel.
+
+## Markdown Inputs
+
+Run `ci-markdown` from the checkout root on Linux. It discovers every tracked
+`.md` and `.markdown` path, then applies the existing repository configuration,
+including its exclusions. Missing, unreadable, non-file, or non-UTF-8 indexed
+paths fail explicitly; sparse checkouts must contain every indexed Markdown file.
+This input-integrity check runs before lint exclusions, so ignored paths must also
+exist and be readable. Earlier versions could accept ignored missing paths. The
+stricter preflight requires complete inputs; repository lint filtering then applies
+to those admitted inputs.
+Paths containing CR/LF, backslashes, glob escapes rewritten by the locked CLI
+(including braces, pipes, `!(` and `@(`), or `+(` in a directory name are unsupported
+and fail with a rename diagnostic. Ordinary spaces and supported literal glob
+characters are passed without shell interpretation.
+
+The Action owns the tool manifest and integrity-bearing dependency lock. It installs
+into a fresh temporary directory, using npm user/environment configuration rather
+than the consumer project's `.npmrc`; configure registry access at that scope.
+The consumer's packages and lockfiles are not used or modified. Successful empty
+inventories require no package installation. Git discovery has a 64 MiB capture
+limit and fails explicitly on overflow.
 
 ## Elixir Profiles
 
