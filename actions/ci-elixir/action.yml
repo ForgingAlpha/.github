@@ -206,12 +206,21 @@ runs:
             exit 1
           }
         done
-        if mix deps | grep -Eq '^\* phoenix '; then
+        mix_dependencies="$(mix deps)"
+        if grep -Eq '^\* phoenix ' <<< "${mix_dependencies}"; then
           mix help sobelow >/dev/null 2>&1 || {
             echo "✗ Phoenix was detected but the Sobelow Mix task is unavailable."
             echo "  HOW: add a compatible Sobelow dependency for dev and test."
             exit 1
           }
+        else
+          phoenix_match_status=$?
+          if [ "${phoenix_match_status}" -ne 1 ]; then
+            echo "✗ Phoenix dependency detection failed (grep status ${phoenix_match_status})." >&2
+            echo "  WHY: a matcher error cannot establish that Phoenix is absent." >&2
+            echo "  HOW: restore the runner's grep command and rerun CI." >&2
+            exit "${phoenix_match_status}"
+          fi
         fi
 
     - name: Check formatting
@@ -254,9 +263,17 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        if mix deps | grep -Eq '^\* phoenix '; then
+        mix_dependencies="$(mix deps)"
+        if grep -Eq '^\* phoenix ' <<< "${mix_dependencies}"; then
           mix sobelow --exit
         else
+          phoenix_match_status=$?
+          if [ "${phoenix_match_status}" -ne 1 ]; then
+            echo "✗ Phoenix dependency detection failed (grep status ${phoenix_match_status})." >&2
+            echo "  WHY: a matcher error cannot establish that Phoenix is absent." >&2
+            echo "  HOW: restore the runner's grep command and rerun CI." >&2
+            exit "${phoenix_match_status}"
+          fi
           echo "✓ Phoenix is not a dependency; Sobelow does not apply."
         fi
 
