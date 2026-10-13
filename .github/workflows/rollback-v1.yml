@@ -64,6 +64,10 @@ jobs:
             echo "✗ Rollback tag does not resolve to a commit."
             exit 1
           }
+          if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]] || [ "${ROLLOUT_TAG##*-}" != "${target_sha:0:12}" ]; then
+            echo "✗ Rollback rollout-tag suffix does not match its resolved commit."
+            exit 1
+          fi
           current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           relationship="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${target_sha}...${current_main}" --jq '.status')"
           case "${relationship}" in

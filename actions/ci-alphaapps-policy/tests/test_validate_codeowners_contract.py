@@ -51,6 +51,7 @@ class CodeownersContractValidatorTest(unittest.TestCase):
         return path
 
     def run_validator(self):
+        self.git("add", "--all")
         return subprocess.run(
             [sys.executable, str(SCRIPT)],
             cwd=self.repo,
@@ -228,6 +229,64 @@ class CodeownersContractValidatorTest(unittest.TestCase):
             action,
             "the published policy action must invoke the CODEOWNERS validator",
         )
+
+
+    def test_regular_deploy_file_requires_file_ownership(self):
+        self.write("deploy", "#!/bin/sh\n")
+        for owners, allowed in (
+            ("/deploy/ @leosmigel", False),
+            ("/deploy @forgingalpha-bot", False),
+            ("/deploy @leosmigel", True),
+        ):
+            with self.subTest(owners=owners):
+                self.write(".github/CODEOWNERS", f"/.github/ @leosmigel\n{owners}\n")
+                result = self.run_validator()
+                self.assertEqual(result.returncode == 0, allowed, result.stderr)
+
+    def test_deploy_directory_keeps_directory_ownership(self):
+        self.write("deploy/production.yml", "deployment\n")
+        self.write(".github/CODEOWNERS", "/.github/ @leosmigel\n/deploy/ @leosmigel\n")
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_canonical_control_plane_requires_whole_tree_ownership(self):
+        self.git("remote", "set-url", "origin", "git@github.com:ForgingAlpha/control-plane.git")
+        self.write(".github/CODEOWNERS", "/.github/ @leosmigel\n")
+        self.assertNotEqual(self.run_validator().returncode, 0)
+        self.write(".github/CODEOWNERS", "* @leosmigel\n")
+        self.assertEqual(self.run_validator().returncode, 0)
+
+
+    def test_nested_production_surfaces_require_human_ownership(self):
+        self.write("apps/web/Dockerfile", "FROM scratch\n")
+        self.write("services/api/fly.toml", "app = 'api'\n")
+        self.write("platform/terraform/main.tf", "resource {}\n")
+        self.write("apps/worker/deploy", "#!/bin/sh\n")
+        patterns = ["/.github/", "/apps/web/Dockerfile", "/apps/worker/deploy", "/platform/terraform/", "/services/api/fly.toml"]
+        self.write(".github/CODEOWNERS", "/.github/ @leosmigel\n")
+        self.assert_contract_failure(self.run_validator(), "production-control")
+        for owner, allowed in (("@forgingalpha-bot", False), ("@leosmigel", True)):
+            with self.subTest(owner=owner):
+                self.write(".github/CODEOWNERS", "\n".join(f"{pattern} {owner}" for pattern in patterns) + "\n")
+                result = self.run_validator()
+                self.assertEqual(result.returncode == 0, allowed, result.stderr)
+
+    def test_enclosing_production_directory_protects_nested_surfaces(self):
+        self.write("infra/service/terraform/main.tf", "resource {}\n")
+        self.write("infra/service/Dockerfile", "FROM scratch\n")
+        self.write(".github/CODEOWNERS", "infra/service/** @forgingalpha-bot\n/.github/ @leosmigel\n/infra/ @leosmigel\n")
+        self.assertEqual(self.run_validator().returncode, 0)
+
+    def test_ignored_dependency_artifacts_are_not_candidate_production_surfaces(self):
+        self.write(".gitignore", "node_modules/\n")
+        self.write("node_modules/tool/Dockerfile", "FROM scratch\n")
+        self.write(".github/CODEOWNERS", "/.github/ @leosmigel\n")
+        self.assertEqual(self.run_validator().returncode, 0)
+
+    def test_unrepresentable_nested_target_cannot_claim_complete_ownership(self):
+        self.write("apps/web site/Dockerfile", "FROM scratch\n")
+        self.write(".github/CODEOWNERS", "/.github/ @leosmigel\n")
+        self.assert_contract_failure(self.run_validator(), "verification is incomplete")
 
 
 if __name__ == "__main__":

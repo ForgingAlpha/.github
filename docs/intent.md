@@ -22,19 +22,17 @@ automation without copying workflow logic between repositories.
   internal `@v1` current channel.
 - Every `v1` rollout is serialized, traceable, immutable-recorded, and
   operator-reversible.
-- Normal dependency updates receive a deliberate cooldown; eligible security
-  updates do not wait and automatically reach protected `main` and deployment
-  after exact-commit CI succeeds.
+- Normal dependency proposals receive a deliberate cooldown; eligible security
+  proposals receive immediate classification and exact-patch verification.
+  An authorized human performs every pull-request merge after its required gates.
 - Every versioned dependency, runtime, tool, Action, image, and external plugin
   has exactly one discoverable update owner; unmanaged version literals fail
   required CI.
 - Renovate owns normal external updates across supported manifests, locks, and
   annotated literals. Internal `ForgingAlpha/.github@v1` movement remains
-  owned by the protected control-plane rollout. Cooled normal updates
-  automatically integrate into code-repository `dev` after exact-head CI, but
-  only exact security projections may activate into `main` without a human
-  approval.
-- Dependabot owns security remediation only so privileged promotion can prove
+  owned by the protected control-plane rollout. Cooled normal updates enter
+  code-repository `dev` through human-merged pull requests with exact-head CI.
+- Dependabot owns security remediation only so trusted classification can prove
   GitHub's official vulnerability-alert-to-pull-request association.
 - Runtime and tool upgrades follow the same normal patch, minor, and major
   automation path while preserving exact committed locks and integrity data.
@@ -48,7 +46,7 @@ automation without copying workflow logic between repositories.
   reproducible, and required CI rejects unapproved or internally inconsistent
   projections.
 - External automation dependencies are immutable and integrity-verifiable.
-- Required CI, rather than diagnostics or human memory, is merge authority.
+- Required CI supplies technical evidence; it does not grant merge authority.
 - Every introduced or updated third-party package has license evidence approved
   by central policy: a permissive commercial-use SPDX allowlist or a reviewed
   exception for one repository and immutable artifact. Fixed first-party actions
@@ -68,10 +66,11 @@ runtime commands, deployment configuration, secrets, data, and the committed
 `mise.toml`/`mise.lock` projection used to execute their assigned profile; they
 do not independently choose governed runtime versions. Agents never receive
 operator SSH keys or personal credentials. The general-purpose
-agent/authoring identity cannot approve or merge trust-surface or control-plane
-changes. Separately scoped updater, security, and release identities may
-perform only the exact, pre-authorized operations defined by their governing
-contracts. Privileged automation never executes untrusted pull-request code.
+agent/authoring identity cannot approve or merge changes. Scoped updater,
+security, and release identities may prepare proposals, publish checks, or
+perform separately authorized tag and deployment operations. They cannot
+merge pull requests or directly update persistent branches. Privileged
+automation never executes untrusted pull-request code.
 
 ## Invariants And Tradeoffs
 
@@ -81,7 +80,8 @@ contracts. Privileged automation never executes untrusted pull-request code.
   exceptions, incremental Markdown enforcement, and compatibility entrypoints
   are removed rather than carried forward.
 - Every control-plane change lands through a reviewed pull request with green
-  `CI` and authorized-human approval of the exact current revision; after
+  `CI`, authorized-human approval of the exact current revision, and human
+  execution of the merge; after
   merge, the exact merged commit and version-coherent consumer profiles are
   verified before rollout.
 - Normal and security automation have disjoint authority. Renovate does not
@@ -89,7 +89,7 @@ contracts. Privileged automation never executes untrusted pull-request code.
   updates.
 - Security urgency may bypass cooldown and release batching, never CI or
   source provenance, exact-patch reconstruction, current-base verification,
-  CI, CodeQL, or exact-SHA activation.
+  CodeQL, or human merge authority.
 - Inactive deployment tooling is removed instead of receiving new update
   automation.
 - Fail closed when identity, classification, branch state, checks, or deployed

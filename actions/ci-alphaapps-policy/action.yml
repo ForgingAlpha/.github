@@ -19,7 +19,7 @@
 #         - uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
 
 name: CI Alpha Apps Policy
-description: "Alpha Apps policy: approved source truth and human ownership"
+description: "Alpha Apps policy: source-truth baseline structure and human ownership"
 
 inputs:
   base-ref:
@@ -61,7 +61,7 @@ runs:
         fi
       shell: bash
 
-    - name: Validate approved source truth
+    - name: Validate source-truth baseline structure
       env:
         ALPHAAPPS_POLICY_BASE_REF: ${{ inputs.base-ref }}
         ALPHAAPPS_POLICY_REPO_KIND: ${{ inputs.repo-kind }}

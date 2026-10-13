@@ -135,6 +135,13 @@ class RuntimeProfileTest(unittest.TestCase):
                 self.catalog, "ForgingAlpha/alphaapps-site", policy
             )
 
+    def test_enrolled_runtime_cannot_omit_assignment_from_update_policy(self):
+        policy = {"schema_version": 1, "normal_update_owner": "renovate", "base_branch": "dev"}
+        with self.assertRaisesRegex(runtime_profile.ProfileError, "does not equal assigned profile"):
+            runtime_profile.validate_policy_assignment(
+                self.catalog, "ForgingAlpha/alphaapps-site", policy
+            )
+
     def test_unassigned_or_inactive_repository_fails(self):
         with self.assertRaisesRegex(runtime_profile.ProfileError, "no runtime profile assignment"):
             runtime_profile.validate_projection(

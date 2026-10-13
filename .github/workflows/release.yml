@@ -98,25 +98,52 @@ jobs:
             verified_run_url="$(jq -r '.html_url' <<<"${latest_ci}")"
           fi
 
-          resolve_tag_commit() {
-            local tag="$1"
-            local object sha type
-            object="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object')" || return 1
-            sha="$(jq -r '.sha' <<<"${object}")"
-            type="$(jq -r '.type' <<<"${object}")"
-            while [ "${type}" = "tag" ]; do
-              object="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${sha}" --jq '.object')"
-              sha="$(jq -r '.sha' <<<"${object}")"
-              type="$(jq -r '.type' <<<"${object}")"
+          resolve_object_commit() {
+            local object="$1"
+            local sha type depth=0
+            while :; do
+              sha="$(jq -er '.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<<"${object}")" || return 1
+              type="$(jq -er '.type' <<<"${object}")" || return 1
+              if [ "${type}" = "commit" ]; then
+                printf '%s\n' "${sha}"
+                return 0
+              fi
+              [ "${type}" = "tag" ] && [ "${depth}" -lt 16 ] || return 1
+              object="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${sha}" --jq '.object')" || return 1
+              depth=$((depth + 1))
             done
-            [ "${type}" = "commit" ] || return 1
-            printf '%s\n' "${sha}"
           }
-          previous_v1_object="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v1" --jq '.object.sha' 2>/dev/null || true)"
-          previous_v1_commit="$(resolve_tag_commit v1 2>/dev/null || true)"
+          resolve_tag_commit() {
+            local object
+            object="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/$1" --jq '.object')" || return 1
+            resolve_object_commit "${object}"
+          }
+          # A successful complete enumeration distinguishes absence from a failed read.
+          v1_pages="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/v1")"
+          v1_refs="$(jq -ce '
+            if type != "array" or (all(.[]; type == "array") | not) then error("invalid ref pages") else . end |
+            if all(.[][]; type == "object" and (.ref | type == "string")) then . else error("invalid ref entry") end |
+            [.[][] | select(.ref == "refs/tags/v1")] |
+            if length <= 1 then . else error("duplicate v1 ref") end' <<<"${v1_pages}")"
+          previous_v1_object=""
+          previous_v1_commit=""
+          if [ "$(jq 'length' <<<"${v1_refs}")" -eq 1 ]; then
+            captured_object="$(jq -ce '.[0].object' <<<"${v1_refs}")"
+            previous_v1_object="$(jq -er '.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<<"${captured_object}")"
+            previous_v1_commit="$(resolve_object_commit "${captured_object}")" || {
+              echo "✗ Captured v1 object could not be resolved to a commit; no rollout is permitted."
+              exit 1
+            }
+          fi
           gh api --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/v1-rollout-" \
             > /tmp/prior-rollouts.json
+          prior_tags="$(jq -er '
+            if type != "array" or (all(.[]; type == "array") | not) then error("invalid rollout ref pages") else . end |
+            [.[][] |
+              if type == "object" and (.ref | type == "string") then .ref else error("invalid rollout ref entry") end |
+              if test("^refs/tags/v1-rollout-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}$") then ltrimstr("refs/tags/") else error("invalid rollout tag") end
+            ] | join("\n")' /tmp/prior-rollouts.json)"
           prior_rollouts=0
           existing_rollout_tag=""
           while IFS= read -r prior_tag; do
@@ -129,7 +156,7 @@ jobs:
               prior_rollouts=$((prior_rollouts + 1))
               existing_rollout_tag="${prior_tag}"
             fi
-          done < <(jq -r '.[][] | .ref | sub("^refs/tags/"; "")' /tmp/prior-rollouts.json)
+          done <<<"${prior_tags}"
           if [ "${prior_rollouts}" -gt 0 ] && [ "${previous_v1_commit}" != "${VERIFIED_SHA}" ]; then
             echo "✗ ${VERIFIED_SHA} was already rolled out and v1 has since moved away."
             echo "  WHY: an Actions re-run must not silently undo an operator rollback."
@@ -160,6 +187,7 @@ jobs:
         if: ${{ steps.verify.outputs.already_complete != 'true' }}
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           PREVIOUS_V1_COMMIT: ${{ steps.verify.outputs.previous_v1_commit }}
           PREVIOUS_V1_OBJECT: ${{ steps.verify.outputs.previous_v1_object }}
           ROLLOUT_TAG: ${{ steps.verify.outputs.rollout_tag }}
@@ -175,17 +203,17 @@ jobs:
             -m "Previous v1 SHA: ${PREVIOUS_V1_COMMIT:-none}" \
             -m "Current v1 SHA: ${VERIFIED_SHA}" \
             -m "Verified CI: ${VERIFIED_RUN_URL}"
-          if [ -n "${PREVIOUS_V1_OBJECT}" ]; then
-            git push --atomic \
-              --force-with-lease="refs/tags/v1:${PREVIOUS_V1_OBJECT}" \
-              origin \
-              "${VERIFIED_SHA}:refs/tags/v1" \
-              "refs/tags/${ROLLOUT_TAG}"
-          else
-            git push --atomic origin \
-              "${VERIFIED_SHA}:refs/tags/v1" \
-              "refs/tags/${ROLLOUT_TAG}"
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "${current_main}" != "${VERIFIED_SHA}" ]; then
+            echo "✗ Main moved after verification; refusing superseded rollout."
+            exit 1
           fi
+          # An empty expected-old value requires v1 still to be absent.
+          git push --atomic \
+            --force-with-lease="refs/tags/v1:${PREVIOUS_V1_OBJECT}" \
+            origin \
+            "${VERIFIED_SHA}:refs/tags/v1" \
+            "refs/tags/${ROLLOUT_TAG}"
 
       - name: Record rollout
         shell: bash

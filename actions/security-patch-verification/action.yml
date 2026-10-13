@@ -1,0 +1,104 @@
+name: Exact Security Patch Verification
+description: Read-only verification of an exact security projection before or after a human merge.
+
+inputs:
+  proof-token:
+    description: Narrow read-only security source/projector App token with metadata, pull request, content, checks, Actions, and vulnerability-alert read.
+    required: true
+  pull-request-number:
+    description: Exact projected production pull request.
+    required: true
+  ci-app-id:
+    description: App ID trusted to report CI; required for pre-merge verification.
+    required: false
+  codeql-app-id:
+    description: App ID trusted to report CodeQL; required for pre-merge verification.
+    required: false
+  codeql-check-name:
+    description: Required CodeQL aggregate check name.
+    required: false
+    default: CodeQL
+  source-branch:
+    description: Protected integration branch.
+    required: false
+    default: dev
+  target-branch:
+    description: Protected production branch.
+    required: false
+    default: main
+  manifest-path:
+    description: Root npm manifest path for the root npm profile.
+    required: false
+    default: package.json
+  lock-path:
+    description: Root npm lock path for the root npm profile.
+    required: false
+    default: package-lock.json
+  operation:
+    description: Verify before human merge, or verify the observed merged pull request after a main push.
+    required: false
+    default: pre-merge
+  merge-sha:
+    description: Exact observed main push SHA, required for post-merge verification.
+    required: false
+
+outputs:
+  verified:
+    description: True when the selected read-only verification succeeds.
+    value: ${{ steps.verify.outputs.verified || steps.post.outputs.verified }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate verification operation
+      shell: bash
+      env:
+        OPERATION: ${{ inputs.operation }}
+        MERGE_SHA: ${{ inputs.merge-sha }}
+      run: |
+        set -euo pipefail
+        case "${OPERATION}" in
+          pre-merge) ;;
+          post-merge)
+            [[ "${MERGE_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "✗ post-merge verification requires the observed main push SHA." >&2
+              exit 1
+            }
+            ;;
+          *) echo "✗ operation must be pre-merge or post-merge." >&2; exit 1 ;;
+        esac
+
+    - name: Re-prove source, projection, and trusted checks without merge authority
+      id: verify
+      if: ${{ inputs.operation == 'pre-merge' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.proof-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-projection \
+          --repository "${GITHUB_REPOSITORY}" \
+          --pull-request "${{ inputs.pull-request-number }}" \
+          --source-branch "${{ inputs.source-branch }}" \
+          --target-branch "${{ inputs.target-branch }}" \
+          --manifest-path "${{ inputs.manifest-path }}" \
+          --lock-path "${{ inputs.lock-path }}" \
+          --require-ready true \
+          --verify-checks true \
+          --ci-app-id "${{ inputs.ci-app-id }}" \
+          --codeql-app-id "${{ inputs.codeql-app-id }}" \
+          --codeql-check-name "${{ inputs.codeql-check-name }}"
+
+    - name: Verify observed human merge against its attested projection
+      id: post
+      if: ${{ inputs.operation == 'post-merge' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.proof-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-post-merge \
+          --repository "${GITHUB_REPOSITORY}" \
+          --target-branch "${{ inputs.target-branch }}" \
+          --pull-request "${{ inputs.pull-request-number }}" \
+          --merge-sha "${{ inputs.merge-sha }}"

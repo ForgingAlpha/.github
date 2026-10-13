@@ -1,7 +1,7 @@
 config:
   default: true
-  MD013: false # Plans and generated evidence include long command/proof lines.
+  MD013: false # Commands, tables and evidence references may require long lines.
   MD024:
     siblings_only: true
-  MD033: false # Product Evidence views use generated HTML comment markers.
+  MD033: false # Documents may include HTML comment markers.
   MD041: false # Repo-local lifecycle docs use YAML frontmatter before headings.

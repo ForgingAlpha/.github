@@ -1,15 +1,15 @@
-name: Exact Security Patch Source
-description: Prove and optionally merge one official Dependabot security patch into protected dev.
+name: Exact Security Patch Classification
+description: Preflight or classify one exact Dependabot security patch for human review and merge.
 
 inputs:
   github-token:
-    description: Read-only Actions/checks/contents/PR token for preflight, or the fixed App token adding alert read, Actions read, and checks/contents/PR write for merge.
+    description: Read-only Actions/checks/contents/PR token for preflight; classification adds official alert read and checks write through the fixed App.
     required: true
   workflow-run-id:
     description: Exact successful CI workflow run that woke the protected resolver.
     required: true
   operation:
-    description: Either preflight or merge.
+    description: Either preflight or classify; preflight does not read official alert associations.
     required: false
     default: preflight
   expected-pull-request:
@@ -24,20 +24,20 @@ inputs:
 
 outputs:
   verified:
-    description: True when read-only source proof succeeds.
+    description: True when structural preflight and trusted checks succeed; official alert eligibility is proved by classification.
     value: ${{ steps.preflight.outputs.verified }}
   pull-request-number:
     description: Exact Dependabot source pull request.
-    value: ${{ steps.preflight.outputs.pull_request_number }}
+    value: ${{ steps.preflight.outputs.pull_request_number || steps.classify.outputs.pull_request_number }}
   source-base-sha:
     description: Exact protected dev base proved by preflight.
-    value: ${{ steps.preflight.outputs.source_base_sha }}
+    value: ${{ steps.preflight.outputs.source_base_sha || steps.classify.outputs.source_base_sha }}
   source-head-sha:
     description: Exact Dependabot source head proved by preflight.
-    value: ${{ steps.preflight.outputs.source_head_sha }}
-  source-merge-sha:
-    description: Exact resulting dev merge commit when operation is merge.
-    value: ${{ steps.merge.outputs.source_merge_sha }}
+    value: ${{ steps.preflight.outputs.source_head_sha || steps.classify.outputs.source_head_sha }}
+  classified:
+    description: True when the exact official alert association and trusted checks are classified.
+    value: ${{ steps.classify.outputs.classified }}
 
 runs:
   using: composite
@@ -53,22 +53,22 @@ runs:
         set -euo pipefail
         case "${OPERATION}" in
           preflight) ;;
-          merge)
+          classify)
             [[ "${EXPECTED_PR}" =~ ^[1-9][0-9]*$ ]] || {
-              echo "✗ merge requires the exact preflight pull-request number." >&2
+              echo "✗ classify requires the exact preflight pull-request number." >&2
               exit 1
             }
             [[ "${EXPECTED_HEAD}" =~ ^[0-9a-f]{40}$ ]] || {
-              echo "✗ merge requires the exact preflight source head." >&2
+              echo "✗ classify requires the exact preflight source head." >&2
               exit 1
             }
             [[ "${EXPECTED_BASE}" =~ ^[0-9a-f]{40}$ ]] || {
-              echo "✗ merge requires the exact preflight source base." >&2
+              echo "✗ classify requires the exact preflight source base." >&2
               exit 1
             }
             ;;
           *)
-            echo "✗ operation must be preflight or merge." >&2
+            echo "✗ operation must be preflight or classify." >&2
             exit 1
             ;;
         esac
@@ -86,15 +86,15 @@ runs:
           --workflow-run-id "${{ inputs.workflow-run-id }}" \
           --wait-seconds 300
 
-    - name: Re-prove, classify, and merge exact source
-      id: merge
-      if: ${{ inputs.operation == 'merge' }}
+    - name: Re-prove and classify exact source
+      id: classify
+      if: ${{ inputs.operation == 'classify' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
         set -euo pipefail
-        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" merge-source \
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" classify-source \
           --repository "${GITHUB_REPOSITORY}" \
           --workflow-run-id "${{ inputs.workflow-run-id }}" \
           --pull-request "${{ inputs.expected-pull-request }}" \

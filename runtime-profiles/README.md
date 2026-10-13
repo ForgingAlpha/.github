@@ -6,7 +6,7 @@ exact `mise.toml` and checksum-bearing `mise.lock`; the shared
 `ci-runtime-profile` action proves those files are an exact projection of the
 consumer's active assignment before installation.
 
-The initial active canary is `ForgingAlpha/alphaapps-site` on profile
+The active canary is `ForgingAlpha/alphaapps-site` on profile
 `node-24-site`. Elixir repositories are intentionally not assigned until an
 official mise release contains verified Linux Erlang prebuilt checksums. This
 avoids publishing an approved profile that the current installer cannot enforce.
