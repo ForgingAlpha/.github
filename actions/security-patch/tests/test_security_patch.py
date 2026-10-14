@@ -12,8 +12,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "actions" / "security-patch" / "scripts" / "security_patch.py"
 PROJECTION_ACTION = ROOT / "actions" / "security-patch-projection" / "action.yml"
-ACTIVATION_ACTION = ROOT / "actions" / "security-patch-activation" / "action.yml"
-SOURCE_ACTION = ROOT / "actions" / "security-patch-source" / "action.yml"
+VERIFICATION_ACTION = ROOT / "actions" / "security-patch-verification" / "action.yml"
+SOURCE_ACTION = ROOT / "actions" / "security-patch-classification" / "action.yml"
 MERGE_FLOW_ACTION = ROOT / "actions" / "ci-merge-flow" / "action.yml"
 
 spec = importlib.util.spec_from_file_location("security_patch", SCRIPT)
@@ -129,9 +129,7 @@ class ProjectionCreateApi(FakeApi):
             ]]
         if path.startswith("repos/ForgingAlpha/alphaapps-site/pulls?state=all&head="):
             return [[pull for pull in self.pull_requests.values()]]
-        if path.startswith("repos/ForgingAlpha/alphaapps-site/commits/") and path.endswith(
-            "/check-runs?filter=all&per_page=100"
-        ):
+        if path == f"repos/ForgingAlpha/alphaapps-site/commits/{self.projection_head}/check-runs?filter=all&per_page=100":
             return [{"check_runs": self.checks}]
         return super().pages(path, fresh=fresh)
 
@@ -154,6 +152,7 @@ class ProjectionCreateApi(FakeApi):
             result = {
                 "id": 701 + len(self.checks),
                 **payload,
+                "completed_at": "2026-08-16T12:01:00Z",
                 "app": {
                     "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
                     "slug": "forgingalpha-security-projector",
@@ -174,7 +173,8 @@ class ProjectionCreateApi(FakeApi):
                 "draft": payload["draft"],
                 "maintainer_can_modify": payload["maintainer_can_modify"],
                 "changed_files": 1,
-                "base": {"ref": "main", "sha": self.production_base},
+                "created_at": "2026-08-16T12:01:01Z",
+                "base": {"ref": payload["base"], "sha": self.production_base},
                 "head": {
                     "ref": payload["head"],
                     "sha": self.projection_head,
@@ -204,54 +204,19 @@ class ProjectionCreateApi(FakeApi):
         raise AssertionError(f"unexpected POST {path}")
 
 
-class SourceMergeApi(FakeApi):
+class SourceClassificationApi(FakeApi):
     def __init__(self):
         super().__init__()
-        self.did_merge = False
         self.source_ref_reads = 0
         self.advance_at_ref_read = None
         self.duplicate_after_write = False
-        self.lose_merge_response = False
-        self.merge_pull_visibility_delay = 0
-        self.merge_ref_visibility_delay = 0
-        self.merge_association_visibility_delay = 0
-        self.merge_pull_reads = 0
-        self.merge_ref_reads = 0
-        self.merge_association_reads = 0
-        self.merge_actor = "forgingalpha-security-automation[bot]"
-        self.merged_ref_sha = sha("c")
 
     def get(self, path, fresh=False):
-        repository = "ForgingAlpha/alphaapps-site"
-        if path == f"repos/{repository}/git/ref/heads/dev":
+        if path == "repos/ForgingAlpha/alphaapps-site/git/ref/heads/dev":
             self.source_ref_reads += 1
-            if self.did_merge:
-                self.merge_ref_reads += 1
-                delayed = self.merge_ref_reads <= self.merge_ref_visibility_delay
-                return {"object": {"sha": sha("a") if delayed else self.merged_ref_sha}}
             advanced = self.advance_at_ref_read is not None and self.source_ref_reads >= self.advance_at_ref_read
             return {"object": {"sha": sha("7") if advanced else sha("a")}}
-        if path == f"repos/{repository}/pulls/17" and self.did_merge:
-            self.merge_pull_reads += 1
-            if self.merge_pull_reads <= self.merge_pull_visibility_delay:
-                return super().get(path, fresh=fresh)
-            value = dict(self.gets[path])
-            value.update({
-                "state": "closed",
-                "merged_at": "2026-08-16T12:30:00Z",
-                "merge_commit_sha": sha("c"),
-                "merged_by": {"login": self.merge_actor},
-            })
-            return value
         return super().get(path, fresh=fresh)
-
-    def pages(self, path, fresh=False):
-        association_path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
-        if path == association_path and self.did_merge:
-            self.merge_association_reads += 1
-            if self.merge_association_reads <= self.merge_association_visibility_delay:
-                return [[]]
-        return super().pages(path, fresh=fresh)
 
     def post(self, path, payload):
         self.posts.append((path, payload))
@@ -259,7 +224,7 @@ class SourceMergeApi(FakeApi):
             result = {
                 "id": 601,
                 **payload,
-                "head_sha": sha("b"),
+                "completed_at": "2026-08-16T11:59:59Z",
                 "app": {
                     "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
                     "slug": "forgingalpha-security-automation",
@@ -276,35 +241,6 @@ class SourceMergeApi(FakeApi):
                 self.page_values[checks_path][0]["check_runs"].append(duplicate)
             return result
         raise AssertionError(f"unexpected POST {path}")
-
-    def put(self, path, payload):
-        self.puts.append((path, payload))
-        if path.endswith("/pulls/17/merge"):
-            self.did_merge = True
-            if self.lose_merge_response:
-                raise security_patch.PolicyError("simulated lost merge response")
-            return {"merged": True, "sha": sha("c")}
-        raise AssertionError(f"unexpected PUT {path}")
-
-    def patch(self, path, payload):
-        self.patches.append((path, payload))
-        if path.endswith("/check-runs/601"):
-            result = {
-                "id": 601,
-                **payload,
-                "head_sha": sha("b"),
-                "app": {
-                    "id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID,
-                    "slug": "forgingalpha-security-automation",
-                },
-            }
-            checks_path = (
-                f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}"
-                "/check-runs?filter=all&per_page=100"
-            )
-            self.page_values[checks_path][0]["check_runs"] = [result]
-            return result
-        raise AssertionError(f"unexpected PATCH {path}")
 
 
 def source_fixture() -> FakeApi:
@@ -341,7 +277,7 @@ def source_fixture() -> FakeApi:
             "repo": {"full_name": repository},
         },
         "user": {"login": "dependabot[bot]"},
-        "merged_by": {"login": "forgingalpha-security-automation[bot]"},
+        "merged_by": {"login": "authorized-maintainer", "type": "User"},
     }
     attestation = {
         "schema": security_patch.SOURCE_SCHEMA,
@@ -352,7 +288,7 @@ def source_fixture() -> FakeApi:
         "ghsa_set": ["GHSA-abcd-efgh-ijkl"],
         "profile": security_patch.PROFILE,
     }
-    api.page_values[f"repos/{repository}/commits/{source_head}/check-runs?per_page=100"] = [{
+    api.page_values[f"repos/{repository}/commits/{source_head}/check-runs?filter=all&per_page=100"] = [{
         "check_runs": [{
             "name": security_patch.SOURCE_CHECK,
             "head_sha": source_head,
@@ -403,9 +339,9 @@ def source_fixture() -> FakeApi:
     return api
 
 
-def source_candidate_fixture() -> SourceMergeApi:
+def source_candidate_fixture() -> SourceClassificationApi:
     base = source_fixture()
-    api = SourceMergeApi()
+    api = SourceClassificationApi()
     api.gets.update(base.gets)
     api.page_values.update(base.page_values)
     api.ghsas = base.ghsas
@@ -530,7 +466,7 @@ def live_codeql_pointer(
 
 
 def set_codeql_neutral(
-    api: SourceMergeApi,
+    api: SourceClassificationApi,
     output: dict | None = None,
     pointers: list | None = None,
 ) -> dict:
@@ -564,6 +500,8 @@ def admission_fixture() -> FakeApi:
         "source_pull_request": 17,
         "source_base_sha": sha("2"),
         "source_head_sha": sha("3"),
+        "source_merged_by": "authorized-maintainer",
+        "source_merged_at": "2026-08-16T12:00:00Z",
         "source_merge_sha": sha("4"),
         "ghsa_set": ["GHSA-abcd-efgh-ijkl"],
         "production_base_sha": production_base,
@@ -577,12 +515,14 @@ def admission_fixture() -> FakeApi:
     api.gets[f"repos/{repository}/pulls/{pull_request}"] = {
         "number": pull_request,
         "state": "open",
+        "maintainer_can_modify": False,
+        "created_at": "2026-08-16T12:01:01Z",
         "changed_files": 1,
         "base": {"ref": "main", "sha": production_base},
         "head": {"sha": projection_head, "repo": {"full_name": repository}},
         "user": {"login": "forgingalpha-security-projector[bot]"},
     }
-    api.page_values[f"repos/{repository}/commits/{projection_head}/check-runs?per_page=100"] = [{
+    api.page_values[f"repos/{repository}/commits/{projection_head}/check-runs?filter=all&per_page=100"] = [{
         "check_runs": [{
             "name": security_patch.PROJECTION_CHECK,
             "head_sha": projection_head,
@@ -626,6 +566,9 @@ def admission_fixture() -> FakeApi:
     api.page_values[f"repos/{repository}/pulls?state=open&base=main&per_page=100"] = [[{
         "number": pull_request,
     }]]
+    check = api.page_values[f"repos/{repository}/commits/{projection_head}/check-runs?filter=all&per_page=100"][0]["check_runs"][0]
+    check.update(security_patch.projection_check_payload(security_patch.parse_projection_attestation(attestation)))
+    check["completed_at"] = "2026-08-16T12:01:00Z"
     return api
 
 
@@ -642,6 +585,8 @@ def full_projection_fixture() -> FakeApi:
         "source_pull_request": 17,
         "source_base_sha": sha("a"),
         "source_head_sha": sha("b"),
+        "source_merged_by": "authorized-maintainer",
+        "source_merged_at": "2026-08-16T12:00:00Z",
         "source_merge_sha": sha("c"),
         "ghsa_set": ["GHSA-abcd-efgh-ijkl"],
         "production_base_sha": production_base,
@@ -655,13 +600,15 @@ def full_projection_fixture() -> FakeApi:
     api.gets[f"repos/{repository}/pulls/{pull_request}"] = {
         "number": pull_request,
         "state": "open",
+        "maintainer_can_modify": False,
+        "created_at": "2026-08-16T12:01:01Z",
         "draft": False,
         "changed_files": 1,
         "base": {"ref": "main", "sha": production_base},
         "head": {"sha": projection_head, "repo": {"full_name": repository}},
         "user": {"login": "forgingalpha-security-projector[bot]"},
     }
-    api.page_values[f"repos/{repository}/commits/{projection_head}/check-runs?per_page=100"] = [{
+    api.page_values[f"repos/{repository}/commits/{projection_head}/check-runs?filter=all&per_page=100"] = [{
         "check_runs": [{
             "name": security_patch.PROJECTION_CHECK,
             "head_sha": projection_head,
@@ -688,6 +635,9 @@ def full_projection_fixture() -> FakeApi:
     api.page_values[f"repos/{repository}/pulls/{pull_request}/commits?per_page=100"] = [[{
         "sha": projection_head,
     }]]
+    check = api.page_values[f"repos/{repository}/commits/{projection_head}/check-runs?filter=all&per_page=100"][0]["check_runs"][0]
+    check.update(security_patch.projection_check_payload(security_patch.parse_projection_attestation(attestation)))
+    check["completed_at"] = "2026-08-16T12:01:00Z"
     return api
 
 
@@ -706,6 +656,8 @@ def projection_create_fixture() -> tuple[ProjectionCreateApi, security_patch.Sou
         pull_request=17,
         source_base=sha("2"),
         source_head=sha("3"),
+        source_merged_by="authorized-maintainer",
+        source_merged_at="2026-08-16T12:00:00Z",
         source_merge=sha("4"),
         source_tree=sha("5"),
         ghsa_set=("GHSA-abcd-efgh-ijkl",),
@@ -1040,7 +992,7 @@ class SecurityAlertReconciliationTest(unittest.TestCase):
             (self.GHSA, self.GHSA),
         ])
 
-        with self.assertRaisesRegex(security_patch.PolicyError, "does not equal source attestation"):
+        with self.assertRaisesRegex(security_patch.PolicyError, "outside source attestation"):
             self.reconcile(api, wait_seconds=1)
         self.assertEqual(len(api.security_calls), 1)
 
@@ -1110,9 +1062,28 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
 
     def test_preflight_accepts_one_live_workflow_pointer(self):
         api = source_candidate_fixture()
-        api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]["pull_requests"] = [{"number": 17}]
+        api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]["pull_requests"] = [live_codeql_pointer()]
         candidate = self.preflight(api)
         self.assertEqual(candidate.pull_request, 17)
+
+    def test_populated_source_pointer_rejects_incomplete_or_wrong_binding_before_write(self):
+        for field in ("number-only", "non-object", "base-ref", "base-sha", "head-sha", "missing-base"):
+            with self.subTest(field=field):
+                api = source_candidate_fixture()
+                pointer = live_codeql_pointer()
+                if field == "number-only":
+                    pointer = {"number": 17}
+                elif field == "non-object":
+                    pointer = "17"
+                elif field == "missing-base":
+                    pointer.pop("base")
+                else:
+                    owner, key = field.split("-")
+                    pointer[owner][key] = "main" if key == "ref" else sha("9")
+                api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]["pull_requests"] = [pointer]
+                with self.assertRaises(security_patch.PolicyError):
+                    self.preflight(api)
+                self.assertFalse(api.posts or api.patches or api.puts)
 
     def test_preflight_rejects_wrong_workflow_or_actor(self):
         api = source_candidate_fixture()
@@ -1351,501 +1322,109 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
         with self.assertRaisesRegex(security_patch.PolicyError, "bounded deadline"):
             self.preflight(api)
 
-    def test_merge_reproves_and_accepts_recorded_result_after_later_dev_movement(self):
-        api = source_candidate_fixture()
-        merge_sha = security_patch.merge_source_candidate(
-            api,
-            "ForgingAlpha/alphaapps-site",
-            901,
-            "dev",
-            "package.json",
-            "package-lock.json",
-            17,
-            sha("b"),
-            sha("a"),
+    def classify(self, api):
+        return security_patch.classify_source_candidate(
+            api, "ForgingAlpha/alphaapps-site", 901, "dev", "package.json",
+            "package-lock.json", 17, sha("b"), sha("a"),
         )
-        self.assertEqual(merge_sha, sha("c"))
-        self.assertEqual(
-            api.puts,
-            [("repos/ForgingAlpha/alphaapps-site/pulls/17/merge", {"sha": sha("b"), "merge_method": "merge"})],
-        )
-        check_payload = next(payload for path, payload in api.posts if path.endswith("/check-runs"))
-        self.assertEqual(check_payload["head_sha"], sha("b"))
-        self.assertEqual(json.loads(check_payload["output"]["summary"])["source_base_sha"], sha("a"))
-        self.assertEqual(api.source_ref_reads, 6)
 
-    def test_merge_adopts_exact_recorded_result_after_response_loss(self):
+    def test_classification_writes_only_the_exact_trusted_check(self):
         api = source_candidate_fixture()
-        api.lose_merge_response = True
-        merge_sha = security_patch.merge_source_candidate(
-            api,
-            "ForgingAlpha/alphaapps-site",
-            901,
-            "dev",
-            "package.json",
-            "package-lock.json",
-            17,
-            sha("b"),
-            sha("a"),
-        )
-        self.assertEqual(merge_sha, sha("c"))
-        self.assertEqual(len(api.puts), 1)
+        candidate = self.classify(api)
+        self.assertEqual(candidate.ghsa_set, ("GHSA-abcd-efgh-ijkl",))
+        self.assertEqual(len(api.posts), 1)
+        path, payload = api.posts[0]
+        self.assertEqual(path, "repos/ForgingAlpha/alphaapps-site/check-runs")
+        self.assertEqual(json.loads(payload["output"]["summary"]), candidate.attestation())
+        self.assertFalse(api.puts or api.patches)
 
-    def test_merge_rerun_adopts_exact_already_completed_result_without_writing(self):
+    def test_classification_retry_preserves_original_completion_without_writing(self):
         api = source_candidate_fixture()
-        api.did_merge = True
-        association = api.page_values[
-            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
-        ][0][0]
-        self.assertIsNone(association["merged_by"])
-        merge_sha = security_patch.merge_source_candidate(
-            api,
-            "ForgingAlpha/alphaapps-site",
-            901,
-            "dev",
-            "package.json",
-            "package-lock.json",
-            17,
-            sha("b"),
-            sha("a"),
-        )
-        self.assertEqual(merge_sha, sha("c"))
-        self.assertFalse(api.puts)
-        self.assertFalse(api.posts)
-        self.assertFalse(api.patches)
+        expected = self.classify(api)
+        path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"
+        check = api.page_values[path][0]["check_runs"][0]
+        original = json.loads(json.dumps(check))
+        self.assertEqual(self.classify(api), expected)
+        self.assertEqual(check, original)
+        self.assertEqual(len(api.posts), 1)
+        self.assertFalse(api.patches or api.puts)
 
-    def test_merge_rerun_adopts_after_github_clears_only_the_live_alert_pointer(self):
+        # A late classifier rerun cannot rewrite pre-merge history.
+        api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"].update({
+            "state": "closed", "merged_at": "2026-08-16T12:30:00Z",
+        })
+        api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]["pull_requests"] = [live_codeql_pointer()]
+        with self.assertRaisesRegex(security_patch.PolicyError, "not open"):
+            self.classify(api)
+        self.assertEqual(check, original)
+        self.assertEqual(len(api.posts), 1)
+        self.assertFalse(api.patches or api.puts)
+
+    def test_late_classification_cannot_create_retrospective_evidence(self):
         api = source_candidate_fixture()
-        api.did_merge = True
+        api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"].update({
+            "state": "closed", "merged_at": "2026-08-16T12:30:00Z",
+        })
+        api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]["pull_requests"] = [live_codeql_pointer()]
+        with self.assertRaisesRegex(security_patch.PolicyError, "not open"):
+            self.classify(api)
+        self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_classification_rejects_conflicting_or_incomplete_existing_evidence(self):
+        mutations = {
+            "external identity": lambda check: check.update({"external_id": "wrong"}),
+            "summary": lambda check: check["output"].update({"summary": "{}"}),
+            "status": lambda check: check.update({"status": "in_progress"}),
+            "conclusion": lambda check: check.update({"conclusion": "failure"}),
+            "completion": lambda check: check.pop("completed_at"),
+            "wrong App": lambda check: check["app"].update({"id": 9999}),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                api = source_candidate_fixture()
+                self.classify(api)
+                path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"
+                mutate(api.page_values[path][0]["check_runs"][0])
+                if name == "wrong App":
+                    # An untrusted check is not adopted; the trusted producer writes its own.
+                    self.classify(api)
+                    self.assertEqual(len(api.posts), 2)
+                else:
+                    with self.assertRaises(security_patch.PolicyError):
+                        self.classify(api)
+                    self.assertEqual(len(api.posts), 1)
+                self.assertFalse(api.puts or api.patches)
+
+    def test_classification_rejects_duplicate_checks_before_and_after_write(self):
+        for already_present in (False, True):
+            with self.subTest(already_present=already_present):
+                api = source_candidate_fixture()
+                if already_present:
+                    self.classify(api)
+                    path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"
+                    checks = api.page_values[path][0]["check_runs"]
+                    checks.append(dict(checks[0]))
+                else:
+                    api.duplicate_after_write = True
+                with self.assertRaises(security_patch.PolicyError):
+                    self.classify(api)
+                self.assertEqual(len(api.posts), 1)
+                self.assertFalse(api.puts or api.patches)
+
+    def test_classification_rejects_missing_advisory_before_writing(self):
+        api = source_candidate_fixture()
         api.ghsas = ()
-        api.repository_ghsas = ("GHSA-abcd-efgh-ijkl",)
+        with self.assertRaisesRegex(security_patch.PolicyError, "official vulnerability-alert"):
+            self.classify(api)
+        self.assertFalse(api.posts or api.puts or api.patches)
 
-        merge_sha = security_patch.merge_source_candidate(
-            api,
-            "ForgingAlpha/alphaapps-site",
-            901,
-            "dev",
-            "package.json",
-            "package-lock.json",
-            17,
-            sha("b"),
-            sha("a"),
-            adoption_wait_seconds=0,
-            adoption_poll_seconds=0,
-        )
-
-        self.assertEqual(merge_sha, sha("c"))
-        self.assertFalse(api.puts)
-        self.assertFalse(api.posts)
-        self.assertFalse(api.patches)
-
-    def test_merge_polls_delayed_post_merge_pr_ref_and_association_visibility_without_remerging(self):
-        api = source_candidate_fixture()
-        api.merge_pull_visibility_delay = 2
-        api.merge_ref_visibility_delay = 2
-        api.merge_association_visibility_delay = 2
-        merge_sha = security_patch.merge_source_candidate(
-            api,
-            "ForgingAlpha/alphaapps-site",
-            901,
-            "dev",
-            "package.json",
-            "package-lock.json",
-            17,
-            sha("b"),
-            sha("a"),
-            adoption_wait_seconds=1,
-            adoption_poll_seconds=0,
-        )
-        self.assertEqual(merge_sha, sha("c"))
-        self.assertEqual(
-            api.puts,
-            [("repos/ForgingAlpha/alphaapps-site/pulls/17/merge", {"sha": sha("b"), "merge_method": "merge"})],
-        )
-        self.assertGreaterEqual(api.merge_pull_reads, 3)
-        self.assertGreaterEqual(api.merge_ref_reads, 3)
-        self.assertEqual(api.merge_association_reads, 3)
-
-    def test_merge_rerun_polls_zero_associations_then_adopts_without_any_write(self):
-        api = source_candidate_fixture()
-        api.did_merge = True
-        api.merge_association_visibility_delay = 2
-        merge_sha = security_patch.merge_source_candidate(
-            api,
-            "ForgingAlpha/alphaapps-site",
-            901,
-            "dev",
-            "package.json",
-            "package-lock.json",
-            17,
-            sha("b"),
-            sha("a"),
-            adoption_wait_seconds=1,
-            adoption_poll_seconds=0,
-        )
-        self.assertEqual(merge_sha, sha("c"))
-        self.assertEqual(api.merge_association_reads, 3)
-        self.assertFalse(api.puts)
-        self.assertFalse(api.posts)
-        self.assertFalse(api.patches)
-
-    def test_merge_rerun_reconciles_delayed_fixed_alert_then_adopts_without_any_write(self):
-        api = source_candidate_fixture()
-        api.did_merge = True
-        api.security_evidence_sequence = [
-            ((), ("GHSA-unrelated-live-alert",)),
-            ((), api.ghsas),
-        ]
-
-        with patch.object(security_patch.time, "sleep", return_value=None):
-            merge_sha = security_patch.merge_source_candidate(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                901,
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-                adoption_wait_seconds=1,
-                adoption_poll_seconds=0,
-            )
-
-        self.assertEqual(merge_sha, sha("c"))
-        self.assertEqual(api.security_evidence_calls, 2)
-        self.assertFalse(api.puts)
-        self.assertFalse(api.posts)
-        self.assertFalse(api.patches)
-
-    def test_merge_rerun_rejects_malformed_or_duplicate_association_pointers_without_writing(self):
-        malformed_pages = (
-            [[None]],
-            [[{"number": "17"}]],
-            [[{"number": 17}, {"number": 17}]],
-        )
-        for pages in malformed_pages:
-            with self.subTest(pages=pages):
-                api = source_candidate_fixture()
-                api.did_merge = True
-                api.page_values[
-                    f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
-                ] = pages
-                with self.assertRaises(security_patch.PolicyError):
-                    security_patch.merge_source_candidate(
-                        api,
-                        "ForgingAlpha/alphaapps-site",
-                        901,
-                        "dev",
-                        "package.json",
-                        "package-lock.json",
-                        17,
-                        sha("b"),
-                        sha("a"),
-                        adoption_wait_seconds=1,
-                        adoption_poll_seconds=0,
-                    )
-                self.assertFalse(api.puts)
-                self.assertFalse(api.posts)
-                self.assertFalse(api.patches)
-
-    def test_merge_rerun_rejects_a_different_exact_associated_pull_request(self):
-        api = source_candidate_fixture()
-        api.did_merge = True
-        association_path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"
-        api.page_values[association_path] = [[{"number": 18}]]
-        api.gets["repos/ForgingAlpha/alphaapps-site/pulls/18"] = {
-            "number": 18,
-            "state": "closed",
-            "merged_at": "2026-08-16T12:30:00Z",
-            "merge_commit_sha": sha("c"),
-            "base": {"ref": "dev", "sha": sha("a")},
-            "head": {"sha": sha("b"), "repo": {"full_name": "ForgingAlpha/alphaapps-site"}},
-            "user": {"login": "dependabot[bot]"},
-            "merged_by": {"login": "forgingalpha-security-automation[bot]"},
-        }
-        with self.assertRaisesRegex(security_patch.PolicyError, "different exact merged Dependabot PR"):
-            security_patch.adopt_completed_source_merge(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-                association_wait_seconds=0,
-                association_poll_seconds=0,
-            )
-        self.assertFalse(api.puts)
-        self.assertFalse(api.posts)
-        self.assertFalse(api.patches)
-
-    def test_merge_rerun_rejects_current_dev_that_does_not_contain_recorded_merge(self):
-        api = source_candidate_fixture()
-        api.did_merge = True
-        api.merged_ref_sha = sha("7")
-        api.gets[
-            f"repos/ForgingAlpha/alphaapps-site/compare/{sha('c')}...{sha('7')}"
-        ] = {
-            "status": "diverged",
-            "base_commit": {"sha": sha("c")},
-            "merge_base_commit": {"sha": sha("9")},
-            "ahead_by": 1,
-        }
-        with self.assertRaisesRegex(security_patch.PolicyError, "does not contain recorded source merge"):
-            security_patch.merge_source_candidate(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                901,
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-                adoption_wait_seconds=0,
-                adoption_poll_seconds=0,
-            )
-        self.assertFalse(api.puts)
-        self.assertFalse(api.posts)
-        self.assertFalse(api.patches)
-
-    def test_merge_rerun_accepts_descendant_dev_after_exact_recorded_merge(self):
-        api = source_candidate_fixture()
-        api.did_merge = True
-        api.merged_ref_sha = sha("7")
-        api.gets[
-            f"repos/ForgingAlpha/alphaapps-site/compare/{sha('c')}...{sha('7')}"
-        ] = {
-            "status": "ahead",
-            "base_commit": {"sha": sha("c")},
-            "merge_base_commit": {"sha": sha("c")},
-            "ahead_by": 2,
-        }
-
-        merge_sha = security_patch.merge_source_candidate(
-            api,
-            "ForgingAlpha/alphaapps-site",
-            901,
-            "dev",
-            "package.json",
-            "package-lock.json",
-            17,
-            sha("b"),
-            sha("a"),
-            adoption_wait_seconds=0,
-            adoption_poll_seconds=0,
-        )
-
-        self.assertEqual(merge_sha, sha("c"))
-        self.assertFalse(api.puts)
-        self.assertFalse(api.posts)
-        self.assertFalse(api.patches)
-
-    def test_merge_rerun_rejects_canonical_pull_request_identity_drift_without_writing(self):
-        pull_path = "repos/ForgingAlpha/alphaapps-site/pulls/17"
-        mutations = {
-            "number": lambda pull: pull.update({"number": 18}),
-            "author": lambda pull: pull.update({"user": {"login": "attacker"}}),
-            "base branch": lambda pull: pull["base"].update({"ref": "main"}),
-            "base SHA": lambda pull: pull["base"].update({"sha": sha("9")}),
-            "head SHA": lambda pull: pull["head"].update({"sha": sha("9")}),
-            "head repository": lambda pull: pull["head"]["repo"].update({"full_name": "Other/site"}),
-        }
-        for name, mutate in mutations.items():
-            with self.subTest(name=name):
-                api = source_candidate_fixture()
-                api.did_merge = True
-                mutate(api.gets[pull_path])
-                with self.assertRaises(security_patch.PolicyError):
-                    security_patch.merge_source_candidate(
-                        api,
-                        "ForgingAlpha/alphaapps-site",
-                        901,
-                        "dev",
-                        "package.json",
-                        "package-lock.json",
-                        17,
-                        sha("b"),
-                        sha("a"),
-                        adoption_wait_seconds=0,
-                        adoption_poll_seconds=0,
-                    )
-                self.assertFalse(api.puts)
-                self.assertFalse(api.posts)
-                self.assertFalse(api.patches)
-
-    def test_merge_rerun_rejects_untrusted_or_conflicting_classification_without_writing(self):
-        api = source_candidate_fixture()
-        api.did_merge = True
-        checks = api.page_values[
-            f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?per_page=100"
-        ][0]["check_runs"]
-        checks[0]["app"]["id"] = 9999
-        with self.assertRaisesRegex(security_patch.PolicyError, "exactly one trusted"):
-            security_patch.merge_source_candidate(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                901,
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-                adoption_wait_seconds=0,
-                adoption_poll_seconds=0,
-            )
-        self.assertFalse(api.puts)
-        self.assertFalse(api.posts)
-        self.assertFalse(api.patches)
-
-    def test_merge_rerun_rejects_wrong_parents_tree_or_ghsa_without_writing(self):
-        mutations = {
-            "parents": lambda api: api.gets[
-                f"repos/ForgingAlpha/alphaapps-site/git/commits/{sha('c')}"
-            ].update({"parents": [{"sha": sha("9")}, {"sha": sha("b")}]}),
-            "tree": lambda api: api.gets[
-                f"repos/ForgingAlpha/alphaapps-site/git/commits/{sha('c')}"
-            ].update({"tree": {"sha": sha("9")}}),
-            "GHSA": lambda api: setattr(api, "ghsas", ("GHSA-wrong-wrong-wrong",)),
-        }
-        for name, mutate in mutations.items():
-            with self.subTest(name=name):
-                api = source_candidate_fixture()
-                api.did_merge = True
-                mutate(api)
-                with self.assertRaises(security_patch.PolicyError):
-                    security_patch.merge_source_candidate(
-                        api,
-                        "ForgingAlpha/alphaapps-site",
-                        901,
-                        "dev",
-                        "package.json",
-                        "package-lock.json",
-                        17,
-                        sha("b"),
-                        sha("a"),
-                        adoption_wait_seconds=0,
-                        adoption_poll_seconds=0,
-                    )
-                self.assertFalse(api.puts)
-                self.assertFalse(api.posts)
-                self.assertFalse(api.patches)
-
-    def test_merge_rerun_rejects_completed_result_from_wrong_actor(self):
-        api = source_candidate_fixture()
-        api.did_merge = True
-        api.merge_actor = "unexpected[bot]"
-        with self.assertRaisesRegex(security_patch.PolicyError, "merged by the classification App"):
-            security_patch.merge_source_candidate(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                901,
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-            )
-        self.assertFalse(api.puts)
-
-    def test_merge_rejects_dev_movement_during_final_reproof(self):
+    def test_classification_rejects_source_movement_during_final_reproof(self):
         api = source_candidate_fixture()
         api.advance_at_ref_read = 3
         with self.assertRaisesRegex(security_patch.PolicyError, "source branch moved"):
-            security_patch.merge_source_candidate(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                901,
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-            )
-        self.assertFalse(api.puts)
-
-    def test_merge_rerun_updates_the_unique_exact_head_classification(self):
-        api = source_candidate_fixture()
-        path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"
-        api.page_values[path][0]["check_runs"] = [{
-            "id": 601,
-            "name": security_patch.SOURCE_CHECK,
-            "head_sha": sha("b"),
-            "external_id": f"{security_patch.SOURCE_SCHEMA}:17:{sha('b')}",
-            "app": {"id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID},
-        }]
-        security_patch.merge_source_candidate(
-            api,
-            "ForgingAlpha/alphaapps-site",
-            901,
-            "dev",
-            "package.json",
-            "package-lock.json",
-            17,
-            sha("b"),
-            sha("a"),
-        )
-        self.assertEqual(len(api.patches), 1)
-        self.assertFalse(any(request_path.endswith("/check-runs") for request_path, _ in api.posts))
-
-    def test_merge_rejects_conflicting_or_duplicate_trusted_classification(self):
-        api = source_candidate_fixture()
-        path = f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"
-        run = {
-            "id": 601,
-            "name": security_patch.SOURCE_CHECK,
-            "head_sha": sha("b"),
-            "external_id": "conflicting-identity",
-            "app": {"id": security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID},
-        }
-        api.page_values[path][0]["check_runs"] = [run]
-        with self.assertRaisesRegex(security_patch.PolicyError, "external identity conflicts"):
-            security_patch.merge_source_candidate(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                901,
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-            )
-        api.page_values[path][0]["check_runs"] = [run, dict(run)]
-        with self.assertRaisesRegex(security_patch.PolicyError, "multiple trusted"):
-            security_patch.merge_source_candidate(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                901,
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-            )
-
-    def test_merge_rejects_a_concurrent_duplicate_created_after_write(self):
-        api = source_candidate_fixture()
-        api.duplicate_after_write = True
-        with self.assertRaisesRegex(security_patch.PolicyError, "not unique after write"):
-            security_patch.merge_source_candidate(
-                api,
-                "ForgingAlpha/alphaapps-site",
-                901,
-                "dev",
-                "package.json",
-                "package-lock.json",
-                17,
-                sha("b"),
-                sha("a"),
-            )
-        self.assertFalse(api.puts)
+            self.classify(api)
+        self.assertEqual(len(api.posts), 1)
+        self.assertFalse(api.puts or api.patches)
 
 
 class SecurityPatchSourceTest(unittest.TestCase):
@@ -1894,7 +1473,7 @@ class SecurityPatchSourceTest(unittest.TestCase):
     def test_rejects_post_merge_classification_identity_or_timing_drift(self):
         path = (
             f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}"
-            "/check-runs?per_page=100"
+            "/check-runs?filter=all&per_page=100"
         )
         mutations = {
             "external identity": (
@@ -1904,6 +1483,10 @@ class SecurityPatchSourceTest(unittest.TestCase):
             "missing completion": (
                 lambda check: check.pop("completed_at"),
                 "completion must be a GitHub UTC timestamp",
+            ),
+            "equal-second completion": (
+                lambda check: check.update({"completed_at": "2026-08-16T12:00:00Z"}),
+                "equal timestamps leave ordering unresolved",
             ),
             "late completion": (
                 lambda check: check.update({"completed_at": "2026-08-16T12:00:01Z"}),
@@ -1956,14 +1539,14 @@ class SecurityPatchSourceTest(unittest.TestCase):
 
     def test_rejects_duplicate_trusted_classification_checks(self):
         api = source_fixture()
-        page = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?per_page=100"][0]
+        page = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"][0]
         page["check_runs"].append(dict(page["check_runs"][0]))
         with self.assertRaisesRegex(security_patch.PolicyError, "exactly one trusted"):
             self.build(api)
 
     def test_rejects_classification_from_any_other_app(self):
         api = source_fixture()
-        page = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?per_page=100"][0]
+        page = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"][0]
         page["check_runs"][0]["app"]["id"] = 9999
         with self.assertRaisesRegex(security_patch.PolicyError, "exactly one trusted"):
             self.build(api)
@@ -2029,6 +1612,21 @@ class ProjectionInvariantTest(unittest.TestCase):
             [9],
         )
 
+    def test_rename_away_lock_proposal_blocks_projection_without_writes(self):
+        api, source = projection_create_fixture()
+        repository = "ForgingAlpha/alphaapps-site"
+        api.pull_requests[9] = {
+            "number": 9, "state": "open", "changed_files": 1,
+            "base": {"ref": "main"}, "head": {"ref": "rename-lock", "repo": {"full_name": repository}},
+        }
+        api.page_values[f"repos/{repository}/pulls/9/files?per_page=100"] = [[{
+            "filename": "renamed-lock.json", "previous_filename": "package-lock.json", "status": "renamed",
+        }]]
+        self.assertEqual(security_patch.open_lock_proposals(api, repository, "main", "package-lock.json"), [9])
+        with self.assertRaises(security_patch.PolicyError):
+            security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+        self.assertFalse(api.posts or api.patches or api.puts)
+
     def test_open_lock_proposal_rejects_incomplete_capped_file_enumeration(self):
         api = FakeApi()
         repository = "ForgingAlpha/alphaapps-site"
@@ -2047,23 +1645,6 @@ class ProjectionInvariantTest(unittest.TestCase):
         ]]
         with self.assertRaisesRegex(security_patch.PolicyError, "enumeration is incomplete"):
             security_patch.open_lock_proposals(api, repository, "main", "package-lock.json")
-
-    def test_post_merge_requires_exact_parent_order_and_tree(self):
-        api = FakeApi()
-        repository = "ForgingAlpha/alphaapps-site"
-        merge_sha = sha("a")
-        base = sha("b")
-        head = sha("c")
-        tree = sha("d")
-        api.gets[f"repos/{repository}/git/ref/heads/main"] = {"object": {"sha": merge_sha}}
-        api.gets[f"repos/{repository}/git/commits/{merge_sha}"] = {
-            "tree": {"sha": tree},
-            "parents": [{"sha": base}, {"sha": head}],
-        }
-        security_patch.verify_post_merge(api, repository, "main", merge_sha, base, head, tree)
-        api.gets[f"repos/{repository}/git/commits/{merge_sha}"]["parents"].reverse()
-        with self.assertRaisesRegex(security_patch.PolicyError, "parents"):
-            security_patch.verify_post_merge(api, repository, "main", merge_sha, base, head, tree)
 
     def test_created_projection_requires_one_consistent_app_identity(self):
         head = sha("a")
@@ -2224,10 +1805,7 @@ class ProjectionInvariantTest(unittest.TestCase):
                     security_patch.create_projection(
                         api, source, "main", "package.json", "package-lock.json"
                     )
-                self.assertFalse(any(
-                    path.endswith(("/git/refs", "/check-runs", "/pulls"))
-                    for path, _ in api.posts
-                ))
+                self.assertFalse(api.posts)
 
     def test_new_production_base_uses_new_branch_and_preserves_old_partial_records(self):
         api, source = projection_create_fixture()
@@ -2462,7 +2040,7 @@ class ProjectionAdmissionTest(unittest.TestCase):
 
     def test_rejects_duplicate_projection_checks(self):
         api = admission_fixture()
-        checks = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?per_page=100"][0]["check_runs"]
+        checks = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"][0]["check_runs"]
         checks.append(dict(checks[0]))
         with self.assertRaisesRegex(security_patch.PolicyError, "exactly one trusted"):
             self.verify(api)
@@ -2517,7 +2095,7 @@ class CheckProvenanceTest(unittest.TestCase):
         api = FakeApi()
         repository = "ForgingAlpha/alphaapps-site"
         merge_candidate = sha("a")
-        path = f"repos/{repository}/actions/runs?event=pull_request&status=success&head_sha={merge_candidate}&per_page=100"
+        path = f"repos/{repository}/actions/runs?event=pull_request&head_sha={merge_candidate}&per_page=100"
         api.page_values[path] = [{
             "workflow_runs": [{
                 "path": ".github/workflows/ci.yml",
@@ -2525,7 +2103,8 @@ class CheckProvenanceTest(unittest.TestCase):
                 "head_sha": merge_candidate,
                 "conclusion": "success",
                 "repository": {"full_name": repository},
-                "pull_requests": [{"number": 35}],
+                "status": "completed", "created_at": "2026-08-16T12:02:00Z", "check_suite_id": 801,
+                "pull_requests": [{"number": 35, "base": {"ref": "main", "sha": sha("b")}, "head": {"sha": merge_candidate}}],
             }]
         }]
         security_patch.verify_ci_workflow(
@@ -2533,7 +2112,7 @@ class CheckProvenanceTest(unittest.TestCase):
             repository,
             35,
             merge_candidate,
-            ".github/workflows/ci.yml",
+            ".github/workflows/ci.yml", sha("b"), "main",
         )
         api.page_values[path][0]["workflow_runs"][0]["path"] = ".github/workflows/spoof.yml"
         with self.assertRaisesRegex(security_patch.PolicyError, "workflow run"):
@@ -2542,7 +2121,7 @@ class CheckProvenanceTest(unittest.TestCase):
                 repository,
                 35,
                 merge_candidate,
-                ".github/workflows/ci.yml",
+                ".github/workflows/ci.yml", sha("b"), "main",
             )
 
     def test_checks_require_exact_head_and_current_base_test_merge(self):
@@ -2557,6 +2136,8 @@ class CheckProvenanceTest(unittest.TestCase):
             source_pull_request=17,
             source_base=sha("e"),
             source_head=sha("f"),
+            source_merged_by="authorized-maintainer",
+            source_merged_at="2026-08-16T12:00:00Z",
             source_merge=sha("1"),
             ghsa_set=("GHSA-abcd-efgh-ijkl",),
             production_base=base,
@@ -2566,25 +2147,26 @@ class CheckProvenanceTest(unittest.TestCase):
             manifest_path="package.json",
             lock_path="package-lock.json",
         )
-        pr = {"head": {"sha": head}, "merge_commit_sha": merge_candidate}
+        pr = {"head": {"sha": head}, "base": {"ref": "main", "sha": base}, "merge_commit_sha": merge_candidate}
         api.gets[f"repos/{repository}/git/commits/{merge_candidate}"] = {
             "tree": {"sha": tree},
             "parents": [{"sha": base}, {"sha": head}],
         }
-        api.page_values[f"repos/{repository}/actions/runs?event=pull_request&status=success&head_sha={head}&per_page=100"] = [{
+        api.page_values[f"repos/{repository}/actions/runs?event=pull_request&head_sha={head}&per_page=100"] = [{
             "workflow_runs": [{
                 "path": ".github/workflows/ci.yml",
                 "event": "pull_request",
                 "head_sha": head,
                 "conclusion": "success",
                 "repository": {"full_name": repository},
-                "pull_requests": [{"number": 44}],
+                "status": "completed", "created_at": "2026-08-16T12:02:00Z", "check_suite_id": 801,
+                "pull_requests": [{"number": 44, "base": {"ref": "main", "sha": base}, "head": {"sha": head}}],
             }]
         }]
-        api.page_values[f"repos/{repository}/commits/{head}/check-runs?per_page=100"] = [{
+        api.page_values[f"repos/{repository}/commits/{head}/check-runs?filter=latest&per_page=100"] = [{
             "check_runs": [
-                {"name": "CI", "head_sha": head, "status": "completed", "conclusion": "success", "app": {"id": 15368}},
-                {"name": "CodeQL", "head_sha": head, "status": "completed", "conclusion": "success", "app": {"id": 57789}},
+                {"name": "CI", "check_suite": {"id": 801}, "head_sha": head, "status": "completed", "conclusion": "success", "app": {"id": 15368}},
+                {"name": "CodeQL", "pull_requests": [{"number": 44, "base": {"ref": "main", "sha": base}, "head": {"sha": head}}], "head_sha": head, "status": "completed", "conclusion": "success", "app": {"id": 57789}},
             ]
         }]
         security_patch.verify_checks(
@@ -2600,7 +2182,7 @@ class CheckProvenanceTest(unittest.TestCase):
         api = FakeApi()
         repository = "ForgingAlpha/alphaapps-site"
         head = sha("a")
-        api.page_values[f"repos/{repository}/commits/{head}/check-runs?per_page=100"] = [{
+        api.page_values[f"repos/{repository}/commits/{head}/check-runs?filter=latest&per_page=100"] = [{
             "check_runs": [{
                 "name": "CI", "head_sha": head, "status": "completed",
                 "conclusion": "success", "app": {"id": 9999},
@@ -2608,6 +2190,595 @@ class CheckProvenanceTest(unittest.TestCase):
         }]
         with self.assertRaisesRegex(security_patch.PolicyError, "not successful"):
             security_patch.verify_successful_check(api, repository, (head,), "CI", 15368)
+
+
+def post_merge_fixture():
+    api = full_projection_fixture()
+    repository = "ForgingAlpha/alphaapps-site"
+    pr = api.gets[f"repos/{repository}/pulls/44"]
+    pr.update({
+        "state": "closed", "merged_at": "2026-08-17T12:00:00Z",
+        "merged_by": {"login": "production-maintainer", "type": "User"},
+        "merge_commit_sha": sha("7"),
+    })
+    check = api.page_values[f"repos/{repository}/commits/{sha('6')}/check-runs?filter=all&per_page=100"][0]["check_runs"][0]
+    evidence = security_patch.parse_projection_attestation(json.loads(check["output"]["summary"]))
+    check.update(security_patch.projection_check_payload(evidence))
+    check["completed_at"] = "2026-08-16T12:01:00Z"
+    api.gets[f"repos/{repository}/git/ref/heads/main"] = {"object": {"sha": sha("7")}}
+    api.gets[f"repos/{repository}/git/commits/{sha('7')}"] = {
+        "tree": {"sha": evidence.projection_tree},
+        "parents": [{"sha": evidence.production_base}, {"sha": evidence.projection_head}],
+    }
+    return api
+
+
+def ready_projection_fixture():
+    api = full_projection_fixture()
+    repository = "ForgingAlpha/alphaapps-site"
+    head = sha("6")
+    api.gets[f"repos/{repository}/pulls/44"]["merge_commit_sha"] = sha("7")
+    api.gets[f"repos/{repository}/git/commits/{sha('7')}"] = {
+        "tree": {"sha": sha("e")}, "parents": [{"sha": sha("a")}, {"sha": head}],
+    }
+    api.page_values[f"repos/{repository}/commits/{head}/check-runs?filter=latest&per_page=100"] = [{"check_runs": [
+        {"name": "CI", "check_suite": {"id": 801}, "head_sha": head, "status": "completed", "conclusion": "success", "app": {"id": 15368}},
+        {"name": "CodeQL", "pull_requests": [{"number": 44, "base": {"ref": "main", "sha": sha("a")}, "head": {"sha": head}}], "head_sha": head, "status": "completed", "conclusion": "success", "app": {"id": 57789}},
+    ]}]
+    api.page_values[f"repos/{repository}/actions/runs?event=pull_request&head_sha={head}&per_page=100"] = [{
+        "workflow_runs": [{
+            "path": ".github/workflows/ci.yml", "event": "pull_request", "head_sha": head,
+            "conclusion": "success", "repository": {"full_name": repository}, "status": "completed", "created_at": "2026-08-16T12:02:00Z", "check_suite_id": 801,
+            "pull_requests": [{"number": 44, "base": {"ref": "main", "sha": sha("a")}, "head": {"sha": head}}],
+        }],
+    }]
+    return api
+
+
+def full_project_create_fixture():
+    source = source_fixture()
+    api = ProjectionCreateApi()
+    api.gets.update(source.gets)
+    api.page_values.update(source.page_values)
+    api.pull_requests[17] = source.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]
+    api.projection_tree = sha("e")
+    api.projection_head = sha("6")
+    repository = "ForgingAlpha/alphaapps-site"
+    api.gets[f"repos/{repository}/git/commits/{sha('6')}"] = {
+        "tree": {"sha": sha("e")}, "parents": [{"sha": sha("a")}],
+    }
+    api.page_values[f"repos/{repository}/pulls/44/files?per_page=100"] = [[{
+        "filename": "package-lock.json", "status": "modified",
+    }]]
+    api.page_values[f"repos/{repository}/pulls/44/commits?per_page=100"] = [[{"sha": sha("6")}]]
+    return api
+
+
+class HumanMergeEvidenceTest(unittest.TestCase):
+    def verify_post(self, api):
+        return security_patch.verify_post_merge(
+            api, "ForgingAlpha/alphaapps-site", "main", sha("7"), 44,
+        )
+
+    def test_observed_human_merge_uses_attested_parents_and_tree_without_writes(self):
+        api = post_merge_fixture()
+        evidence = self.verify_post(api)
+        self.assertEqual(evidence.production_base, sha("a"))
+        self.assertEqual(evidence.projection_head, sha("6"))
+        self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_old_projection_schema_is_not_silently_adopted(self):
+        api = post_merge_fixture()
+        check = api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('6')}/check-runs?filter=all&per_page=100"][0]["check_runs"][0]
+        attestation = json.loads(check["output"]["summary"])
+        attestation["schema"] = "alphaapps-security-projection-v1"
+        attestation.pop("source_merged_by")
+        attestation.pop("source_merged_at")
+        check["output"]["summary"] = json.dumps(attestation)
+        with self.assertRaisesRegex(security_patch.PolicyError, "schema is invalid"):
+            self.verify_post(api)
+        self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_post_merge_rejects_mismatched_observation_or_attestation(self):
+        repository = "ForgingAlpha/alphaapps-site"
+        mutations = {
+            "parents": lambda api: api.gets[f"repos/{repository}/git/commits/{sha('7')}"]["parents"].reverse(),
+            "tree": lambda api: api.gets[f"repos/{repository}/git/commits/{sha('7')}"]["tree"].update({"sha": sha("9")}),
+            "projection parent": lambda api: api.gets[f"repos/{repository}/git/commits/{sha('6')}"]["parents"][0].update({"sha": sha("9")}),
+            "main": lambda api: api.gets[f"repos/{repository}/git/ref/heads/main"]["object"].update({"sha": sha("9")}),
+            "observed SHA": lambda api: api.gets[f"repos/{repository}/pulls/44"].update({"merge_commit_sha": sha("9")}),
+            "unmerged": lambda api: api.gets[f"repos/{repository}/pulls/44"].update({"merged_at": None}),
+            "bot": lambda api: api.gets[f"repos/{repository}/pulls/44"].update({"merged_by": {"login": "worker", "type": "Bot"}}),
+            "late check": lambda api: api.page_values[f"repos/{repository}/commits/{sha('6')}/check-runs?filter=all&per_page=100"][0]["check_runs"][0].update({"completed_at": "2026-08-18T12:00:00Z"}),
+            "wrong App": lambda api: api.page_values[f"repos/{repository}/commits/{sha('6')}/check-runs?filter=all&per_page=100"][0]["check_runs"][0]["app"].update({"id": 9999}),
+            "wrong digest": lambda api: api.page_values[f"repos/{repository}/commits/{sha('6')}/check-runs?filter=all&per_page=100"][0]["check_runs"][0].update({"external_id": "wrong"}),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                api = post_merge_fixture()
+                mutate(api)
+                with self.assertRaises(security_patch.PolicyError):
+                    self.verify_post(api)
+                self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_source_rejects_canonical_identity_drift_without_writes(self):
+        mutations = {
+            "number": lambda pull: pull.update({"number": 18}),
+            "state": lambda pull: pull.update({"state": "open"}),
+            "author": lambda pull: pull.update({"user": {"login": "attacker"}}),
+            "base SHA": lambda pull: pull["base"].update({"sha": sha("9")}),
+            "head SHA": lambda pull: pull["head"].update({"sha": sha("9")}),
+            "head repository": lambda pull: pull["head"]["repo"].update({"full_name": "Other/site"}),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                api = source_fixture()
+                pull = api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]
+                mutate(pull)
+                if name == "head SHA":
+                    api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('9')}/check-runs?filter=all&per_page=100"] = [{"check_runs": []}]
+                with self.assertRaises(security_patch.PolicyError):
+                    security_patch.build_source_evidence_from_pull(
+                        api, "ForgingAlpha/alphaapps-site", sha("c"), "dev", "package.json", "package-lock.json", pull,
+                    )
+                self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_source_association_rejects_malformed_duplicate_or_conflicting_pointers(self):
+        for pointers in ([None], [{"number": "17"}], [{"number": 17}, {"number": 17}]):
+            with self.subTest(pointers=pointers):
+                api = source_fixture()
+                api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('c')}/pulls?per_page=100"] = [pointers]
+                with self.assertRaises(security_patch.PolicyError):
+                    security_patch.source_pull_request(api, "ForgingAlpha/alphaapps-site", sha("c"), "dev", wait_seconds=0)
+                self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_source_records_human_attribution_without_tying_it_to_classification_app(self):
+        api = source_fixture()
+        # Later unrelated dev movement does not rewrite the captured source chain.
+        api.gets["repos/ForgingAlpha/alphaapps-site/git/ref/heads/dev"] = {"object": {"sha": sha("9")}}
+        evidence = security_patch.build_source_evidence(
+            api, "ForgingAlpha/alphaapps-site", sha("c"), "dev", "package.json", "package-lock.json",
+        )
+        self.assertEqual(evidence.source_merged_by, "authorized-maintainer")
+        self.assertEqual(evidence.source_merged_at, "2026-08-16T12:00:00Z")
+        self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_source_rejects_known_automation_or_missing_actor_without_writes(self):
+        for actor in (
+            {"login": "worker", "type": "Bot"},
+            {"login": "worker[bot]", "type": "User"},
+            {"login": "forgingalpha-security-automation", "type": "User"},
+            {"login": "worker"}, None,
+        ):
+            with self.subTest(actor=actor):
+                api = source_fixture()
+                api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]["merged_by"] = actor
+                with self.assertRaises(security_patch.PolicyError):
+                    security_patch.build_source_evidence(
+                        api, "ForgingAlpha/alphaapps-site", sha("c"), "dev", "package.json", "package-lock.json",
+                    )
+                self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_every_projection_entry_rejects_armed_native_auto_merge(self):
+        for name in ("admission", "verification", "adoption"):
+            with self.subTest(entry=name):
+                if name == "admission":
+                    api = admission_fixture()
+                    run = lambda: security_patch.verify_projection_admission(api, "ForgingAlpha/alphaapps-site", 44, "main")
+                    pr = api.gets["repos/ForgingAlpha/alphaapps-site/pulls/44"]
+                elif name == "verification":
+                    api = full_projection_fixture()
+                    run = lambda: security_patch.verify_projection(api, "ForgingAlpha/alphaapps-site", 44, "dev", "main", True)
+                    pr = api.gets["repos/ForgingAlpha/alphaapps-site/pulls/44"]
+                else:
+                    api, source = projection_create_fixture()
+                    security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+                    run = lambda: security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+                    pr = api.pull_requests[44]
+                pr["auto_merge"] = {"enabled_by": {"login": "maintainer", "type": "User"}}
+                with self.assertRaisesRegex(security_patch.PolicyError, "auto-merge armed"):
+                    run()
+                self.assertFalse(api.puts or api.patches)
+
+
+class CliEffectsTest(unittest.TestCase):
+    """Exercise real command dispatch and GhApi serialization with recorded calls."""
+    def execute(self, command, fixture, arguments):
+        import contextlib
+        import io
+        requests = []
+
+        def record(adapter, args, payload=None):
+            requests.append((args, payload))
+            if args[0] == "graphql":
+                return vulnerability_alert_pages([
+                    vulnerability_alert_node(17, ghsa=ghsa) for ghsa in fixture.ghsas
+                ])
+            if args[0] == "--method":
+                self.assertEqual(args[1], "POST")
+                return fixture.post(args[2], payload)
+            if args[0] == "--paginate":
+                return fixture.pages(args[2], fresh=True)
+            return fixture.get(args[0], fresh=True)
+
+        output = io.StringIO()
+        with patch.object(security_patch.GhApi, "_run", record), contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = security_patch.cli([
+                command, "--repository", "ForgingAlpha/alphaapps-site", *arguments,
+            ])
+        for args, payload in requests:
+            if args[0] == "graphql":
+                self.assertFalse(any("mutation" in value for value in args))
+            if args[0] == "--method":
+                self.assertEqual(args[1], "POST")
+                self.assertTrue(args[2].endswith(("/git/trees", "/git/commits", "/git/refs", "/check-runs", "/pulls")))
+                if args[2].endswith("/git/refs"):
+                    self.assertTrue(payload["ref"].startswith("refs/heads/security/dependabot-"))
+                if args[2].endswith("/pulls"):
+                    self.assertEqual(payload["base"], "main")
+                    self.assertTrue(payload["head"].startswith("security/dependabot-"))
+                    self.assertIs(payload["draft"], True)
+                    self.assertIs(payload["maintainer_can_modify"], False)
+            self.assertFalse(any(value.endswith("/merge") or value.endswith("/reviews") for value in args))
+        self.assertFalse(fixture.puts or fixture.patches)
+        return result, output.getvalue(), requests
+
+    def test_all_retained_commands_succeed_with_only_their_permitted_effects(self):
+        cases = (
+            ("preflight-source", source_candidate_fixture, ["--workflow-run-id", "901", "--wait-seconds", "0"], 0),
+            ("classify-source", source_candidate_fixture, ["--workflow-run-id", "901", "--pull-request", "17", "--expected-head-sha", sha("b"), "--expected-base-sha", sha("a")], 1),
+            ("verify-source", source_fixture, ["--source-merge-sha", sha("c")], 0),
+            ("project", full_project_create_fixture, ["--source-merge-sha", sha("c")], 5),
+            ("verify-ci-admission", admission_fixture, ["--pull-request", "44"], 0),
+            ("verify-projection", ready_projection_fixture, ["--pull-request", "44", "--verify-checks", "true", "--ci-app-id", "15368", "--codeql-app-id", "57789"], 0),
+            ("verify-post-merge", post_merge_fixture, ["--pull-request", "44", "--merge-sha", sha("7")], 0),
+        )
+        for command, factory, arguments, write_count in cases:
+            with self.subTest(command=command):
+                api = factory()
+                result, output, requests = self.execute(command, api, arguments)
+                self.assertEqual(result, 0, output)
+                self.assertEqual(sum(args[0] == "--method" for args, _ in requests), write_count)
+                if command == "project":
+                    self.assertTrue(api.pull_requests[44]["draft"])
+                    check = json.loads(api.checks[0]["output"]["summary"])
+                    self.assertEqual(check["source_merged_by"], "authorized-maintainer")
+                    self.assertEqual(check["source_merged_at"], "2026-08-16T12:00:00Z")
+
+    def test_cli_alternate_manifest_cannot_skip_divergent_production_package_json(self):
+        api = full_project_create_fixture()
+        repository = "ForgingAlpha/alphaapps-site"
+        # Both source trees contain a harmless alternate manifest. Production's real
+        # package.json has drifted; changing profile paths must not bypass its preimage.
+        for tree in (sha("d"), sha("e")):
+            api.gets[f"repos/{repository}/git/trees/{tree}"]["tree"].append(
+                {"path": "alternate.json", "mode": "100644", "type": "blob", "sha": sha("f")}
+            )
+        import copy
+        production = copy.deepcopy(api.gets[f"repos/{repository}/git/trees/{sha('d')}"])
+        next(entry for entry in production["tree"] if entry["path"] == "package.json")["sha"] = sha("8")
+        api.production_base = sha("9")
+        api.gets[f"repos/{repository}/git/commits/{sha('9')}"] = {"tree": {"sha": sha("7")}, "parents": [{"sha": sha("a")}]}
+        api.gets[f"repos/{repository}/git/trees/{sha('7')}"] = production
+        result, output, requests = self.execute("project", api, ["--source-merge-sha", sha("c"), "--manifest-path", "alternate.json"])
+        self.assertEqual(result, 1, output)
+        self.assertIn("root-npm-v1 requires", output)
+        self.assertFalse(requests or api.posts)
+
+    def test_every_retained_command_fails_without_forbidden_effects(self):
+        cases = (
+            ("preflight-source", source_candidate_fixture, ["--workflow-run-id", "901", "--wait-seconds", "0"], "workflow"),
+            ("classify-source", source_candidate_fixture, ["--workflow-run-id", "901", "--pull-request", "17", "--expected-head-sha", sha("9"), "--expected-base-sha", sha("a")], None),
+            ("verify-source", source_fixture, ["--source-merge-sha", sha("c")], "bot"),
+            ("project", full_project_create_fixture, ["--source-merge-sha", sha("c")], "bot"),
+            ("verify-ci-admission", admission_fixture, ["--pull-request", "44"], "auto-merge"),
+            ("verify-projection", ready_projection_fixture, ["--pull-request", "44", "--verify-checks", "true", "--ci-app-id", "15368", "--codeql-app-id", "57789"], "auto-merge"),
+            ("verify-post-merge", post_merge_fixture, ["--pull-request", "44", "--merge-sha", sha("9")], None),
+        )
+        for command, factory, arguments, drift in cases:
+            with self.subTest(command=command):
+                api = factory()
+                if drift == "workflow":
+                    api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]["path"] = ".github/workflows/wrong.yml"
+                elif drift == "bot":
+                    api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]["merged_by"] = {"login": "worker[bot]", "type": "Bot"}
+                elif drift == "auto-merge":
+                    api.gets["repos/ForgingAlpha/alphaapps-site/pulls/44"]["auto_merge"] = {"enabled_by": {"login": "maintainer"}}
+                result, output, requests = self.execute(command, api, arguments)
+                self.assertEqual(result, 1, output)
+                self.assertFalse(any(args[0] == "--method" for args, _ in requests))
+
+    def test_ineligible_source_never_creates_a_proposal(self):
+        for drift in ("bot", "classification", "advisory", "parents", "tree", "path"):
+            with self.subTest(drift=drift):
+                api = full_project_create_fixture()
+                if drift == "bot":
+                    api.pull_requests[17]["merged_by"] = {"login": "bot[bot]", "type": "Bot"}
+                elif drift == "classification":
+                    api.page_values[f"repos/ForgingAlpha/alphaapps-site/commits/{sha('b')}/check-runs?filter=all&per_page=100"][0]["check_runs"] = []
+                elif drift == "advisory":
+                    api.ghsas = ("GHSA-wrong-wrong-wrong",)
+                elif drift == "parents":
+                    api.gets[f"repos/ForgingAlpha/alphaapps-site/git/commits/{sha('c')}"]["parents"].reverse()
+                elif drift == "tree":
+                    api.gets[f"repos/ForgingAlpha/alphaapps-site/git/commits/{sha('c')}"]["tree"]["sha"] = sha("9")
+                else:
+                    api.page_values["repos/ForgingAlpha/alphaapps-site/pulls/17/files?per_page=100"][0].append({"filename": "README.md", "status": "modified"})
+                result, _, requests = self.execute("project", api, ["--source-merge-sha", sha("c")])
+                self.assertEqual(result, 1)
+                self.assertFalse(any(args[0] == "--method" for args, _ in requests))
+
+    def test_removed_merge_command_fails_before_any_api_call(self):
+        import contextlib
+        import io
+        with patch.object(security_patch.GhApi, "_run") as run, contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                security_patch.cli(["merge-source"])
+        self.assertEqual(error.exception.code, 2)
+        run.assert_not_called()
+
+
+class ReviewRegressionTest(unittest.TestCase):
+    repository = "ForgingAlpha/alphaapps-site"
+
+    def projection_check(self, api, head):
+        return api.page_values[f"repos/{self.repository}/commits/{head}/check-runs?filter=all&per_page=100"][0]["check_runs"]
+
+    def verify(self, api, admission):
+        if admission:
+            return security_patch.verify_projection_admission(api, self.repository, 44, "main")
+        return security_patch.verify_projection(api, self.repository, 44, "dev", "main", True)
+
+    def test_all_projection_consumers_reject_incomplete_rebound_patch_identity(self):
+        import hashlib
+        cases = (
+            ("ghsa_set", []), ("ghsa_set", [{}]), ("ghsa_set", ["GHSA-one", "GHSA-one"]),
+            ("changed_paths", []), ("changed_paths", ["package-lock.json", "package-lock.json"]),
+            ("changed_paths", ["package.json"]), ("changed_paths", ["package-lock.json", "src/app.js"]),
+            ("changed_paths", ["package-lock.json", {}]),
+        )
+        for consumer, factory, head in (
+            ("admission", admission_fixture, sha("b")),
+            ("full", full_projection_fixture, sha("6")),
+            ("post", post_merge_fixture, sha("6")),
+        ):
+            for field, value in cases:
+                with self.subTest(consumer=consumer, field=field, value=value):
+                    api = factory()
+                    check = self.projection_check(api, head)[0]
+                    raw = json.loads(check["output"]["summary"])
+                    raw[field] = value
+                    summary = security_patch.canonical_json(raw)
+                    check["output"]["summary"] = summary
+                    check["external_id"] = f"{security_patch.PROJECTION_SCHEMA}:{hashlib.sha256(summary.encode()).hexdigest()}"
+                    with self.assertRaisesRegex(security_patch.PolicyError, "GHSA set|changed_paths"):
+                        if consumer == "post":
+                            security_patch.verify_post_merge(api, self.repository, "main", sha("7"), 44)
+                        else:
+                            self.verify(api, consumer == "admission")
+                    self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_documented_read_scopes_support_projection_admission(self):
+        import re
+        import yaml
+        workflow = next(
+            item for item in (yaml.safe_load(block) for block in re.findall(r"```yaml\n(.*?)\n```", (ROOT / "README.md").read_text(), re.DOTALL))
+            if isinstance(item, dict) and item.get("name") == "CI"
+        )
+        documented = workflow["permissions"]
+        self.assertTrue(all(value == "read" for value in documented.values()))
+        for omitted in (None, "checks", "pull-requests"):
+            with self.subTest(omitted=omitted):
+                permissions = {key: value for key, value in documented.items() if key != omitted}
+                api = admission_fixture()
+
+                class ScopedApi:
+                    def access(self, method, path, **kwargs):
+                        scope = "checks" if "/check-runs" in path else "pull-requests" if "/pulls" in path else "contents"
+                        if permissions.get(scope) != "read":
+                            raise security_patch.PolicyError(f"missing {scope} read scope")
+                        return getattr(api, method)(path, **kwargs)
+
+                    def get(self, path, **kwargs):
+                        return self.access("get", path, **kwargs)
+
+                    def pages(self, path, **kwargs):
+                        return self.access("pages", path, **kwargs)
+
+                if omitted is None:
+                    result = security_patch.verify_projection_admission(ScopedApi(), self.repository, 44, "main")
+                    self.assertEqual(result.projection_head, sha("b"))
+                else:
+                    with self.assertRaisesRegex(security_patch.PolicyError, f"missing {omitted} read scope"):
+                        security_patch.verify_projection_admission(ScopedApi(), self.repository, 44, "main")
+                self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_projection_consumers_require_exact_check_payload_and_custody(self):
+        for factory, admission, head in ((admission_fixture, True, sha("b")), (full_projection_fixture, False, sha("6"))):
+            for drift in ("external_id", "title", "extra-summary-field", "base", "maintainer-enabled", "maintainer-missing", "alternate-manifest", "alternate-lock"):
+                with self.subTest(admission=admission, drift=drift):
+                    api = factory()
+                    pr = api.gets[f"repos/{self.repository}/pulls/44"]
+                    check = self.projection_check(api, head)[0]
+                    if drift == "external_id":
+                        check["external_id"] = "wrong"
+                    elif drift == "title":
+                        check["output"]["title"] = "wrong"
+                    elif drift == "base":
+                        pr["base"]["sha"] = sha("9")
+                    elif drift == "maintainer-enabled":
+                        pr["maintainer_can_modify"] = True
+                    elif drift == "maintainer-missing":
+                        del pr["maintainer_can_modify"]
+                    else:
+                        raw = json.loads(check["output"]["summary"])
+                        raw[{"extra-summary-field": "unattested", "alternate-manifest": "manifest_path", "alternate-lock": "lock_path"}[drift]] = "other.json"
+                        check["output"]["summary"] = security_patch.canonical_json(raw)
+                    with self.assertRaises(security_patch.PolicyError):
+                        self.verify(api, admission)
+                    self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_all_attestation_consumers_reject_non_success_duplicates(self):
+        for source in (True, False):
+            for status, conclusion in (("queued", None), ("completed", "failure")):
+                with self.subTest(source=source, status=status):
+                    api = source_fixture() if source else full_projection_fixture()
+                    runs = self.projection_check(api, sha("b") if source else sha("6"))
+                    duplicate = dict(runs[0], status=status, conclusion=conclusion)
+                    runs.append(duplicate)
+                    with self.assertRaisesRegex(security_patch.PolicyError, "exactly one trusted"):
+                        if source:
+                            security_patch.build_source_evidence(api, self.repository, sha("c"), "dev", "package.json", "package-lock.json")
+                        else:
+                            self.verify(api, False)
+                    self.assertFalse(api.posts)
+
+    def test_partial_association_can_reconcile_but_extras_never_can(self):
+        attested = ("GHSA-aaaa-bbbb-cccc", "GHSA-dddd-eeee-ffff")
+        cases = (
+            ((attested[0],), attested, True),
+            ((attested[0],), (attested[0],), False),
+            ((*attested, "GHSA-xxxx-yyyy-zzzz"), attested, False),
+        )
+        for associated, repository, accepted in cases:
+            with self.subTest(associated=associated, repository=repository):
+                api = SecurityAlertSequenceApi([(associated, repository)])
+                call = lambda: security_patch.wait_for_attested_security_ghsas(api, self.repository, 17, attested, 0, 0)
+                if accepted:
+                    self.assertEqual(call(), attested)
+                else:
+                    with self.assertRaises(security_patch.PolicyError):
+                        call()
+                self.assertFalse(api.posts)
+        api = SecurityAlertSequenceApi([((attested[0],), (attested[0],)), ((attested[0],), attested)])
+        self.assertEqual(security_patch.wait_for_attested_security_ghsas(api, self.repository, 17, attested, 1, 0), attested)
+        self.assertEqual(len(api.security_calls), 2)
+
+    def test_workflow_requires_latest_success_exact_pointer_and_check_suite(self):
+        import copy
+        for drift in ("target", "base", "head", "missing-pointer", "ambiguous-pointer", "older-green-newer-red", "older-green-newer-pending", "same-time-ambiguity", "missing-time", "suite"):
+            with self.subTest(drift=drift):
+                api = ready_projection_fixture()
+                evidence, pr = self.verify(api, False)
+                runs = api.page_values[f"repos/{self.repository}/actions/runs?event=pull_request&head_sha={sha('6')}&per_page=100"][0]["workflow_runs"]
+                run = runs[0]
+                if drift == "target":
+                    run["pull_requests"][0]["base"]["ref"] = "dev"
+                elif drift == "base":
+                    run["pull_requests"][0]["base"]["sha"] = sha("9")
+                elif drift == "head":
+                    run["pull_requests"][0]["head"]["sha"] = sha("9")
+                elif drift == "missing-pointer":
+                    run["pull_requests"] = []
+                elif drift == "ambiguous-pointer":
+                    run["pull_requests"].append(copy.deepcopy(run["pull_requests"][0]))
+                elif drift == "missing-time":
+                    del run["created_at"]
+                elif drift == "suite":
+                    run["check_suite_id"] = 9999
+                else:
+                    later = copy.deepcopy(run)
+                    if drift != "same-time-ambiguity":
+                        later["created_at"] = "2026-08-16T12:03:00Z"
+                        later.update(status="queued" if drift.endswith("pending") else "completed", conclusion=None if drift.endswith("pending") else "failure")
+                    runs.append(later)
+                with self.assertRaises(security_patch.PolicyError):
+                    security_patch.verify_checks(api, self.repository, 44, pr, evidence, ".github/workflows/ci.yml", "CI", 15368, "CodeQL", 57789)
+                self.assertFalse(api.posts)
+
+    def test_older_failure_does_not_block_a_newer_exact_success(self):
+        import copy
+        api = ready_projection_fixture()
+        evidence, pr = self.verify(api, False)
+        runs = api.page_values[f"repos/{self.repository}/actions/runs?event=pull_request&head_sha={sha('6')}&per_page=100"][0]["workflow_runs"]
+        older = copy.deepcopy(runs[0])
+        older.update(created_at="2026-08-16T12:01:00Z", conclusion="failure")
+        runs.append(older)
+        security_patch.verify_checks(api, self.repository, 44, pr, evidence, ".github/workflows/ci.yml", "CI", 15368, "CodeQL", 57789)
+        self.assertFalse(api.posts)
+
+    def test_codeql_requires_exact_current_base_target_and_head(self):
+        for field in ("base", "target", "head", "missing"):
+            with self.subTest(field=field):
+                api = ready_projection_fixture()
+                evidence, pr = self.verify(api, False)
+                runs = api.page_values[f"repos/{self.repository}/commits/{sha('6')}/check-runs?filter=latest&per_page=100"][0]["check_runs"]
+                codeql = next(run for run in runs if run["name"] == "CodeQL")
+                if field == "missing":
+                    del codeql["pull_requests"]
+                elif field == "target":
+                    codeql["pull_requests"][0]["base"]["ref"] = "dev"
+                else:
+                    codeql["pull_requests"][0][field]["sha"] = sha("9")
+                with self.assertRaisesRegex(security_patch.PolicyError, "CodeQL PR"):
+                    security_patch.verify_checks(api, self.repository, 44, pr, evidence, ".github/workflows/ci.yml", "CI", 15368, "CodeQL", 57789)
+                self.assertFalse(api.posts)
+
+    def test_post_merge_retains_maintainer_custody_requirement(self):
+        for value in (None, True):
+            with self.subTest(value=value):
+                api = post_merge_fixture()
+                api.gets[f"repos/{self.repository}/pulls/44"]["maintainer_can_modify"] = value
+                with self.assertRaisesRegex(security_patch.PolicyError, "maintainer modification"):
+                    security_patch.verify_post_merge(api, self.repository, "main", sha("7"), 44)
+                self.assertFalse(api.posts)
+
+    def test_required_checks_reject_conflicting_latest_results(self):
+        for name, app_id in (("CI", 15368), ("CodeQL", 57789)):
+            for status, conclusion in (("queued", None), ("completed", "failure"), ("completed", "success")):
+                with self.subTest(name=name, status=status, conclusion=conclusion):
+                    api = ready_projection_fixture()
+                    runs = api.page_values[f"repos/{self.repository}/commits/{sha('6')}/check-runs?filter=latest&per_page=100"][0]["check_runs"]
+                    original = next(run for run in runs if run["name"] == name)
+                    runs.append(dict(original, status=status, conclusion=conclusion))
+                    with self.assertRaisesRegex(security_patch.PolicyError, "ambiguous"):
+                        security_patch.verify_successful_check(api, self.repository, (sha("6"),), name, app_id)
+                    self.assertFalse(api.posts)
+
+    def test_existing_pr_requires_observed_prior_check_time(self):
+        for completed_at in (None, "2026-08-16T12:01:02Z", "2026-08-16T12:01:01Z"):
+            with self.subTest(completed_at=completed_at):
+                api, source = projection_create_fixture()
+                security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+                api.checks[0]["completed_at"] = completed_at
+                before = [entry for entry in api.posts if entry[0].endswith(("/git/refs", "/check-runs", "/pulls"))]
+                with self.assertRaises(security_patch.PolicyError):
+                    security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+                self.assertEqual(before, [entry for entry in api.posts if entry[0].endswith(("/git/refs", "/check-runs", "/pulls"))])
+
+    def test_same_second_initial_order_is_observed_but_cannot_be_reconstructed_on_retry(self):
+        for lose_response in (None, "pr"):
+            with self.subTest(lose_response=lose_response):
+                api, source = projection_create_fixture()
+                api.lose_response = lose_response
+                post = api.post
+                def same_second(path, payload):
+                    if path.endswith("/pulls"):
+                        try:
+                            return post(path, payload)
+                        finally:
+                            api.pull_requests[44]["created_at"] = api.checks[0]["completed_at"]
+                    return post(path, payload)
+                with patch.object(api, "post", same_second):
+                    if lose_response is None:
+                        security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+                    else:
+                        with self.assertRaisesRegex(security_patch.PolicyError, "equal-second timestamps"):
+                            security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+                api.lose_response = None
+                with self.assertRaisesRegex(security_patch.PolicyError, "equal-second timestamps"):
+                    security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+
+    def test_fake_does_not_correct_wrong_base_and_real_consumer_rejects_it(self):
+        api, source = projection_create_fixture()
+        post = api.post
+        def wrong_base(path, payload):
+            if path.endswith("/pulls"):
+                payload = dict(payload, base="dev")
+            return post(path, payload)
+        with patch.object(api, "post", wrong_base), self.assertRaisesRegex(security_patch.PolicyError, "base mismatch"):
+            security_patch.create_projection(api, source, "main", "package.json", "package-lock.json")
+        self.assertEqual(api.pull_requests[44]["base"]["ref"], "dev")
 
 
 class ActionContractTest(unittest.TestCase):
@@ -2618,48 +2789,44 @@ class ActionContractTest(unittest.TestCase):
         self.assertNotIn("security-app-private-key", text)
         self.assertNotIn("pulls/${PR_NUMBER}/merge", text)
 
-    def test_activation_proves_before_mint_and_reproves_before_merge(self):
-        text = ACTIVATION_ACTION.read_text()
-        proof = text.index("name: Re-prove source, projection, and trusted checks")
-        mint = text.index("name: Mint protected security activation token")
-        final_proof = text.index("name: Re-prove immediately before protected merge")
-        merge = text.index("name: Merge exact projection through GitHub")
-        post = text.index("name: Verify resulting main revision and tree")
-        self.assertLess(proof, mint)
-        self.assertLess(mint, final_proof)
-        self.assertLess(final_proof, merge)
-        self.assertLess(merge, post)
-        self.assertIn("merge-enabled == 'true'", text)
-        self.assertIn("{sha: $sha, merge_method: \"merge\"}", text)
-        self.assertNotIn("actions/checkout", text)
-        self.assertNotIn("--admin", text)
-
-    def test_observation_mode_has_no_required_merge_credential(self):
+    def test_verification_action_exposes_only_read_operations(self):
         import yaml
+        action = yaml.safe_load(VERIFICATION_ACTION.read_text())
+        self.assertFalse({"merge-enabled", "security-app-client-id", "security-app-private-key"} & action["inputs"].keys())
+        self.assertFalse(any("uses" in step for step in action["runs"]["steps"]))
+        commands = "\n".join(step.get("run", "") for step in action["runs"]["steps"])
+        self.assertIn('security_patch.py" verify-projection', commands)
+        self.assertIn('security_patch.py" verify-post-merge', commands)
+        self.assertIn('--pull-request', commands)
+        self.assertNotIn('--production-base', commands)
+        self.assertNotIn('gh api', commands)
+        self.assertFalse((ROOT / "actions/security-patch-activation").exists())
 
-        action = yaml.safe_load(ACTIVATION_ACTION.read_text())
-        self.assertFalse(action["inputs"]["security-app-client-id"]["required"])
-        self.assertFalse(action["inputs"]["security-app-private-key"]["required"])
-        text = ACTIVATION_ACTION.read_text()
-        self.assertIn("Validate protected merge credential inputs", text)
-        self.assertIn("Merge-enabled activation requires", text)
+    def test_source_action_has_preflight_and_classify_operations(self):
+        import yaml
+        action = yaml.safe_load(SOURCE_ACTION.read_text())
+        self.assertFalse(any("uses" in step for step in action["runs"]["steps"]))
+        self.assertNotIn("source-merge-sha", action["outputs"])
+        commands = "\n".join(step.get("run", "") for step in action["runs"]["steps"])
+        self.assertIn('security_patch.py" preflight-source', commands)
+        self.assertIn('security_patch.py" classify-source', commands)
+        self.assertNotIn('merge-source', commands)
+        self.assertFalse((ROOT / "actions/security-patch-source").exists())
 
-    def test_source_action_has_read_only_preflight_and_exact_merge_modes(self):
-        text = SOURCE_ACTION.read_text()
-        for fragment in (
-            "preflight-source",
-            "merge-source",
-            "--workflow-run-id",
-            "--expected-head-sha",
-            "--expected-base-sha",
-            "operation == 'preflight'",
-            "operation == 'merge'",
-        ):
-            self.assertIn(fragment, text)
-        self.assertNotIn("actions/checkout", text)
-        self.assertNotIn("private-key", text)
-        self.assertNotIn("app-id", text)
-        self.assertNotIn("pull_request_target", text)
+    def test_removed_operation_is_rejected_before_running_any_step(self):
+        import os
+        import subprocess
+        import yaml
+        for action_path, operation in ((SOURCE_ACTION, "merge"), (VERIFICATION_ACTION, "true")):
+            with self.subTest(action=action_path):
+                action = yaml.safe_load(action_path.read_text())
+                result = subprocess.run(
+                    ["bash", "-c", action["runs"]["steps"][0]["run"]],
+                    env={**os.environ, "OPERATION": operation},
+                    capture_output=True, text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("operation must be", result.stderr)
 
     def test_merge_flow_admits_only_app_attested_projection_to_ci(self):
         text = MERGE_FLOW_ACTION.read_text()
@@ -2676,7 +2843,7 @@ class ActionContractTest(unittest.TestCase):
 
     def test_projection_identity_is_one_central_non_overridable_trust_anchor(self):
         self.assertEqual(security_patch.TRUSTED_SECURITY_AUTOMATION_APP_ID, 4618077)
-        for path in (SOURCE_ACTION, PROJECTION_ACTION, ACTIVATION_ACTION, MERGE_FLOW_ACTION):
+        for path in (SOURCE_ACTION, PROJECTION_ACTION, VERIFICATION_ACTION, MERGE_FLOW_ACTION):
             text = path.read_text()
             self.assertNotIn("projection-app-id", text)
             self.assertNotIn("automation-app-id", text)

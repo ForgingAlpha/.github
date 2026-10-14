@@ -1,5 +1,5 @@
 name: CI Update Ownership
-description: Validate the sole normal-update owner and the Renovate/Dependabot cutover contract.
+description: Validate Renovate normal-update ownership and security-only Dependabot configuration.
 
 runs:
   using: composite

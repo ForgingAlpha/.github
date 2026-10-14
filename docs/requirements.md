@@ -11,7 +11,7 @@ tags:
 
 ## Shared CI
 
-### REQ-001 - Single Merge Authority
+### REQ-001 - Single Required CI Status
 
 Shared automation SHALL preserve one required status named `CI`.
 
@@ -25,7 +25,11 @@ Active repositories SHALL validate approved `docs/intent.md`,
 merge.
 
 **Fit:** Missing, provisional, or malformed source truth produces actionable
-failure output while a definition-only change can repair it.
+failure output while a definition-only change can repair it. The exact canonical
+`ForgingAlpha/control-plane` source follows its owning source-adoption rules and
+does not require a status marker; its owner CI validates canonical identities
+and upstream bindings. Status metadata and structural CI cannot establish
+approval or Currentness for any repository.
 
 ### REQ-003 - Strict Checks Without Silent Skips
 
@@ -72,7 +76,7 @@ Rollback SHALL require operator approval and SHALL accept only an existing
 protected immutable rollout tag whose commit historically passed `CI`.
 
 **Fit:** Arbitrary refs, non-`main` ancestry, and shell input are rejected;
-immutable tags never move, and no pre-policy commit can bypass historical CI.
+immutable tags never move, and every eligible target has the required CI evidence.
 
 ### REQ-008 - Least-Privilege Trusted Automation
 
@@ -123,9 +127,10 @@ derived projections rather than independent owners.
 Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
 of three days for patches, seven days for minors, and thirty days for majors.
 
-**Fit:** Eligible patch, minor, and major PRs merge automatically into a code
-repository's protected `dev` after exact-head `CI`; they do not auto-promote to
-`main`. Runtime and tool changes use the same path after their exact generated
+**Fit:** Eligible patch, minor, and major proposals target a code repository's
+protected `dev`; an authorized human merges them after exact-head `CI` and
+applicable approval. Renovate and platform auto-merge are disabled, including
+policy overrides. Runtime and tool changes use the same path after their exact generated
 locks and integrity data pass CI. Main-only control-plane updates merge through
 protected `main` only after their complete control-plane gates pass.
 
@@ -135,9 +140,10 @@ Only a Dependabot pull request with a re-provable official GitHub
 vulnerability-alert association and a trusted automation-App classification
 check bound to its exact source base, exact current head, complete associated
 OPEN or FIXED GHSA set, and approved manifest-and-lock change SHALL be treated
-as an automatically promotable security update. Eligible security updates
-SHALL bypass normal cooldown and SHALL automatically merge into protected
-`dev` only after that exact head passes required `CI` and CodeQL. Trusted
+as eligible for security-patch projection. Eligible security updates
+SHALL bypass normal cooldown. An authorized human SHALL perform the source
+merge into protected `dev` only after that exact head passes its classification,
+required `CI`, CodeQL, and applicable approval. Trusted
 exact-head CI SHALL succeed. Trusted aggregate CodeQL SHALL succeed except that
 its terminal neutral result MAY be accepted only after exact source
 classification proves an exact lockfile-only patch and the trusted
@@ -153,7 +159,9 @@ classifier SHALL bind the exact CI workflow path, run, repository, pull request,
 base, and head, then wait only a bounded interval for the latest trusted
 exact-head results. Source classification SHALL use non-cancelling
 repository-and-head concurrency and SHALL recheck that its trusted exact-head
-classification is unique after every create or update.
+classification is unique after writing. An identical retry SHALL preserve the
+original classification and completion time. Missing or changed classification
+SHALL NOT be created retrospectively for a completed merge.
 
 After the exact Dependabot revision merges into `dev`, a no-main-bypass projection
 writer MAY open a production pull request only by reconstructing that exact
@@ -174,10 +182,12 @@ commit, tree, file set, and sole-lock ownership. Every adoption SHALL re-read th
 current production base and unique trusted check. A missing, conflicting,
 duplicate, moved, wrong-App, or otherwise ambiguous object fails closed without a
 ref update, deletion, duplicate check, or second pull-request create request.
-Before its first mutable write, the writer SHALL snapshot the deterministic ref
+The writer SHALL check same-branch history, lock collisions and the deterministic
+ref before creating immutable Git tree/commit objects. Those objects do not publish
+a branch or proposal. Before its first ref, check or pull-request write, the writer SHALL snapshot the deterministic ref
 and trusted checks. It accepts only no ref with no check, the exact ref with no
 check, or the exact ref with one exact check; a check without its ref, a moved
-ref, a duplicate, or a conflicting check fails with no mutable write. The
+ref, a duplicate, or a conflicting check fails with no ref, check or pull-request write. The
 writer SHALL enumerate all pull-request history for the exact same-repository
 head. Any closed, merged, wrong-base, or duplicate prior record is a tombstone
 and SHALL prevent a replacement pull-request create request.
@@ -186,21 +196,24 @@ The immutable released control-plane policy SHALL pin the dedicated security
 source/projector App's public GitHub App ID for both source classification and
 projection writing. A consumer variable, workflow input, label, branch name, or
 pull-request field SHALL NOT select or override that trust identity. Each
-trusted check's current App slug SHALL match the corresponding merge or
-pull-request bot actor. The App SHALL be dedicated to security automation; its
+projection check's current App slug SHALL match the projection pull-request
+bot actor. The source merger and merge time SHALL be recorded as provider
+attribution; a known bot or automation merger SHALL be ineligible. Account type
+alone SHALL NOT establish human authorization. The App SHALL be dedicated to security automation; its
 private key SHALL NOT be available to a general agent launcher or any
-non-security workflow, and it SHALL have no `main` bypass. A merge rerun or ambiguous API
-response SHALL adopt an already-completed source merge only after re-proving the
-exact pull request, classified base and head, unique trusted classification,
-merge actor, ordered parents, and source-head tree. Any mismatch fails closed.
+non-security workflow, and it SHALL have no persistent-branch merge bypass.
+Classification and projection operations SHALL NOT request or schedule a merge.
+Reconstruction from a completed source merge SHALL re-prove the exact pull
+request, classified base and head, unique classification completed before the
+merge, observed merger, ordered parents, and source-head tree.
 
 The immutable source preimage SHALL be the first parent of the recorded `dev`
 security merge and SHALL equal the source base bound by classification. Each
 enrollment SHALL declare and verify its supported source merge shape; the
-initial site profile accepts only a normal two-parent merge whose ordered
+root npm profile accepts only a normal two-parent merge whose ordered
 parents are the classified source base and source head and whose resulting tree
 equals the classified source-head tree. Later movement of `dev` SHALL NOT
-invalidate that captured source chain. The initial root npm profile SHALL
+invalidate that captured source chain. The root npm profile SHALL
 compare the pre-fix blobs and modes for both `package.json` and
 `package-lock.json` against current `main`, even when a transitive-only fix
 changes only the lock.
@@ -222,14 +235,16 @@ repository, target branch, and lock path. Enrollment SHALL fail until that
 caller-side serialization is installed. Lock ownership proof SHALL reject an
 incomplete, capped, mismatched, or duplicate pull-request file enumeration.
 
-### REQ-014 - Exact-SHA Deployment
+### REQ-014 - Verified Projection And Exact-SHA Deployment
 
-An unattended security production pull request SHALL receive fresh strict
-`main`-target CI and CodeQL on its exact current head and base. Protected
-security activation SHALL independently reconstruct the expected patch,
-re-prove source and alert provenance, verify the exact trusted check runs, and
-request a pull-request merge with the exact head SHA. Quality and scanning
-requirements SHALL have no automation bypass.
+A security production pull request SHALL receive fresh strict `main`-target CI
+and CodeQL on its exact current head and base. Read-only verification SHALL
+independently reconstruct the expected patch, re-prove source and alert
+provenance, verify the exact trusted check runs, and reject armed native
+auto-merge. An authorized human SHALL approve and execute the exact-revision
+merge under the owning repository's protected procedure. Quality and scanning
+requirements SHALL have no automation bypass. Creating the draft projection
+SHALL NOT require approval or checks that can exist only after its creation.
 
 The deployed revision SHALL be the exact resulting `main` merge revision and
 tree. The source Dependabot head, its `dev` merge, the production preimage, the
@@ -237,12 +252,13 @@ projected head, the resulting `main` merge, and the deployment SHALL remain one
 traceable immutable chain; they are not required to share one commit SHA.
 
 **Fit:** The recorded source head/base or current production head/base moving or
-mismatching before activation fails closed; later unrelated `dev` movement does
-not. GitHub atomically rejects a stale exact-SHA merge. Immediately after the
-merge, the activator verifies the returned merge SHA, current `main` SHA,
-parentage, and expected tree. The independently triggered deployment binds
-itself to and reports that exact `main` push revision and may begin concurrently
-with the activator's postcondition. A deployment failure remains visible for
+mismatching before merge fails closed; later unrelated `dev` movement does
+not. Post-merge observation binds the actual push revision and merged pull
+request to its trusted projection attestation, verifies current `main`, ordered
+parents and expected tree, and performs no mutation. The independently triggered
+deployment binds itself to and reports that exact `main` push revision and may
+begin concurrently; post-merge observation is not its admission gate.
+A deployment failure remains visible for
 governed retry or roll-forward; automation does not silently roll back to a
 vulnerable revision.
 
@@ -255,15 +271,11 @@ deployment refs, and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
 
 **Fit:** Independent no-bypass rules enforce required CI, CodeQL, current-base
-state, merge shape, deletion, and non-fast-forward protection. Human review and
-UPDATE authority are branch-specific separate rules. On `dev`, only the fixed
-security automation App has pull-request-only bypass for the exact classified
-source merge. On `main`, that App has no bypass; only the dedicated security
-activator may later receive pull-request-only review and UPDATE bypass for the
-exact production projection. GitHub scopes bypass to an actor and ruleset, so
-the protected workflow and environment—not the ruleset—confine each use to a
-re-proved REQ-013/REQ-014 change. Neither identity can directly push a
-persistent branch.
+state, merge shape, deletion, and non-fast-forward protection. Only an
+applicable authorized human executes PR merges. Automation has no bypass
+authorizing persistent-branch updates, including after human approval.
+Repository auto-merge and merge queues are disabled. Separately scoped tag
+rollout and deployment permissions do not confer branch or merge authority.
 
 ### REQ-016 - Operator Boundary
 
@@ -292,9 +304,8 @@ remediation and SHALL NOT create normal version-update pull requests.
 
 **Fit:** Required CI validates the central Renovate preset, security-only
 Dependabot configuration, repository coverage, and absence of overlapping
-update ownership. During migration, each repository declares its sole normal
-update owner as `dependabot` or `renovate`; the audited mode flip is atomic, and
-final-state validation permits only `renovate`.
+update ownership. Each enrolled repository declares `renovate` as its sole
+normal-update owner; a change of ownership leaves no overlap or unmanaged interval.
 
 ### REQ-019 - Safe Generated-Lock Refresh
 
@@ -308,11 +319,11 @@ must pass locked-mode `CI`.
 
 ### REQ-020 - Version-Coherent Control-Plane Release
 
-After the Renovate plan's Phase 6 gate is active, an update to shared automation
-SHALL NOT advance `v1` until representative consumer profiles exercise one
+For repositories enrolled in the version-coherent consumer gate, an update to
+shared automation SHALL NOT advance `v1` until representative consumer profiles exercise one
 coherent candidate revision and the exact merged control-plane commit remains
-green and current. Before that gate is activated, initial rollouts SHALL satisfy
-REQ-005 through REQ-007 and the operator checklist.
+green and current. Every rollout SHALL satisfy REQ-005 through REQ-007 and the
+operator checklist, whether or not the consumer gate is enrolled.
 
 **Fit:** Candidate tests cannot mix proposed top-level Actions with sibling
 Actions from the already-live `v1`; failure or ambiguity leaves `v1` unchanged.
@@ -407,15 +418,17 @@ applicable.
 Every change in a control-plane repository and every change to a repository's
 workflow or detected production-control surface SHALL require approval from an
 authorized human code owner on the exact current pull-request revision. An
-agent or authoring-bot identity SHALL NOT satisfy or bypass that approval and
-SHALL NOT merge the protected persistent branch. This does not prohibit the
-separately scoped security and release identities from performing the exact,
-pre-authorized operations required by REQ-005 through REQ-008 and REQ-013
-through REQ-015.
+agent or authoring-bot identity SHALL NOT satisfy or bypass that approval.
+Every PR merge, including dependency and security changes, SHALL be executed
+by an applicable authorized human. Separately scoped classification, proposal,
+tag rollout and deployment effects retain their own authorization; none
+authorizes an automated merge or persistent-branch push.
 
 **Fit:** Required CI validates a canonical `.github/CODEOWNERS` file whose final
 active block assigns the complete control-plane tree, or the applicable trust
 and production-control paths, to an authorized human. Protected-branch rules
 require code-owner review and dismiss or invalidate approval when the reviewed
-head changes. The protected non-agent operator performs trust-surface and
-control-plane merges.
+head changes. Tests exercise permitted proposal and verification behavior and
+reject automation that approves, merges, queues a merge, or directly updates a
+persistent branch. Hosted permissions and human execution require operational
+qualification; local tests cannot prove them.

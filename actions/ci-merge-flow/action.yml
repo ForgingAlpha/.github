@@ -1,7 +1,7 @@
 # Composite action: Enforce merge flow policy.
 #
 # Fails the `CI` job when a pull request targets `main` or `staging` with
-# a source branch other than `dev`, except for a machine-attested exact
+# a source other than the same-repository `dev` branch, except for a machine-attested exact
 # security projection admitted only to run required CI. Enforces:
 #
 #     feature → dev → {staging, main}
@@ -27,6 +27,8 @@
 # GitHub Security Lab. All consuming `ci-*` composites already use
 # `pull_request` via their callers' `ci.yml`.
 
+# Caller GITHUB_TOKEN permissions: contents: read, checks: read, pull-requests: read.
+# These read scopes support exact projection admission and grant no merge authority.
 name: CI Merge Flow
 description: "Enforce governed admission into main and staging"
 
@@ -38,6 +40,7 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         BASE_REF: ${{ github.event.pull_request.base.ref }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       shell: bash
@@ -62,7 +65,7 @@ runs:
           exit 1
         fi
 
-        if [[ "$HEAD_REF" == "dev" ]]; then
+        if [[ "$HEAD_REF" == "dev" && "$HEAD_REPOSITORY" == "$GITHUB_REPOSITORY" ]]; then
           echo "✓ Allowed source branch: 'dev' → '${BASE_REF}'"
           exit 0
         fi

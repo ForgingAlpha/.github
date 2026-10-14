@@ -2,6 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "ForgingAlpha normal dependency update policy",
   "extends": ["config:recommended"],
+  "automerge": false,
+  "platformAutomerge": false,
   "dependencyDashboard": true,
   "timezone": "America/New_York",
   "schedule": ["at any time"],
@@ -28,26 +30,17 @@
     {
       "description": "Patch updates become eligible after three days",
       "matchUpdateTypes": ["patch"],
-      "minimumReleaseAge": "3 days",
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true
+      "minimumReleaseAge": "3 days"
     },
     {
       "description": "Minor updates become eligible after seven days",
       "matchUpdateTypes": ["minor"],
-      "minimumReleaseAge": "7 days",
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true
+      "minimumReleaseAge": "7 days"
     },
     {
       "description": "Major updates become eligible after thirty days",
       "matchUpdateTypes": ["major"],
-      "minimumReleaseAge": "30 days",
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true
+      "minimumReleaseAge": "30 days"
     },
     {
       "description": "Keep Node engine declarations owned by central runtime profiles",

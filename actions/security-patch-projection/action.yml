@@ -3,7 +3,7 @@ description: Deterministically create or adopt one verified Dependabot patch on 
 
 inputs:
   github-token:
-    description: No-bypass automation App token with repository write, checks write, and vulnerability-alert read.
+    description: No-bypass automation App token with repository write, pull-request write, checks write, and vulnerability-alert read.
     required: true
   source-merge-sha:
     description: Exact merged dev security revision emitted by trusted push CI.
@@ -17,11 +17,11 @@ inputs:
     required: false
     default: main
   manifest-path:
-    description: Root npm manifest path for the initial site profile.
+    description: Root npm manifest path for the root npm profile.
     required: false
     default: package.json
   lock-path:
-    description: Root npm lock path for the initial site profile.
+    description: Root npm lock path for the root npm profile.
     required: false
     default: package-lock.json
 outputs:

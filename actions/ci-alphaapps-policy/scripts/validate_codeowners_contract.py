@@ -14,7 +14,7 @@ from typing import NoReturn
 CODEOWNERS_PATH = Path(".github/CODEOWNERS")
 MAX_CODEOWNERS_BYTES = 3_000_000
 AUTHORIZED_HUMAN_OWNERS = frozenset({"@leosmigel"})
-CONTROL_PLANE_REPOS = frozenset({".github", "alphaapps-docs", "control-plane"})
+CONTROL_PLANE_REPOS = frozenset({".github", "control-plane"})
 PRODUCTION_CONTROL_FILES = (
     "Dockerfile",
     "compose.yaml",
@@ -153,14 +153,40 @@ def required_patterns(repo: Path, name: str) -> list[str]:
     if name.lower() in CONTROL_PLANE_REPOS:
         return ["*"]
 
-    patterns = ["/.github/"]
-    for relative_path in PRODUCTION_CONTROL_FILES:
-        if (repo / relative_path).exists():
-            patterns.append(f"/{relative_path}")
-    for relative_path in PRODUCTION_CONTROL_DIRECTORIES:
-        if (repo / relative_path).exists():
-            patterns.append(f"/{relative_path}/")
-    return [patterns[0], *sorted(patterns[1:])]
+    result = subprocess.run(
+        ["git", "ls-files", "--cached", "-z"], cwd=repo,
+        text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        fail(
+            "Production-control ownership inventory is unavailable",
+            "ownership verification requires the complete tracked candidate paths.",
+            "restore a readable Git index and rerun the check.",
+        )
+    patterns = {"/.github/"}
+    for relative_path in filter(None, result.stdout.split("\0")):
+        path = Path(relative_path)
+        if path.name in PRODUCTION_CONTROL_FILES or path.name in PRODUCTION_CONTROL_DIRECTORIES:
+            candidate = repo / path
+            suffix = "/" if candidate.is_dir() and not candidate.is_symlink() else ""
+            patterns.add(f"/{path.as_posix()}{suffix}")
+        for parent in path.parents:
+            if parent.name in PRODUCTION_CONTROL_DIRECTORIES:
+                patterns.add(f"/{parent.as_posix()}/")
+
+    # An enclosing required directory already protects every descendant.
+    required = sorted(
+        pattern for pattern in patterns
+        if not any(other != pattern and other.endswith("/") and pattern.startswith(other) for other in patterns)
+    )
+    if any(any(character.isspace() or character in "\\!#*?[]" for character in pattern) for pattern in required):
+        fail(
+            "Production-control ownership verification is incomplete",
+            "a detected target cannot be represented literally by the supported CODEOWNERS parser.",
+            "extend the validator's supported literal-pattern handling in a reviewed change before relying on this check.",
+        )
+    return ["/.github/", *(pattern for pattern in required if pattern != "/.github/")]
 
 
 def validate_required_block(entries: list[CodeownerEntry], patterns: list[str]) -> None:

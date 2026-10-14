@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a consumer's sole normal-update owner during the Renovate cutover."""
+"""Validate Renovate normal-update ownership and security-only Dependabot configuration."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ from typing import Any
 import yaml
 
 CENTRAL_PRESET = "local>ForgingAlpha/.github:renovate-config"
-ALLOWED_POLICY_KEYS = {"schema_version", "normal_update_owner", "base_branch", "runtime_profile"}
+REQUIRED_POLICY_KEYS = {"schema_version", "normal_update_owner", "base_branch"}
+ALLOWED_POLICY_KEYS = REQUIRED_POLICY_KEYS | {"runtime_profile"}
 ALLOWED_RENOVATE_KEYS = {"$schema", "extends", "baseBranchPatterns"}
 ALTERNATE_RENOVATE_CONFIGS = (
     "renovate.jsonc",
@@ -55,20 +56,20 @@ def load_yaml(path: Path) -> dict[str, Any]:
     return value
 
 
-def validate_policy(policy: dict[str, Any]) -> tuple[str, str, str]:
-    if set(policy) != ALLOWED_POLICY_KEYS:
-        raise OwnershipError("update policy must contain exactly schema_version, normal_update_owner, base_branch, and runtime_profile")
+def validate_policy(policy: dict[str, Any]) -> tuple[str, str, str | None]:
+    if not REQUIRED_POLICY_KEYS <= set(policy) or set(policy) - ALLOWED_POLICY_KEYS:
+        raise OwnershipError("update policy requires schema_version, normal_update_owner, base_branch, and only optional runtime_profile")
     if policy["schema_version"] != 1:
         raise OwnershipError("update policy schema_version must be 1")
     owner = policy["normal_update_owner"]
-    if owner not in {"dependabot", "renovate"}:
-        raise OwnershipError("normal_update_owner must be dependabot or renovate")
+    if owner != "renovate":
+        raise OwnershipError("normal_update_owner must be renovate; Renovate owns normal version updates")
     base = policy["base_branch"]
     if not isinstance(base, str) or not base or base.startswith("refs/") or "/" in base:
         raise OwnershipError("base_branch must be a simple branch name")
-    profile = policy["runtime_profile"]
-    if not isinstance(profile, str) or not profile:
-        raise OwnershipError("runtime_profile must name the centrally assigned profile")
+    profile = policy.get("runtime_profile")
+    if "runtime_profile" in policy and (not isinstance(profile, str) or not profile):
+        raise OwnershipError("runtime_profile, when supplied, must name the centrally assigned profile")
     return owner, base, profile
 
 
@@ -141,6 +142,8 @@ def validate_security_only_dependabot(config: dict[str, Any]) -> None:
 def validate_central_preset(config: dict[str, Any]) -> None:
     expected_values = {
         "extends": ["config:recommended"],
+        "automerge": False,
+        "platformAutomerge": False,
         "dependencyDashboard": True,
         "timezone": "America/New_York",
         "schedule": ["at any time"],
@@ -151,65 +154,78 @@ def validate_central_preset(config: dict[str, Any]) -> None:
         "pinDigests": True,
         "semanticCommits": "enabled",
     }
+    # Admit only the centrally owned policy shapes. A new Renovate option or
+    # rule requires a corresponding policy review and validator change; unknown
+    # manager blocks, presets, and nested overrides must not bypass this gate.
+    allowed_keys = set(expected_values) | {
+        "$schema", "description", "internalChecksFilter", "vulnerabilityAlerts",
+        "osvVulnerabilityAlerts", "lockFileMaintenance", "packageRules",
+    }
+    unexpected = set(config) - allowed_keys
+    if unexpected:
+        raise OwnershipError(f"central Renovate preset contains unadmitted options: {', '.join(sorted(unexpected))}")
+    for key in ("$schema", "description"):
+        if key in config and not isinstance(config[key], str):
+            raise OwnershipError(f"central Renovate preset {key} must be a string")
     mismatches = {
         key: {"expected": expected, "actual": config.get(key)}
         for key, expected in expected_values.items()
-        if config.get(key) != expected
+        if type(config.get(key)) is not type(expected) or config.get(key) != expected
     }
     if mismatches:
         raise OwnershipError(f"central Renovate preset policy values differ: {mismatches}")
     if config.get("internalChecksFilter") != "strict":
         raise OwnershipError("central Renovate preset must use strict internal checks")
-    if config.get("vulnerabilityAlerts") != {"enabled": False} or config.get("osvVulnerabilityAlerts") is not False:
+    for key in ("vulnerabilityAlerts", "lockFileMaintenance"):
+        setting = config.get(key)
+        if not isinstance(setting, dict) or set(setting) != {"enabled"} or setting["enabled"] is not False:
+            raise OwnershipError(f"central Renovate preset must disable {key} without overrides")
+    if config.get("osvVulnerabilityAlerts") is not False:
         raise OwnershipError("central Renovate preset must disable vulnerability remediation")
-    if config.get("lockFileMaintenance") != {"enabled": False}:
-        raise OwnershipError("central Renovate preset must disable generic lock maintenance")
     rules = config.get("packageRules")
     if not isinstance(rules, list):
         raise OwnershipError("central Renovate preset must define package rules")
-    mise_rules = [rule for rule in rules if isinstance(rule, dict) and rule.get("matchManagers") == ["mise"]]
-    if len(mise_rules) != 1 or mise_rules[0].get("enabled") is not False:
-        raise OwnershipError("central Renovate preset must disable direct mise projection updates")
-    node_engine_rules = [
-        rule
-        for rule in rules
-        if isinstance(rule, dict)
-        and rule.get("matchManagers") == ["npm"]
-        and rule.get("matchDepTypes") == ["engines"]
-        and rule.get("matchPackageNames") == ["node"]
-    ]
-    if len(node_engine_rules) != 1 or node_engine_rules[0].get("enabled") is not False:
-        raise OwnershipError(
-            "central Renovate preset must leave Node engine declarations to runtime-profile authority"
-        )
-    first_party_action_rules = [
-        rule
-        for rule in rules
-        if isinstance(rule, dict)
-        and rule.get("matchManagers") == ["github-actions"]
-        and rule.get("matchPackageNames") == ["ForgingAlpha/.github"]
-    ]
-    if len(first_party_action_rules) != 1 or first_party_action_rules[0].get("enabled") is not False:
-        raise OwnershipError(
-            "central Renovate preset must disable first-party ForgingAlpha/.github Action updates"
-        )
-    expected = {"patch": "3 days", "minor": "7 days", "major": "30 days"}
-    observed: dict[str, str] = {}
-    for rule in rules:
+    admitted_rules = {
+        update_type: {"matchUpdateTypes": [update_type], "minimumReleaseAge": age}
+        for update_type, age in {"patch": "3 days", "minor": "7 days", "major": "30 days"}.items()
+    }
+    admitted_rules.update({
+        "mise": {"matchManagers": ["mise"], "enabled": False},
+        "Node engine": {
+            "matchManagers": ["npm"],
+            "matchDepTypes": ["engines"],
+            "matchPackageNames": ["node"],
+            "enabled": False,
+        },
+        "first-party Action": {
+            "matchManagers": ["github-actions"],
+            "matchPackageNames": ["ForgingAlpha/.github"],
+            "enabled": False,
+        },
+    })
+    observed: list[str] = []
+    for index, rule in enumerate(rules):
         if not isinstance(rule, dict):
-            continue
-        update_types = rule.get("matchUpdateTypes")
-        if not isinstance(update_types, list) or len(update_types) != 1 or update_types[0] not in expected:
-            continue
-        update_type = update_types[0]
-        observed[update_type] = rule.get("minimumReleaseAge")
-        if rule.get("automerge") is not True or rule.get("automergeType") != "pr" or rule.get("platformAutomerge") is not True:
-            raise OwnershipError(f"central {update_type} rule must use protected pull-request automerge")
-    if observed != expected:
-        raise OwnershipError(f"central cooldown rules must be exactly {expected}, found {observed}")
-    if rules.index(first_party_action_rules[0]) != len(rules) - 1:
+            raise OwnershipError(f"central package rule {index} must be an object")
+        if "description" in rule and not isinstance(rule["description"], str):
+            raise OwnershipError(f"central package rule {index} description must be a string")
+        policy = {key: value for key, value in rule.items() if key != "description"}
+        matches = [
+            name for name, expected in admitted_rules.items()
+            if policy == expected and ("enabled" not in policy or policy["enabled"] is False)
+        ]
+        if not matches:
+            raise OwnershipError(f"central package rule {index} is not an admitted cooldown or ownership exclusion")
+        name = matches[0]
+        if name in observed:
+            raise OwnershipError(f"central Renovate preset repeats the {name} rule")
+        observed.append(name)
+    missing = set(admitted_rules) - set(observed)
+    if missing:
+        raise OwnershipError(f"central Renovate preset is missing required rules: {', '.join(sorted(missing))}")
+    if observed[-1] != "first-party Action":
         raise OwnershipError("first-party Action exclusion must be the final package rule")
-    if rules.index(node_engine_rules[0]) != len(rules) - 2:
+    if observed[-2] != "Node engine":
         raise OwnershipError("Node engine exclusion must immediately precede the final first-party Action rule")
 
 
@@ -235,9 +251,7 @@ def main() -> int:
             raise OwnershipError(
                 "repository-root, default-branch, policy, renovate, and dependabot paths are required for consumer validation"
             )
-        owner, base, _profile = validate_policy(load_json(args.policy))
-        if owner != "renovate":
-            raise OwnershipError("ci-update-ownership is the destination Renovate-mode gate")
+        _owner, base, _profile = validate_policy(load_json(args.policy))
         validate_default_branch(base, args.default_branch)
         validate_config_files(args.repository_root, args.renovate)
         validate_renovate(load_json(args.renovate), base)

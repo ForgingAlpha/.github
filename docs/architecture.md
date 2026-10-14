@@ -8,59 +8,52 @@ tags:
 
 ## Control Plane
 
-`.github` and `alphaapps-docs` are main-only control planes. Every change lands
+`.github` and `control-plane` are main-only control planes. Every change lands
 through a pull request with required `CI` and authorized-human code-owner
 approval of the exact current revision. Application repositories use
 feature/worktree branches into protected `dev`; `main` is the deployed branch.
 
+The shared policy action uses the runner-provisioned Python 3/PyYAML parser for
+bounded YAML frontmatter, rejecting malformed syntax and duplicate keys. It
+checks baseline presence and repository-specific status metadata. Only the exact
+`ForgingAlpha/control-plane` origin follows canonical source rules without a
+required status marker; its own CI validates canonical IDs and upstream digests.
+These structural checks cannot establish approval or Currentness.
+
 The shared policy action validates `.github/CODEOWNERS` before lower-level
 language checks. Control-plane repositories assign their complete tree to an
 authorized human. Consumer repositories assign `.github/` and each detected
-production-control file or directory to an authorized human in the final
-active CODEOWNERS block, preserving GitHub's last-match semantics. Repository
+production-control file or directory at any tracked depth to an authorized human
+in the final active CODEOWNERS block. A detected enclosing control directory
+covers its descendants; untracked files do not expand the candidate inventory. Unsupported literal target patterns leave ownership verification
+incomplete. The validator preserves GitHub's last-match semantics. Repository
 rules require code-owner review and invalidate stale approvals. Agents and the
 general-purpose authoring identity may create and update pull requests, but
-their approval cannot satisfy this boundary and they cannot merge
-trust-surface or control-plane changes. Separately scoped updater, security,
-and release Apps retain only their governed exact-revision update, merge,
-promotion, rollout, and rollback authority; they cannot substitute for human
-approval of a trust-surface or control-plane change.
+their approval cannot satisfy this boundary. An applicable authorized human
+executes every PR merge, including dependency and security updates. Updater,
+security and release Apps retain only scoped proposal, check, tag rollout and
+deployment effects; they cannot merge or update persistent branches directly.
 
-Shared merge-authority checks are composite actions so the caller preserves a
+Shared technical checks are composite actions so the caller preserves a
 single required job named `CI`. Consumers call internal actions at
 `ForgingAlpha/.github/actions/<action>@v1`. Self-CI uses local paths so a pull
 request validates its proposed implementation.
 
-Routine approval activation uses a repository-owned `workflow_run` job. The
-local job statically owns the default-branch-only `release-automation`
-environment and invokes the centrally versioned `approved-automerge@v1`
-composite. The composite resolves one exact open revision before minting the
-short-lived release App token. It validates GitHub's workflow-run pull-request
-pointer against the live open same-repository pull request and exact signal
-head; when GitHub supplies no pointer, it requires a unique live commit
-association instead. Neither pointer is authorization. The composite then
-revalidates the current human approval and head before calling GitHub's
-synchronous REST pull-request merge endpoint as that App, with the approved
-head SHA and governed merge method in the request.
-An update-only ruleset authorizes the release App to update the persistent
-branch through pull requests only, while independent protection rulesets give
-it no bypass from review, code-owner, latest-push, thread, CI, CodeQL, or
-current-base requirements. The merge uses neither deferred auto-merge nor an
-administrative bypass and fails closed if any protection changes before GitHub
-atomically updates the ref.
-Privileged activation never checks out or executes pull-request code, and
-environment credentials never traverse a called reusable-workflow boundary.
+Protected branches require the applicable human review, current-revision CI,
+scanning and current-base checks. Repository settings disable auto-merge and
+merge queues; automation receives no persistent-branch update bypass.
+Approval does not schedule a merge. A human executes it under the owning
+repository's protected procedure. Hosted settings, caller enrollment and
+credentials are verified separately from this source contract.
 
 ## Current-Channel Rollout
 
 `v1` is a mutable current channel. A trusted release gate observes successful
 `CI` on a push to `.github/main`, verifies that the completed head is still the
-remote `main` SHA, and then performs the serialized rollout below. Initial
-rollouts use this same exact-green-current-main gate; there is no exception for
-the implementation that previously occupied `v1`.
+remote `main` SHA, and then performs the serialized rollout below.
 
-Phase 6 adds a version-coherent candidate gate before rollout. Once active, it
-is mandatory for every `v1` movement: every live consumer profile must resolve
+The version-coherent consumer gate, once enrolled, is mandatory before every
+`v1` movement: every live consumer profile must resolve
 the proposed top-level and sibling shared Actions from the same revision, never
 mixing the candidate with the already-live `v1` implementation.
 
@@ -72,18 +65,16 @@ failure changes neither ref; an existing completed record makes a retry a
 no-op.
 
 The rollout job alone receives `contents: write`. Validation remains read-only.
-Tag rules permit only the release identity and operator. The obsolete semver
-writer is removed before the replacement first moves `v1`.
+Tag rules permit only the release identity and operator.
 
 Rollback is a protected manual workflow. It accepts only an existing immutable
 `v1-rollout-*` tag, verifies historical successful `CI` and ancestry from
 current `main`, serializes with normal rollout, moves mutable `v1` with a
 raw-ref expected-old lease, and creates an immutable `v1-rollback-*` record in
 the same atomic push.
-The pre-policy implementation is not an eligible rollback target. Rollout stays
-disabled until the protected environment and release controls are configured;
-rollback is exercised only between immutable `v1-rollout-*` records created by
-this contract.
+Rollout stays disabled until the protected environment and release controls are
+configured; rollback is exercised only between immutable `v1-rollout-*` records
+created by this contract.
 
 The rollout is intentionally fail-closed: if current `main` is red or stale,
 `v1` stays at its last green SHA. Recovery is a newer reviewed green commit,
@@ -175,38 +166,25 @@ Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.
 
 Each policy surface has one canonical implementation and test entrypoint.
-Workflows and tests invoke it directly; obsolete compatibility wrappers are not
-published alongside the current contract.
+Workflows and tests invoke it directly.
 
 Fanned-out workflows expose one `CI` fan-in that fails when any required job is
 failed, cancelled, or skipped.
 
 ## Runtime And Cache Model
 
-Current enforcement is transitional: each consumer repository's exact
-`mise.toml` and integrity-bearing `mise.lock` are the executable source used by
-local development and CI, and runtime changes require a governed exact-head
-repository pull request. The control plane now contains the initial
-machine-readable catalog, assignment validator, and exact-projection gate for a
-single Node site canary. That assignment becomes authoritative only when the
-released gate is required by the assigned consumer. Other repositories remain
-under their existing exact-lock authority until explicitly enrolled.
+Runtime authority is enrolled per consumer. The versioned profile catalog owns
+approved compatible tuples, assignments, integrity requirements and exact
+expiring exceptions. Each consumer commits `mise.toml` and `mise.lock`; a
+required released gate validates their exact assigned projection before locked
+installation. Unenrolled repositories retain their existing exact-lock authority.
+Workflow YAML does not duplicate runtime versions.
 
-The Renovate plan's runtime phase establishes the target model through bounded,
-fail-closed enrollment. `.github` owns a versioned, machine-verifiable profile catalog with
-approved compatible tuples, repository assignments, integrity requirements,
-rollout state, and exact time-bounded exceptions. Each consumer will continue
-to commit `mise.toml` and `mise.lock` as the reproducible local projection of
-its assignment. Shared CI will validate that projection before installing only
-locked bytes; workflow YAML will not duplicate language runtime versions.
-
-Normal runtime changes will originate in the central profile and produce exact
-consumer projections through constrained automation. The initial canary is
-read-only: direct Renovate mise updates and generic lock maintenance are
-disabled, and the gate only proves an already-committed projection. A profile
-may not claim automated-update status until its resolver, constrained writer,
-consumer canary, and rollout gate are all proven. Publishing a catalog as an
-unenforced organization-wide update authority remains prohibited.
+The supplied runtime-profile gate is read-only: direct Renovate mise updates,
+Node-engine updates and generic lock maintenance are disabled. Automatic
+projection updates require a qualified constrained resolver, writer, consumer
+canary and rollout gate. A published catalog alone does not establish enforced
+organization-wide runtime authority.
 
 Runtime, dependency/build, and Dialyzer caches are keyed by operating system,
 architecture, exact resolved runtimes, dependency locks, and relevant build
@@ -217,16 +195,20 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 
 Normal updates and security remediation are separate, non-overlapping lanes.
 
-The exact-patch projection and verification primitives are released centrally;
-the Dependabot-safe source-classification wake, consumer environment and
-ruleset enrollment, and production observation canary remain target state. The
-Renovate ownership, lock-refresh, consumer-profile, and
-updater-coverage portions are target state implemented in Phases 2 through 7 of
-`docs/plans/renovate-normal-dependency-automation.md`. Until each repository's
-audited cutover, its declared normal-update owner remains Dependabot; the
-repository never has two owners or a bot-less interval.
+Each consumer binds its sole normal-update owner and enrolls required gates,
+callers, credentials and hosted protections before relying on them. The
+ownership change must leave no overlapping updater or unmanaged interval.
+Source definitions alone do not prove enrollment or live execution.
 
-The organization Renovate preset now lives in `.github`;
+Required `CI` invokes `ci-update-ownership` with `.github/update-policy.json`,
+the consumer Renovate and Dependabot configurations, and the actual default
+branch. The policy declares its schema version, normal-update owner and base
+branch. Consumers enrolled in centrally assigned runtimes also declare
+`runtime_profile`; their separate runtime-profile gate requires the exact active
+assignment and locked projection. Update ownership alone does not establish
+runtime enrollment.
+
+The organization Renovate preset lives in `.github`;
 repository-local Renovate configuration extends it and selects the repository
 class. Native managers own ordinary package manifests and locks, external
 Actions, and active non-runtime image references. The preset excludes
@@ -239,15 +221,17 @@ annotated custom managers own irreducible version literals. Exact ranges and
 digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
-after three, seven, and thirty days respectively, then auto-merge through a
-pull request into protected code-repository `dev` only after exact-head `CI`.
-They do not auto-promote to `main`. Main-only control-plane updates target
+after three, seven, and thirty days respectively. Renovate proposes a pull
+request into protected code-repository `dev`; a human merges it after exact-head
+`CI` and applicable approval. Root bot and platform auto-merge are explicitly
+disabled. The central validator admits only the defined policy shapes, and
+consumer configurations cannot override them. Main-only control-plane updates target
 protected `main`; `.github` release remains independently gated by coherent
 consumer validation before `v1` moves.
 
 For enrolled repositories, repository-local Dependabot entries remain only to customize
-security updates; normal version-update capacity is zero. During migration, the
-updater-coverage gate validates a machine-readable sole-owner mode per
+security updates; normal version-update capacity is zero. The updater-coverage
+gate requires a machine-readable Renovate sole-owner declaration per enrolled
 repository. It also validates the applicable central preset and local coverage,
 Dependabot configuration, annotated literals, and exactly one owner per
 detected surface.
@@ -279,26 +263,26 @@ file, check, workflow-run, and vulnerability-alert APIs rather than the
 event-bound Dependabot metadata Action. Grouped PRs bind every associated OPEN
 or FIXED GHSA. All commits must remain verified Dependabot commits, only the
 approved manifest and lock may change, and stale native auto-merge or retired
-routing state is rejected. The App upserts one stable exact-head
-classification, re-proves the source, and requests an exact-head normal merge
-into protected `dev`. The App key exists only in this security boundary and is
-never available to the general agent launcher. If GitHub completes the exact
-merge but its response is lost, the same operation adopts the recorded merge
-only after re-proving the exact PR, classified base and head, unique trusted
-classification, App actor, ordered parents, and source-head tree.
+routing state is rejected. `security-patch-classification` writes one trusted
+exact-head classification. An identical retry preserves its original completion
+time; it cannot create missing pre-merge evidence after a merge. Its App key
+exists only in this security boundary and is never available to the general
+agent launcher. A human performs the normal two-parent source merge after
+classification, required checks and applicable approval. The unprivileged
+preflight does not read vulnerability alerts and is not full classification.
 
 Production remediation is a separate exact-patch projection, not a `dev` branch
 promotion. A trusted projector re-proves the merged Dependabot source PR,
-classification App and merge identity, exact source base and head, and complete
+classification App, recorded source merger and merge time, exact source base and head, and complete
 OPEN or FIXED GHSA set. It accepts only the enrolled repository profile's
 dependency manifest and lock paths. The authoritative source base is the first
 parent of the recorded security merge and must equal the base bound by source
-classification. The initial site profile accepts only a normal two-parent merge
+classification. The root npm profile accepts only a normal two-parent merge
 whose ordered parents are the classified source base and source head and whose
 tree equals the classified source head. Later unrelated movement of `dev`
 does not invalidate that immutable source chain.
 
-For the initial root npm profile, current `main` must still contain the exact
+For the root npm profile, current `main` must still contain the exact
 source pre-fix blob and mode for both `package.json` and `package-lock.json`,
 even when only the lock changed. Starting from the exact current `main` commit,
 the projector uses GitHub's Git Data API to replace only source-changed entries
@@ -311,9 +295,11 @@ and head, `dev` merge, production base, complete GHSA set, projected head, and
 resulting tree. The released control-plane policy pins the dedicated security
 source/projector App's public ID as the identity trust anchor for both source
 classification and projection writing; consumers install that App but cannot
-select or override which App the policy trusts. The App's current slug is derived
-from each trusted check and must match the corresponding merge or pull-request
-bot actor. Labels,
+select or override which App the policy trusts. The projection App's current
+slug must match the projection pull-request bot actor. The source merge must
+postdate classification and must not be attributed to a known bot or automation
+account. That attribution does not prove human authorization; the protected
+human merge procedure owns that decision. Labels,
 titles, bodies, and branch names are routing hints only.
 Any divergent preimage, unsupported file type, extra path, ambiguous API result,
 concurrent lock change, or moved base stops or rebuilds the projection from the
@@ -355,35 +341,24 @@ re-prove the full source and advisory chain; verify the exact CI workflow path,
 run, repository, pull-request pointer, projected head, conclusion, and CodeQL
 provenance; and independently require the live test merge to have the attested
 production base and projected head as its parents and the expected projected tree.
-Only then may it enter the branch-restricted security environment,
-mint the dedicated merge-only security activation token, and request GitHub's
-synchronous pull-request merge with the exact projected head SHA.
+`security-patch-verification` performs this read-only proof and rejects native
+auto-merge armed on the proposal. It has no merge credential or merge operation.
+An applicable authorized human approves and performs the merge after the
+required checks; initial draft creation does not require those later gates.
 
-Immediately after GitHub updates `main`, the activator verifies the returned
-merge SHA, current ref, parentage, and tree. The ordinary push-triggered
-deployment binds itself to and reports that exact merge revision; it may begin
-concurrently with the activator's postcondition and is not represented as being
-gated by it.
+After GitHub updates `main`, a read-only push observer passes the actual merge
+SHA and merged projection PR to `verify-post-merge`. The verifier derives the
+expected base, head and tree from the pinned-App projection attestation and
+checks the merge and current ref. The ordinary push-triggered deployment binds
+itself to and reports that exact revision; it may begin concurrently and is not
+represented as gated by this observation.
 
 Quality, CodeQL, current-base, deletion, non-fast-forward, and merge-shape rules
-remain in no-bypass rulesets. Human review and UPDATE authority are separate,
-branch-specific rules. The dedicated security source/projector App has pull-request-only bypass on
-`dev` for the re-proved source merge and none on `main`; Dependabot has none.
-The dedicated security activator may later receive pull-request-only bypass on
-`main` for the re-proved projection. No identity can directly push a persistent
-branch through this flow.
-
-Current migration status: the central exact source-classification, protected
-`dev` integration, and production-projection primitives exist, but no consumer
-has enrolled the required environment or ruleset authority. Production
-activation is not active. `alphaapps-site` is the first observation-mode canary;
-unattended authority follows only after its exact projection, checks, rulesets,
-credential boundary, merge, and production deployment are proven. The retired
-`pull_request_target` Dependabot caller and self-approving shared action are
-absent. Any remaining consumer reference fails until that repository migrates;
-no compatibility path may restore self-approval. The legacy whole-branch
-reusable promotion workflow remains only for existing callers pending separate
-migration and is not security authority for new enrollments.
+remain in no-bypass rulesets. Security and updater identities have no branch
+merge or direct-push authority. Consumer enrollment must prove the exact
+classification, projection, checks, caller serialization, credential boundary,
+human merge and deployment chain. Source publication does not establish that
+enrollment or change existing hosted settings and queued work.
 
 Privileged jobs process trusted GitHub metadata only. They never check out,
 execute, or consume artifacts from pull-request code.
@@ -415,7 +390,6 @@ diversity; it is diagnostic and never a merge requirement.
 
 Agents prepare scoped repository changes, verification, and `/tmp` scripts.
 The operator owns destructive pushes, organization rules, credential/App setup,
-exact-revision trust-surface approval, trust-surface and control-plane merges,
-rollout activation, and rollback execution. Governed updater, security, and
-release automation retains only its separately defined persistent-branch and
-release authority. No SSH or personal credentials are available to agents.
+exact-revision approval, every PR merge, rollout activation, and rollback
+execution. Updater, security and release automation retains only its separately
+defined non-merge effects. No SSH or personal credentials are available to agents.

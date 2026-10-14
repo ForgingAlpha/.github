@@ -17,6 +17,8 @@ on:
     branches: [dev, staging, main]
 permissions:
   contents: read
+  checks: read
+  pull-requests: read
 jobs:
   CI:
     name: CI
@@ -32,17 +34,19 @@ Main-only control-plane repositories use `push` and `pull_request` on `main`.
 Application repositories use feature/worktree pull requests into protected
 `dev`; routine production releases use a separate governed `dev` to `main`
 pull request. Security remediation uses the narrower exact-patch projection
-described below and never carries unrelated `dev` work.
+described below and never carries unrelated `dev` work. Its CI admission reads
+Git objects, pull requests and trusted checks, so callers retain all three
+read-only token scopes shown above.
 
 ## Shared Actions
 
 | Action | Contract |
 | --- | --- |
-| `ci-alphaapps-policy` | Approved source truth and fail-closed human CODEOWNERS boundaries |
+| `ci-alphaapps-policy` | Source-truth baseline structure and fail-closed human CODEOWNERS boundaries |
 | `ci-markdown` | Locked validation of tracked Markdown under repository policy on Linux |
 | `ci-github-actions` | Actionlint, immutable refs, permissions, and trigger safety |
-| `ci-dependabot-coverage` | Current pre-cutover update coverage; replaced by the updater-neutral gate in the Renovate plan |
-| `ci-update-ownership` | Sole normal-updater ownership and security-only Dependabot cutover |
+| `ci-dependabot-coverage` | Declared package coverage for Dependabot-managed consumers |
+| `ci-update-ownership` | Sole normal-updater ownership and security-only Dependabot configuration |
 | `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central commercial-license allowlist |
 | `ci-merge-flow` | Feature → `dev` and tested `dev` → `main` flow |
@@ -51,14 +55,22 @@ described below and never carries unrelated `dev` work.
 | `ci-astro` | Format, lint, Astro type checking, and build |
 | `ci-typescript` | Format, lint, type checking, and tests |
 | `ci-shell` | ShellCheck at style severity and Bash syntax |
-| `security-patch-source` | Dependabot-safe read-only proof and exact protected `dev` source merge |
+| `security-patch-classification` | Dependabot-safe preflight and trusted exact-source classification |
 | `security-patch-projection` | Exact manifest/lock patch reconstruction on current `main` |
-| `security-patch-activation` | Independent production re-proof and exact-SHA protected merge |
+| `security-patch-verification` | Read-only production re-proof before a human merge |
 
 External Actions are Renovate-owned and use immutable full SHAs with adjacent
 release comments. Internal `ForgingAlpha/.github` shared Actions are excluded
 from Renovate and use `@v1`, the current approved control-plane rollout
 channel.
+
+Shared Python validators require Python 3 with PyYAML provisioned on the runner.
+The policy action fails when that parser is unavailable; it does not install a
+floating dependency or substitute a partial YAML parser. Baseline metadata is
+a structural CI check, not proof of approval or Currentness. The exact
+`ForgingAlpha/control-plane` origin uses its canonical source procedure without
+a required status marker; its owner CI validates canonical identities and exact
+upstream bindings. Other repository baseline status requirements remain in force.
 
 ## Markdown Inputs
 
@@ -67,9 +79,7 @@ Run `ci-markdown` from the checkout root on Linux. It discovers every tracked
 including its exclusions. Missing, unreadable, non-file, or non-UTF-8 indexed
 paths fail explicitly; sparse checkouts must contain every indexed Markdown file.
 This input-integrity check runs before lint exclusions, so ignored paths must also
-exist and be readable. Earlier versions could accept ignored missing paths. The
-stricter preflight requires complete inputs; repository lint filtering then applies
-to those admitted inputs.
+exist and be readable. Repository lint filtering applies after input admission.
 Paths containing CR/LF, backslashes, glob escapes rewritten by the locked CLI
 (including braces, pipes, `!(` and `@(`), or `+(` in a directory name are unsupported
 and fail with a rename diagnostic. Ordinary spaces and supported literal glob
@@ -106,60 +116,36 @@ arguments. The workflow forwards the value to the service's
 `POSTGRES_INITDB_ARGS` environment variable; database sizing remains owned by
 the caller.
 
-## Dependency Automation Rollout
+## Dependency Proposals
 
-The approved target architecture makes Renovate the owner of normal version
-updates through one organization preset and a thin repository-local
-configuration. Dependabot remains enabled only for security updates with
-official GitHub vulnerability-alert association. The implementation is tracked
-in
-[`docs/plans/renovate-normal-dependency-automation.md`](docs/plans/renovate-normal-dependency-automation.md).
-The first implementation tranche publishes the central Renovate preset, the
-updater-ownership gate, and a read-only runtime-profile canary for
-`alphaapps-site`. Renovate's mise manager, npm-managed Node engine declarations,
-and generic lock maintenance remain disabled until the constrained writer is
-available. Required CI on the canary rejects overlapping update ownership and a
-runtime declaration or lock that is not the exact assigned projection.
+Renovate proposes normal updates through the central preset and a thin consumer
+configuration. This repository uses `renovate.json` with base branch `main`.
+Dependabot prepares officially associated security remediation.
+An applicable authorized human performs every PR merge. Bot and platform
+auto-merge are disabled; classification or a green check does not authorize a merge.
 
-The hosted service may evaluate the repository more than once per day; the
-unrestricted run window satisfies the policy's at-least-daily evaluation
-requirement. Release eligibility remains governed by the exact 3/7/30-day
-minimum ages rather than by scan frequency.
-
-Installing the hosted Renovate App and changing ruleset bypass actors are
-operator actions, not consequences of publishing this repository. Until those
-actions are separately approved and verified, Renovate may propose eligible
-normal updates but cannot complete unattended protected merges.
-
-For the first canary, install the App while the canonical consumer config PR is
-green but unmerged. Use Renovate's generated onboarding PR and job log to prove
-App access, the default branch, and manager discovery, then close that generated
-PR. Merge the canonical reviewed config to activate proposal creation. Inspect
-the first post-merge hosted job for the resolved central preset, cooldowns,
-disabled vulnerability/mise/Node-engine lanes, and first-party Action exclusion. Merging
-the canonical config before App installation would skip the onboarding safety
-gate.
-
-| Update | Minimum age | Merge policy |
+| Update | Minimum age | Target and merge |
 | --- | ---: | --- |
-| Patch | 3 days | Automatic into code-repository `dev` after exact-head `CI` |
-| Minor | 7 days | Automatic into code-repository `dev` after exact-head `CI` |
-| Major | 30 days | Automatic into code-repository `dev` after exact-head `CI` |
-| Runtime family | Applicable age | Automatic through the repository's normal-update branch after exact lock refresh and `CI` |
+| Patch | 3 days | Human-merged PR into protected `dev` |
+| Minor | 7 days | Human-merged PR into protected `dev` |
+| Major | 30 days | Human-merged PR into protected `dev` |
+| Security | No cooldown | Classified source PR, then exact production projection; both human-merged |
 
-Normal dependency updates never auto-promote from `dev` to `main`. Main-only
-control-plane repositories use protected pull requests and their complete local
-gates. `.github` advances `v1` only after version-coherent consumer profiles
-pass on the exact candidate.
+Main-only control-plane proposals target protected `main`. Runtime projections
+remain governed by their central assignments and exact locks; the current
+preset disables direct mise, Node-engine and generic lock-maintenance writes.
+Runtime update automation requires a qualified constrained writer.
 
-Officially classified security updates do not wait for cooldown and merge into
-`dev` only after full exact-head CI. The approved production target is to
-reconstruct only the verified dependency manifest-and-lock patch on current
-`main`, run fresh strict `main` CI and CodeQL, and use protected exact-SHA merge
-authority. That production path is not active until the central implementation
-and `alphaapps-site` observation canary complete. Any divergence, conflict,
-ambiguity, or unrelated path fails closed; the entire `dev` branch is never
-promoted by the security lane.
+The security lane classifies an exact Dependabot source, then reconstructs only
+its verified manifest-and-lock patch on current `main` after the human source
+merge. It creates a draft proposal; read-only verification checks that proposal
+before human production approval and merge. It never promotes unrelated `dev`
+work. Post-merge observation and deployment report the exact resulting revision.
+
+Installations, hosted settings, caller enrollment and daily execution need
+separate verification. An unrestricted Renovate run window permits daily
+execution but does not prove it. Follow the
+[operator checklist](docs/operator-checklist.md) for enrollment and rollout.
 
 ## `v1` Rollout
 
@@ -173,9 +159,8 @@ rollout that:
 3. leaves both refs unchanged if either update cannot be accepted;
 4. records the transition in the workflow summary.
 
-This describes the initial rollout gate. Phase 6 of the Renovate plan adds the
-mandatory version-coherent consumer-profile gate before step 2; after that gate
-is activated, no `v1` movement may bypass it.
+The version-coherent consumer-profile gate is required before step 2 wherever
+it is enrolled; no `v1` movement may bypass an active gate.
 
 The protected manual rollback workflow accepts only an immutable rollout tag
 whose commit historically passed the approved `CI` workflow, restores `v1`
@@ -192,9 +177,8 @@ with an expected-old lease, and creates an immutable rollback record.
 - Direct deployment and release writes belong only to the scoped release
   identity and operator.
 - Ambiguous identity, classification, checks, branch state, or SHA fails closed.
-- The security automation identity is dedicated and isolated from general agent
-  credentials; an exact completed source merge is adopted after a lost response
-  only when every immutable postcondition still matches.
+- The security identity is dedicated and isolated from general agent credentials;
+  proposal retries adopt only exact verified state. It has no merge authority.
 
 The durable policy is defined in [Intent](docs/intent.md),
 [Requirements](docs/requirements.md), and [Architecture](docs/architecture.md).

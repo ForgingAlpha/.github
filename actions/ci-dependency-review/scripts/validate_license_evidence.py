@@ -261,9 +261,9 @@ def dependency_section(payload: dict[str, Any], alias: str, spec: str, label: st
     matches = [
         section
         for section in NPM_DEPENDENCY_SECTIONS
-        if isinstance(payload.get(section), dict) and payload[section].get(alias) == spec
+        if isinstance(payload.get(section), dict) and alias in payload[section]
     ]
-    if len(matches) != 1:
+    if len(matches) != 1 or payload[matches[0]][alias] != spec:
         raise EvidenceError(f"{label} does not bind npm alias {alias!r} to {spec!r} exactly once.")
     return matches[0]
 
@@ -376,6 +376,8 @@ def concrete_npm_licenses(
 ) -> dict[str, str]:
     records: dict[str, list[str]] = {}
     for change in changes:
+        if change.get("change_type") == "removed":
+            continue
         package_url = change.get("package_url")
         if package_url not in expected_purls:
             continue

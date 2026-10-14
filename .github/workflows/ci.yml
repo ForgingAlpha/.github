@@ -46,6 +46,9 @@ jobs:
           python3 actions/ci-update-ownership/scripts/validate_update_ownership.py \
             --central-preset renovate-config.json
 
+      - name: Validate repository update ownership
+        uses: ./actions/ci-update-ownership
+
       - name: Validate runtime profile catalog
         run: |
           set -euo pipefail

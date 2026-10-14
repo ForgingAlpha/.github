@@ -66,7 +66,7 @@ class CiDependencyReviewTest(unittest.TestCase):
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 return validator.main(), stdout.getvalue(), stderr.getvalue()
 
-    def first_party_change(self, action="approved-automerge", source=...):
+    def first_party_change(self, action="ci-merge-flow", source=...):
         change = {
             "change_type": "added",
             "ecosystem": "actions",
@@ -81,7 +81,7 @@ class CiDependencyReviewTest(unittest.TestCase):
             change["source_repository_url"] = source
         return change
 
-    def first_party_api_responses(self, paths=("actions/approved-automerge/action.yml",)):
+    def first_party_api_responses(self, paths=("actions/ci-merge-flow/action.yml",)):
         ref = {
             "ref": "refs/tags/v1",
             "object": {"type": "commit", "sha": FIRST_PARTY_COMMIT},
@@ -520,7 +520,7 @@ class CiDependencyReviewTest(unittest.TestCase):
             self.first_party_change("ci-dependency-review"),
         ]
         paths = (
-            "actions/approved-automerge/action.yml",
+            "actions/ci-merge-flow/action.yml",
             "actions/ci-dependency-review/action.yml",
         )
         with mock.patch.object(
@@ -575,10 +575,10 @@ class CiDependencyReviewTest(unittest.TestCase):
             invalid.append(change)
         for package_url in (
             "pkg:githubactions/ForgingAlpha/.github/actions/nested/path@1.%2A.%2A",
-            "pkg:githubactions/ForgingAlpha/.github/actions/approved_automerge@1.%2A.%2A",
-            "pkg:githubactions/ForgingAlpha/.github/actions/approved-automerge@2.%2A.%2A",
-            "pkg:githubactions/ForgingAlpha/.github/actions/approved-automerge@1.*.*",
-            "pkg:githubactions/forgingalpha/.github/actions/approved-automerge@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci_merge_flow@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@2.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@1.*.*",
+            "pkg:githubactions/forgingalpha/.github/actions/ci-merge-flow@1.%2A.%2A",
         ):
             change = self.first_party_change()
             change["package_url"] = package_url
@@ -634,8 +634,8 @@ class CiDependencyReviewTest(unittest.TestCase):
 
     def test_first_party_action_path_must_be_one_exact_blob(self):
         identity = validator.FirstPartyActionIdentity(
-            "approved-automerge",
-            "pkg:githubactions/ForgingAlpha/.github/actions/approved-automerge@1.%2A.%2A",
+            "ci-merge-flow",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@1.%2A.%2A",
         )
         wrong_entries = (
             (),
@@ -790,6 +790,47 @@ class CiDependencyReviewTest(unittest.TestCase):
         self.assertEqual(returncode, 0, stderr)
         self.assertIn("concrete dependency evidence", stdout)
         fetch.assert_not_called()
+
+    def test_direct_dependency_replaced_by_alias_uses_current_evidence(self):
+        aliases = (("tool-alias", "real-tool", "1.2.3"),)
+        removed = {
+            "change_type": "removed", "ecosystem": "npm", "manifest": "package.json",
+            "name": "real-tool", "version": "1.2.3", "package_url": "pkg:npm/real-tool@1.2.3",
+            "license": "MIT",
+        }
+        current = {**removed, "change_type": "added", "manifest": "package-lock.json", "license": "Apache-2.0"}
+        for concrete in (None, current):
+            with self.subTest(concrete=concrete), self.npm_alias_workspace(aliases) as workspace:
+                changes = [removed, self.npm_alias_change(*aliases[0])]
+                if concrete is not None:
+                    changes.append(concrete)
+                with mock.patch.object(validator, "fetch_npm_registry_release", return_value=self.npm_registry_payload("real-tool", "1.2.3")) as fetch:
+                    code, _, stderr = self.run_main(changes, extra_env={"DEPENDENCY_WORKSPACE": str(workspace)})
+                self.assertEqual(code, 0, stderr)
+                self.assertEqual(fetch.call_count, 1 if concrete is None else 0)
+
+        with self.npm_alias_workspace(aliases) as workspace, mock.patch.object(
+            validator, "fetch_npm_registry_release", side_effect=validator.EvidenceError("registry unavailable")
+        ) as fetch:
+            code, _, _ = self.run_main([removed, self.npm_alias_change(*aliases[0])], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)})
+        self.assertEqual(code, 1)
+        fetch.assert_called_once()
+
+    def test_npm_alias_conflicting_declaration_is_rejected_in_manifest_or_root_lock(self):
+        aliases = (("tool", "real-tool", "1.2.3"),)
+        change = self.npm_alias_change(*aliases[0])
+        for filename in ("package.json", "package-lock.json"):
+            for extra_spec in ("npm:other-tool@1.2.3", "npm:real-tool@1.2.4", None):
+                with self.subTest(filename=filename, extra_spec=extra_spec), self.npm_alias_workspace(aliases) as workspace:
+                    path = workspace / filename
+                    payload = json.loads(path.read_text())
+                    root = payload if filename == "package.json" else payload["packages"][""]
+                    root["dependencies"] = {"tool": extra_spec}
+                    path.write_text(json.dumps(payload))
+                    with mock.patch.object(validator, "fetch_npm_registry_release", return_value=self.npm_registry_payload("real-tool", "1.2.3")) as fetch:
+                        code, _, _ = self.run_main([change], extra_env={"DEPENDENCY_WORKSPACE": str(workspace)})
+                    self.assertEqual(code, 1)
+                    fetch.assert_not_called()
 
     def test_npm_alias_registry_lookups_are_deduplicated_and_capped(self):
         aliases = (

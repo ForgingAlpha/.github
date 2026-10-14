@@ -1,7 +1,10 @@
 # Dependabot Templates
 
+Use these security-only templates after Renovate enrollment is verified through
+the [operator checklist](../../docs/operator-checklist.md#dependency-proposal-enrollment).
 Copy the closest template into `.github/dependabot.yml`, then delete update
-blocks for ecosystems that are not present in the repo. The shared
+blocks for ecosystems that are not present. Keep normal-update capacity at zero;
+Renovate owns normal updates. The shared
 `ci-dependabot-coverage` action validates that obvious dependency surfaces are
 covered or explicitly documented as unmanaged.
 
