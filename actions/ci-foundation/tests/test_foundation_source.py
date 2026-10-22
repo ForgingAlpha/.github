@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -381,9 +382,18 @@ class FoundationAdmissionTest(unittest.TestCase):
                     checker.git(self.area, "synthetic")
             child = int(pid_file.read_text())
             status = Path("/proc") / str(child) / "stat"
-            if status.exists():
-                self.assertEqual(status.read_text().split(") ", 1)[1].split()[0], "Z",
-                                 "owned child survived timed-out pipe capture")
+            # Sending SIGKILL does not synchronously finish the child's exit.
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    state = status.read_text().split(") ", 1)[1].split()[0]
+                except FileNotFoundError:
+                    break
+                if state == "Z":
+                    break
+                if time.monotonic() >= deadline:
+                    self.fail("owned child survived bounded cleanup observation: " + state)
+                time.sleep(0.01)
         finally:
             # A failing negative control must not leave its own test child alive.
             if pid_file.exists():
