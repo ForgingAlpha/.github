@@ -78,7 +78,8 @@ overlapping updater. The current core's variable image inputs stay app-owned.
 ## Evidence and failures
 
 Each decision emits available verifier/catalog and lock fingerprints, an action
-reference and a result. A null fingerprint means that input was unavailable.
+reference and a result. A null fingerprint means this decision retained no digest
+for that field; it does not prove the input was missing or a read was attempted.
 Successful admission also reports the authenticated core commit/tree. Retain
 these with the same job's native
 `Set up job` action-acquisition log, which records the resolved `.github` commit.

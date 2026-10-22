@@ -332,7 +332,7 @@ def main():
         return 0
     except (OSError, ValueError, TypeError, KeyError, RecursionError, subprocess.SubprocessError) as error:
         if args.operation != "derive":
-            # Keep available evidence on refusal; null means it could not be read.
+            # Null records no collected digest, without asserting why it is absent.
             print(json.dumps(dict(evidence, result="refused"), sort_keys=True))
         # Do not disclose paths, private inventory, source bytes or resolved environment.
         print("WHAT: Foundation source verification or derivation failed.", file=sys.stderr)
