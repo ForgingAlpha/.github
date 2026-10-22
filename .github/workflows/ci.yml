@@ -130,6 +130,12 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s actions/ci-update-ownership/tests
 
+      - name: Validate and test foundation source admission
+        run: |
+          set -euo pipefail
+          python3 -I actions/ci-foundation/scripts/foundation_source.py catalog
+          python3 -m unittest discover -s actions/ci-foundation/tests
+
       - name: Test runtime profile action
         run: |
           set -euo pipefail

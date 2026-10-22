@@ -16,3 +16,5 @@ runs:
           --policy .github/update-policy.json \
           --renovate renovate.json \
           --dependabot .github/dependabot.yml
+        python3 -I "$GITHUB_ACTION_PATH/../ci-foundation/scripts/foundation_source.py" \
+          update-owner --root "$PWD"

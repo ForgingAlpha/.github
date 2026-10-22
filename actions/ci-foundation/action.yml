@@ -1,0 +1,13 @@
+name: CI Foundation
+description: Authenticate the selected container foundation before running copied code.
+
+runs:
+  using: composite
+  steps:
+    - name: Verify selected foundation source
+      shell: bash
+      env:
+        FOUNDATION_ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        python3 -I "$GITHUB_ACTION_PATH/scripts/foundation_source.py" verify --root "$GITHUB_WORKSPACE"
