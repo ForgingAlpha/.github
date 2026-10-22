@@ -1,4 +1,13 @@
 {
   "schema_version": 1,
-  "records": []
+  "records": [
+    {
+      "repository": "https://github.com/ForgingAlpha/container-foundation",
+      "repository_id": 1428636846,
+      "format": "foundation-source-v1",
+      "commit": "88f630213a9fa8534ec3629caf1a9762a251edd3",
+      "tree": "33783406b377ed0221ea87735b1d36ed634d3a5b",
+      "lock_sha256": "655550d8c673e578ff72cfb33122f45ed777aacdd4a5de0971bce4529e33b054"
+    }
+  ]
 }

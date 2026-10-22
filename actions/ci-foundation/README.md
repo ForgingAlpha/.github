@@ -5,7 +5,7 @@ defines admission, update ownership, withdrawal and rollback. This action checks
 the actual checkout before any copied helper executes. It runs offline with
 Python's standard library, using only its own released catalog and verifier.
 
-The catalog currently admits no core revision. Synthetic fixture success does
+The catalog lists approved core revisions. Synthetic fixture success does
 not make a draft core eligible. Human source delivery, required checks, private
 derivation evidence and a reviewed shared release precede real admission.
 
