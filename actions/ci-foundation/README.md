@@ -11,10 +11,9 @@ derivation evidence and a reviewed shared release precede real admission.
 
 ## Consumer wiring
 
-Both `turnkey-platform` and `alpha-platform` select one `.foundation/` directory
-and adjacent `foundation.lock` at their checkout root. Alpha Data keeps its
-application configuration under `data/`; its adapter supplies the platform
-build root explicitly. A future Engine does not get another implicit copy.
+Each platform selects one `.foundation/` directory and adjacent `foundation.lock`
+at its checkout root. Component configuration stays application-owned; its
+adapter supplies the platform build root explicitly.
 
 Keep the existing required shared checks and run this gate before the
 application-owned adapter. The following steps illustrate ordering inside the
@@ -44,9 +43,9 @@ it does not establish application compatibility. Roll back only a complete
 still-approved pair with compatible application configuration. Data migrations
 and data are unaffected by source rollback.
 
-Alpha Data's actual NAS/storage profile still needs its app/host qualification.
-The core's disposable named-volume fixture is not proof of NFS support. The new
-Rust Turnkey application likewise supplies its runnable target, images, health,+migrations, secrets and allocation rather than inheriting business code here.
+Each application supplies its runnable target, images, health, migrations,
+secrets and allocation. A disposable core fixture does not qualify a different
+application storage profile.
 
 ## Prepare an approval record
 
@@ -78,8 +77,10 @@ overlapping updater. The current core's variable image inputs stay app-owned.
 
 ## Evidence and failures
 
-Each successful check emits the selected core commit/tree, lock fingerprint and
-actual verifier/catalog fingerprints. Retain these with the same job's native
+Each decision emits available verifier/catalog and lock fingerprints, an action
+reference and a result. A null fingerprint means that input was unavailable.
+Successful admission also reports the authenticated core commit/tree. Retain
+these with the same job's native
 `Set up job` action-acquisition log, which records the resolved `.github` commit.
 The action ref `v1` and the consumer workflow SHA are not that commit. A missing
 or ambiguous native association leaves source-version evidence incomplete.
@@ -90,11 +91,18 @@ Restore a complete approved pair for checkout drift; request shared admission
 for an unavailable core revision; repair malformed shared policy with its owner.
 Never regenerate expected policy from a changed application lock to pass CI.
 
+Checkouts must preserve exported bytes and executable bits. Content filters,
+line-ending conversion or restrictive execute-bit masks can require checkout
+correction before the exact exported representation matches.
+
 The first supported checker is Linux/Python 3 with regular files and Git modes
 100644/100755. Limits are 1 MiB per metadata file, 256 catalog records, 4,096
 payload files, 16 MiB per payload file, 64 MiB total payload and 8,192 discovered
 file/directory entries. Unsupported sizes fail explicitly rather than silently
-truncating. These limits cover the actual initial export; later source admission
+truncating. Directory iteration stops at the entry limit. Derivation caps Git
+stdout to the relevant input limit and stderr to 1 MiB while reading, stops its
+owned process group on refusal or timeout, and checks aggregate blob sizes before
+reading the next blob. These limits cover the actual initial export; later source admission
 must qualify changed representation or workload. This is a checkout integrity
 check, not protection against a hostile concurrent runner process.
 

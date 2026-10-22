@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -145,6 +146,7 @@ class FoundationAdmissionTest(unittest.TestCase):
         outside = self.area / "outside"
         outside.write_text("must remain unchanged")
         target = self.payload / "helper.py"
+        original = target.read_bytes()
         target.unlink()
         target.symlink_to(outside)
         self.refused(self.run_gate())
@@ -152,9 +154,12 @@ class FoundationAdmissionTest(unittest.TestCase):
         os.mkfifo(target)
         self.refused(self.run_gate())
         target.unlink()
-        target.write_text("unimportant")
+        target.write_bytes(original)
+        self.assertEqual(self.run_gate().returncode, 0)
         (self.payload / "linked-dir").symlink_to(self.area, target_is_directory=True)
         self.refused(self.run_gate())
+        (self.payload / "linked-dir").unlink()
+        self.assertEqual(self.run_gate().returncode, 0)
         state = self.consumer / ".foundation-state"
         state.mkdir()
         (state / "transaction.json").write_text("{}")
@@ -177,7 +182,11 @@ class FoundationAdmissionTest(unittest.TestCase):
         self.refused(self.run_gate())
         (self.trusted / "approved.json").unlink()
         (self.trusted / "approved.json").symlink_to(self.consumer / "approved.json")
-        self.refused(self.run_gate())
+        result = self.run_gate()
+        self.refused(result)
+        receipt = json.loads(result.stdout)
+        self.assertIsNone(receipt["policy_catalog_sha256"])
+        self.assertEqual(receipt["verifier_sha256"], hashlib.sha256(self.script.read_bytes()).hexdigest())
 
     def test_lock_root_and_state_links_and_metadata_limit(self):
         lock = self.consumer / "foundation.lock"
@@ -205,7 +214,15 @@ class FoundationAdmissionTest(unittest.TestCase):
     def test_policy_withdrawal_and_explicit_old_policy_restoration(self):
         self.assertEqual(self.run_gate().returncode, 0)
         self.write_catalog([])
-        self.refused(self.run_gate())
+        result = self.run_gate(env_extra={"FOUNDATION_ACTION_REF": "v1"})
+        self.refused(result)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt["result"], "refused")
+        self.assertEqual(receipt["action_ref"], "v1")
+        self.assertEqual(receipt["lock_sha256"], hashlib.sha256(self.raw).hexdigest())
+        self.assertEqual(receipt["policy_catalog_sha256"],
+                         hashlib.sha256((self.trusted / "approved.json").read_bytes()).hexdigest())
+        self.assertEqual(receipt["verifier_sha256"], hashlib.sha256(self.script.read_bytes()).hexdigest())
         self.write_catalog([self.record])
         self.assertEqual(self.run_gate().returncode, 0)
         second = copy.deepcopy(self.value)
@@ -221,6 +238,7 @@ class FoundationAdmissionTest(unittest.TestCase):
 
     def test_manifest_schema_and_path_counterexamples(self):
         for mutation in (lambda v: v["files"][0].update(path="../escape"),
+                         lambda v: v["files"][0].update(path="."),
                          lambda v: v["files"][0].update(size=True),
                          lambda v: v["files"].append(v["files"][0]),
                          lambda v: v.update(repository_id=True),
@@ -242,18 +260,137 @@ class FoundationAdmissionTest(unittest.TestCase):
         (self.consumer / ".github/dependabot.yml").write_text(
             "version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    schedule: {interval: daily}\n    open-pull-requests-limit: 0\n")
         action = yaml.safe_load((trusted_owner / "action.yml").read_text())
+        self.assertEqual(action["runs"]["steps"][0]["env"]["FOUNDATION_ACTION_REF"],
+                         "${{ github.action_ref }}")
         command = action["runs"]["steps"][0]["run"]
-        env = dict(os.environ, GITHUB_ACTION_PATH=str(trusted_owner), UPDATE_POLICY_DEFAULT_BRANCH="main")
+        startup = self.area / "startup"
+        startup.mkdir()
+        (startup / "sitecustomize.py").write_text(
+            "from pathlib import Path\nPath(" + repr(str(self.sentinel)) + ").touch()\n")
+        env = dict(os.environ, GITHUB_ACTION_PATH=str(trusted_owner), UPDATE_POLICY_DEFAULT_BRANCH="main",
+                   FOUNDATION_ACTION_REF="v1", PYTHONPATH=str(startup))
         def run():
             return subprocess.run(["bash", "-c", command], cwd=self.consumer,
                                   env=env, capture_output=True, text=True, timeout=15)
         result = run()
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.sentinel.exists(), "checkout Python startup executed before admission")
+        self.assertEqual(json.loads(result.stdout.splitlines()[-1])["action_ref"], "v1")
+        saved_payload = self.area / "saved-payload"
+        self.payload.rename(saved_payload)
+        lock = self.consumer / "foundation.lock"
+        lock.unlink()
+        result = run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout.splitlines()[-1])["result"], "foundation_not_applicable")
+        lock.write_bytes(self.raw)
+        self.refused(run())
+        lock.unlink()
+        saved_payload.rename(self.payload)
+        self.refused(run())
+        lock.write_bytes(self.raw)
+        self.assertEqual(run().returncode, 0)
         self.write_catalog([])
         self.refused(run())
         self.write_catalog([self.record])
         (self.consumer / ".github/update-policy.json").unlink()
         self.refused(run())
+
+    def test_directory_limit_stops_iteration_before_collecting_the_directory(self):
+        wide = self.area / "wide"
+        wide.mkdir()
+        for index in range(4):
+            (wide / str(index)).mkdir()
+        original_scan, seen = os.scandir, []
+        class TrackedEntries:
+            def __init__(self, path):
+                self.entries = original_scan(path)
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                self.entries.close()
+            def __iter__(self):
+                return self
+            def __next__(self):
+                entry = next(self.entries)
+                seen.append(entry.name)
+                return entry
+        with mock.patch.object(checker, "ENTRY_LIMIT", 1), mock.patch.object(checker.os, "scandir", TrackedEntries):
+            with self.assertRaises(checker.Refused):
+                checker.inventory(wide)
+        self.assertEqual(len(seen), 3, "enumeration continued after the first over-limit entry")
+
+    def test_git_stream_caps_and_owned_process_cleanup(self):
+        tools = self.area / "tools"
+        tools.mkdir()
+        fake_git = tools / "git"
+        actual_popen = subprocess.Popen
+        for stream in (1, 2):
+            with self.subTest(stream=stream):
+                fake_git.write_text("#!" + sys.executable + "\nimport os\nwhile True: os.write(" +
+                                    str(stream) + ", b'x' * 64)\n")
+                fake_git.chmod(0o755)
+                children = []
+                def launch(*args, **kwargs):
+                    process = actual_popen(*args, **kwargs)
+                    children.append(process)
+                    return process
+                with mock.patch.dict(os.environ, {"PATH": str(tools)}), \
+                        mock.patch.object(checker, "METADATA_LIMIT", 32), \
+                        mock.patch.object(checker.subprocess, "Popen", launch):
+                    with self.assertRaisesRegex(checker.Refused, "output size exceeded"):
+                        checker.git(self.area, "synthetic", limit=32)
+                self.assertEqual(len(children), 1)
+                self.assertIsNotNone(children[0].poll(), "owned Git process survived refusal")
+
+    def test_derivation_checks_total_before_reading_the_excess_blob(self):
+        source = self.area / "small-source"
+        (source / "payload").mkdir(parents=True)
+        for name in ("a", "b"):
+            (source / "payload" / name).write_bytes(b"x")
+        def git(*args):
+            return subprocess.check_output(["git", "-C", str(source), *args], stderr=subprocess.DEVNULL)
+        git("init", "-q")
+        git("remote", "add", "origin", checker.REPOSITORY)
+        git("add", "payload")
+        git("-c", "user.name=Synthetic fixture", "-c", "user.email=fixture@example.invalid",
+            "-c", "commit.gpgsign=false", "commit", "-qm", "synthetic")
+        revision = git("rev-parse", "HEAD").decode().strip()
+        original_git, bodies = checker.git, []
+        def observed_git(*args, **kwargs):
+            if args[1:3] == ("cat-file", "blob"):
+                bodies.append(args[3])
+            return original_git(*args, **kwargs)
+        with mock.patch.object(checker, "TOTAL_LIMIT", 1), mock.patch.object(checker, "git", observed_git):
+            with self.assertRaisesRegex(checker.Refused, "payload size exceeded"):
+                checker.derive(source, revision)
+        self.assertEqual(len(bodies), 1, "excess blob was read before aggregate refusal")
+
+    def test_git_timeout_stops_child_holding_pipes_after_parent_exit(self):
+        tools = self.area / "timeout-tools"
+        tools.mkdir()
+        pid_file = self.area / "owned-child.pid"
+        fake_git = tools / "git"
+        fake_git.write_text("#!" + sys.executable + "\nimport os,time\nfrom pathlib import Path\n"
+                            "child = os.fork()\nif child == 0:\n    time.sleep(30)\n    os._exit(0)\n"
+                            "Path(" + repr(str(pid_file)) + ").write_text(str(child))\nos._exit(0)\n")
+        fake_git.chmod(0o755)
+        try:
+            with mock.patch.dict(os.environ, {"PATH": str(tools)}), mock.patch.object(checker, "GIT_TIMEOUT", 2):
+                with self.assertRaisesRegex(checker.Refused, "timed out"):
+                    checker.git(self.area, "synthetic")
+            child = int(pid_file.read_text())
+            status = Path("/proc") / str(child) / "stat"
+            if status.exists():
+                self.assertEqual(status.read_text().split(") ", 1)[1].split()[0], "Z",
+                                 "owned child survived timed-out pipe capture")
+        finally:
+            # A failing negative control must not leave its own test child alive.
+            if pid_file.exists():
+                try:
+                    os.kill(int(pid_file.read_text()), 9)
+                except ProcessLookupError:
+                    pass
 
     def test_independent_derivation_uses_git_objects_not_working_files(self):
         source = self.area / "source"
@@ -281,7 +418,7 @@ class FoundationAdmissionTest(unittest.TestCase):
         self.assertNotIn("inputs", action)
         command = action["runs"]["steps"][0]["run"]
         self.assertIn('python3 -I "$GITHUB_ACTION_PATH/scripts/foundation_source.py"', command)
-        self.assertNotIn("continue-on-error", command)
+        self.assertNotIn("continue-on-error", action["runs"]["steps"][0])
 
 
 if __name__ == "__main__":

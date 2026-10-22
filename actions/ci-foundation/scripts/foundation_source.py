@@ -7,9 +7,12 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import selectors
+import signal
 import stat
 import subprocess
 import sys
+import time
 
 
 REPOSITORY = "https://github.com/ForgingAlpha/container-foundation"
@@ -21,6 +24,7 @@ FILE_LIMIT = 16 * 1024 * 1024
 TOTAL_LIMIT = 64 * 1024 * 1024
 ENTRY_LIMIT = 4096
 RECORD_LIMIT = 256
+GIT_TIMEOUT = 30
 GIT_ID = re.compile(r"[a-f0-9]{40}\Z")
 SHA256 = re.compile(r"[a-f0-9]{64}\Z")
 IDENTITY_KEYS = {"repository", "repository_id", "format", "commit", "tree"}
@@ -113,7 +117,7 @@ def relative_path(value):
     require(isinstance(value, str) and value and "\\" not in value and "\x00" not in value,
             "invalid inventory path")
     path = PurePosixPath(value)
-    require(not path.is_absolute() and str(path) == value and
+    require(path.parts and not path.is_absolute() and str(path) == value and
             all(part not in (".", "..") for part in path.parts),
             "inventory path escape or alias")
     return path
@@ -149,27 +153,27 @@ def manifest(data):
 def inventory(root):
     require(root.is_dir() and not root.is_symlink(), "payload directory missing or linked")
     files, directories, total = [], set(), 0
-    def walk_error(_):
-        raise Refused("payload directory unreadable")
-    for current, dirs, names in os.walk(root, followlinks=False, onerror=walk_error):
-        require(len(files) + len(directories) + len(dirs) + len(names) <= ENTRY_LIMIT * 2,
-                "supported payload entry count exceeded")
-        for name in dirs:
-            path = Path(current) / name
-            require(not path.is_symlink() and path.is_dir(), "linked or invalid payload directory")
-            directories.add(path.relative_to(root).as_posix())
-        for name in names:
-            path = Path(current) / name
-            relative = path.relative_to(root).as_posix()
-            relative_path(relative)
-            data, info = read_regular(path, FILE_LIMIT)
-            executable = info.st_mode & 0o111
-            require(executable in (0, 0o111), "unsupported executable mode")
-            total += len(data)
-            require(total <= TOTAL_LIMIT and len(files) < ENTRY_LIMIT,
-                    "supported payload size or count exceeded")
-            files.append({"path": relative, "mode": "100755" if executable else "100644",
-                          "size": len(data), "sha256": sha256(data)})
+    pending, examined = [root], 0
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                examined += 1
+                require(examined <= ENTRY_LIMIT * 2, "supported payload entry count exceeded")
+                path = Path(entry.path)
+                relative = path.relative_to(root).as_posix()
+                relative_path(relative)
+                require(not entry.is_symlink(), "linked payload entry")
+                if entry.is_dir(follow_symlinks=False):
+                    directories.add(relative)
+                    pending.append(path)
+                    continue
+                require(len(files) < ENTRY_LIMIT, "supported payload file count exceeded")
+                data, info = read_regular(path, min(FILE_LIMIT, TOTAL_LIMIT - total))
+                executable = info.st_mode & 0o111
+                require(executable in (0, 0o111), "unsupported executable mode")
+                total += len(data)
+                files.append({"path": relative, "mode": "100755" if executable else "100644",
+                              "size": len(data), "sha256": sha256(data)})
     expected_dirs = {str(parent) for row in files for parent in
                      PurePosixPath(row["path"]).parents if str(parent) != "."}
     require(directories == expected_dirs, "unexpected empty payload directory")
@@ -183,13 +187,14 @@ def root_path(raw):
     return root
 
 
-def verify(root, records):
+def verify(root, records, evidence):
     state = root / ".foundation-state"
     if os.path.lexists(state):
         require(state.is_dir() and not state.is_symlink(), "invalid selection state")
         require(not os.path.lexists(state / "transaction.json"), "incomplete source import")
     raw, _ = read_regular(root / "foundation.lock", METADATA_LIMIT)
     digest = sha256(raw)
+    evidence["lock_sha256"] = digest
     approved = [row for row in records if row["lock_sha256"] == digest]
     require(len(approved) == 1, "manifest is not admitted by the resolved shared policy")
     value = manifest(raw)
@@ -206,12 +211,40 @@ def git(source, *args, limit=METADATA_LIMIT):
     env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     env.update(GIT_NO_LAZY_FETCH="1", GIT_TERMINAL_PROMPT="0",
                GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null")
-    result = subprocess.run(["git", "--no-replace-objects", "-c", "core.fsmonitor=false",
-                             "-C", str(source), *args], env=env, stdin=subprocess.DEVNULL,
-                            capture_output=True, timeout=30, check=False)
-    require(result.returncode == 0 and len(result.stdout) <= limit,
-            "canonical Git object unavailable or supported size exceeded")
-    return result.stdout
+    command = ["git", "--no-replace-objects", "-c", "core.fsmonitor=false", "-C", str(source), *args]
+    output, counts, deadline = bytearray(), {"stdout": 0, "stderr": 0}, time.monotonic() + GIT_TIMEOUT
+    with subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, start_new_session=True) as process:
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ, ("stdout", limit))
+                selector.register(process.stderr, selectors.EVENT_READ, ("stderr", METADATA_LIMIT))
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    require(remaining > 0, "canonical Git operation timed out")
+                    events = selector.select(remaining)
+                    require(events, "canonical Git operation timed out")
+                    for key, _ in events:
+                        name, cap = key.data
+                        data = os.read(key.fd, min(65536, cap - counts[name] + 1))
+                        if not data:
+                            selector.unregister(key.fileobj)
+                            continue
+                        counts[name] += len(data)
+                        require(counts[name] <= cap, "supported Git output size exceeded")
+                        if name == "stdout":
+                            output.extend(data)
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, "canonical Git operation timed out")
+            require(process.wait(timeout=remaining) == 0, "canonical Git object unavailable")
+        finally:
+            if process.returncode is None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=5)
+    return bytes(output)
 
 
 def derive(source, revision):
@@ -225,8 +258,11 @@ def derive(source, revision):
     require(git(source, "rev-parse", revision + "^{commit}").decode().strip() == revision,
             "source commit mismatch")
     tree = git(source, "rev-parse", revision + ":payload").decode().strip()
-    files = []
-    for entry in git(source, "ls-tree", "-rz", revision + ":payload").split(b"\0"):
+    files, total = [], 0
+    entries = git(source, "ls-tree", "-rz", revision + ":payload").split(b"\0")
+    require(len(entries) - (entries[-1] == b"") <= ENTRY_LIMIT,
+            "supported export entry count exceeded")
+    for entry in entries:
         if not entry:
             continue
         header, raw_path = entry.split(b"\t", 1)
@@ -236,6 +272,8 @@ def derive(source, revision):
         require(kind == "blob" and mode in ("100644", "100755"), "unsupported Git export entry")
         size = int(git(source, "cat-file", "-s", oid))
         require(0 <= size <= FILE_LIMIT, "supported source file size exceeded")
+        total += size
+        require(total <= TOTAL_LIMIT, "supported source payload size exceeded")
         body = git(source, "cat-file", "blob", oid, limit=FILE_LIMIT)
         require(len(body) == size, "source blob size mismatch")
         files.append({"path": path, "mode": mode, "size": size, "sha256": sha256(body)})
@@ -263,6 +301,10 @@ def main():
     child.add_argument("--lock-output", required=True,
                        help="New private file only; never publish its inventory")
     args = parser.parse_args()
+    evidence = {"policy_catalog_sha256": None, "verifier_sha256": None,
+                "lock_sha256": None,
+                "action_ref": os.environ.get("FOUNDATION_ACTION_REF") or "local-candidate",
+                "policy_commit_evidence": "same-job native action acquisition log required"}
     try:
         if args.operation == "derive":
             raw, record = derive(root_path(args.source), args.revision)
@@ -272,24 +314,26 @@ def main():
             print(json.dumps({"candidate_record": record,
                               "eligibility": "not_established_by_local_derivation"}, sort_keys=True))
             return 0
+        evidence["verifier_sha256"] = sha256(read_regular(Path(__file__), FILE_LIMIT)[0])
         policy_bytes, _ = read_regular(CATALOG, METADATA_LIMIT)
+        evidence["policy_catalog_sha256"] = sha256(policy_bytes)
         records = catalog(policy_bytes)
         if args.operation == "catalog":
-            print(json.dumps({"result": "catalog_schema_valid", "records": len(records)}))
+            print(json.dumps(dict(evidence, result="catalog_schema_valid", records=len(records)), sort_keys=True))
             return 0
         root = root_path(args.root)
         if args.operation == "update-owner" and not any(
                 os.path.lexists(root / name) for name in (".foundation", "foundation.lock")):
-            print(json.dumps({"result": "foundation_not_applicable"}))
+            print(json.dumps(dict(evidence, result="foundation_not_applicable"), sort_keys=True))
             return 0
-        result = verify(root, records)
-        result.update(policy_catalog_sha256=sha256(policy_bytes),
-                      verifier_sha256=sha256(read_regular(Path(__file__), FILE_LIMIT)[0]),
-                      action_ref=os.environ.get("FOUNDATION_ACTION_REF", "local-candidate"),
-                      policy_commit_evidence="same-job native action acquisition log required")
+        decision = verify(root, records, evidence)
+        result = dict(evidence, **decision)
         print(json.dumps(result, sort_keys=True))
         return 0
     except (OSError, ValueError, TypeError, KeyError, RecursionError, subprocess.SubprocessError) as error:
+        if args.operation != "derive":
+            # Keep available evidence on refusal; null means it could not be read.
+            print(json.dumps(dict(evidence, result="refused"), sort_keys=True))
         # Do not disclose paths, private inventory, source bytes or resolved environment.
         print("WHAT: Foundation source verification or derivation failed.", file=sys.stderr)
         reason = str(error) if isinstance(error, Refused) else "Required evidence is unavailable or malformed."
