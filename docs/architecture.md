@@ -393,3 +393,78 @@ The operator owns destructive pushes, organization rules, credential/App setup,
 exact-revision approval, every PR merge, rollout activation, and rollback
 execution. Updater, security and release automation retains only its separately
 defined non-merge effects. No SSH or personal credentials are available to agents.
+
+## Selected Container Foundation Source
+
+Each consumer workflow runs the standalone `ci-foundation@v1` gate as a required
+step, followed by its adapter in a success-dependent step. The action never
+invokes the adapter. Enrollment qualification and human review of the protected
+workflow establish that order before any copied helper runs. The released
+action owns an approved fingerprint catalog and verifies the actual
+checkout without importing or executing its copied code. Applications keep
+`.foundation/` and the adjacent `foundation.lock`; the foundation owns their
+`foundation-source-v1` export format and local import/update behavior.
+
+Each catalog record contains the fixed canonical foundation repository and
+numeric ID, full human-merged source commit, payload tree, export format and
+SHA256 of the exact exported lock bytes. The designated `github-operator`
+acquires canonical source through its qualified scoped nonhuman access and
+verifies identity, human delivery and required checks; no personal or operator
+SSH credential is used. Independent derivation
+reads committed Git blobs and executable modes and reproduces the exact lock
+serialization; an exporter assertion or application-provided lock is insufficient.
+The source and derivation evidence remain in private retained custody. Only
+identity, commit/tree, format and opaque fingerprints enter this public catalog.
+
+A record becomes usable after the existing human-reviewed `.github` merge and
+protected `v1` release. One record serves all consumers of that core revision.
+The catalog starts empty until an eligible core revision is available. Multiple
+compatible approved versions can coexist. Record preparation emits a candidate;
+it cannot grant source eligibility or modify the released catalog automatically.
+
+The verifier authenticates the lock's exact bytes against its own catalog,
+validates the supported strict schema and cross-checks repository, numeric ID,
+commit, tree and format against the matched record, then compares actual paths,
+regular-file bytes, sizes and Git executable modes. Unexpected entries, empty
+directories, links, special files, path escapes, partial imports, malformed or
+ambiguous metadata and unsupported formats fail with WHAT-WHY-HOW remediation
+before candidate execution. A changed
+payload and matching rewritten lock cannot redefine the trusted expected hash.
+The caller cannot supply a catalog, source repository, URL, reference or policy
+override. Ordinary checking uses Python's standard library and needs neither
+private upstream credentials nor a source lookup.
+
+Under REQ-011, this exact first-party pair has one narrow reviewed-import
+management profile: the application integration owner prepares complete imports
+through the foundation importer and its human-reviewed PR. The shared catalog
+owner separately controls which source revisions may be selected. Renovate and
+Dependabot do not independently rewrite the pair. The update-ownership action
+delegates to the same canonical verifier whenever either member exists; the
+standalone gate also refuses a wholly absent pair for enrolled consumers. Fixed
+source identity, format, admitted revision and complete-pair checks bound this
+profile mechanically; it is not a caller-selected general exception. Other
+dependencies and images retain their existing update owners.
+
+Each decision records the actual verifier and catalog content fingerprints and
+action reference. Hosted evidence also retains the runner's resolved action
+commit from its native action acquisition log; `v1` and the consumer workflow
+SHA are not substitutes for that identity. Candidate self-CI establishes source
+qualification, not protected release or operational consumer admission. Public
+self-CI uses synthetic source/lock fixtures only; real private locks, inventories
+and derivation receipts remain in qualified private custody.
+
+Removing a record withdraws admission under the newly released policy. An
+application cannot supply an older catalog as a fallback. Existing protected
+whole-policy rollback can restore older approvals, including a record withdrawn
+by a later policy; the authorized human reviews that exact rollback target.
+Preserving a withdrawal requires a compatible target or a reviewed forward fix.
+An application rollback still requires a complete approved pair and compatible
+integration; it does not reverse schemas or data.
+
+Source authenticity, approved selection, working-file integrity, application
+compatibility and host/storage admission are separate observations. Applications
+own integration and hosts own storage. This gate is not a hostile-process
+sandbox and does not qualify NAS behavior or deploy services. Foundation
+consumption guidance references this owner instead of copying its admission
+policy. Signing, new CI credentials and automatic record admission are not part
+of this mechanism.

@@ -48,6 +48,7 @@ read-only token scopes shown above.
 | `ci-dependabot-coverage` | Declared package coverage for Dependabot-managed consumers |
 | `ci-update-ownership` | Sole normal-updater ownership and security-only Dependabot configuration |
 | `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
+| `ci-foundation` | Approved exact foundation export and actual working-file integrity before its adapter |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central commercial-license allowlist |
 | `ci-merge-flow` | Feature → `dev` and tested `dev` → `main` flow |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |

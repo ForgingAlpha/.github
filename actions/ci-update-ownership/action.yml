@@ -8,11 +8,14 @@ runs:
       shell: bash
       env:
         UPDATE_POLICY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        FOUNDATION_ACTION_REF: ${{ github.action_ref }}
       run: |
         set -euo pipefail
-        python3 "$GITHUB_ACTION_PATH/scripts/validate_update_ownership.py" \
+        python3 -I "$GITHUB_ACTION_PATH/scripts/validate_update_ownership.py" \
           --repository-root . \
           --default-branch "$UPDATE_POLICY_DEFAULT_BRANCH" \
           --policy .github/update-policy.json \
           --renovate renovate.json \
           --dependabot .github/dependabot.yml
+        python3 -I "$GITHUB_ACTION_PATH/../ci-foundation/scripts/foundation_source.py" \
+          update-owner --root "$PWD"
