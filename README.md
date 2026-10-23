@@ -31,9 +31,11 @@ jobs:
 ```
 
 Main-only control-plane repositories use `push` and `pull_request` on `main`.
+Container Foundation is also main-only while retaining its code-repository checks;
+its approved commits remain explicit consumer selections.
 Application repositories use feature/worktree pull requests into protected
-`dev`; routine production releases use a separate governed `dev` to `main`
-pull request. Security remediation uses the narrower exact-patch projection
+`dev`; routine production releases retain their owning governed promotion procedure.
+Security remediation uses the narrower exact-patch projection
 described below and never carries unrelated `dev` work. Its CI admission reads
 Git objects, pull requests and trusted checks, so callers retain all three
 read-only token scopes shown above.
@@ -50,7 +52,7 @@ read-only token scopes shown above.
 | `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
 | `ci-foundation` | Approved exact foundation export and actual working-file integrity before its adapter |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central commercial-license allowlist |
-| `ci-merge-flow` | Feature → `dev` and tested `dev` → `main` flow |
+| `ci-merge-flow` | Governed main-only admission and split application promotion flow |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
 | `ci-rust` | Format, Clippy, dead code, tests, and audit |
 | `ci-astro` | Format, lint, Astro type checking, and build |
@@ -127,12 +129,13 @@ auto-merge are disabled; classification or a green check does not authorize a me
 
 | Update | Minimum age | Target and merge |
 | --- | ---: | --- |
-| Patch | 3 days | Human-merged PR into protected `dev` |
-| Minor | 7 days | Human-merged PR into protected `dev` |
-| Major | 30 days | Human-merged PR into protected `dev` |
-| Security | No cooldown | Classified source PR, then exact production projection; both human-merged |
+| Patch | 3 days | Human-merged PR into the protected integration branch |
+| Minor | 7 days | Human-merged PR into the protected integration branch |
+| Major | 30 days | Human-merged PR into the protected integration branch |
+| Security | No cooldown | Main-only: human-merged PR to `main`; enrolled split apps: classified source and exact projection |
 
-Main-only control-plane proposals target protected `main`. Runtime projections
+Main-only control-plane and shared-component proposals target protected `main`;
+split applications retain `dev`. Runtime projections
 remain governed by their central assignments and exact locks; the current
 preset disables direct mise, Node-engine and generic lock-maintenance writes.
 Runtime update automation requires a qualified constrained writer.
