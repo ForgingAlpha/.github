@@ -21,6 +21,23 @@ an effect. Keep deployment and tag-rollout authority separate from PR merges.
   GitHub reads CODEOWNERS from the base branch; a new file cannot enforce itself.
 - Keep private keys in their scoped secret source and protected environment.
   Agents receive no operator SSH key, personal token or human credential.
+- For the main-only shared repositories, inspect the complete main protection and
+  inherited rules with the human settings owner. Allow only authorized human push
+  actors; enforce required PRs, exact human approval, trusted CI and applicable
+  scanning without a quality bypass. Verify that Agent and release/updater identities
+  cannot update main through an ordinary merge after approval. Omitted actor lists
+  and HTTP 403 are unknown, not empty. Replace a routine-bypass update restriction
+  only after equivalent actor denial and every existing quality requirement are verified.
+- Reconcile Container Foundation's main/dev commits, pending proposals, default branch,
+  CI and updater targets before retiring dev. Preserve approved export commits and
+  consumer locks. Its main-only selection does not add a numbered-release process
+  or silently update an application's imported payload.
+
+Read-only inspection helper: the human settings owner runs
+`python3 -I tools/main-protection-read.py` without sudo using their existing `gh`
+session. It checks the fixed three repository IDs and writes a private report under
+`/tmp/alphaapps-shared-main-read-*/REPORT.json`. It applies no settings and never
+certifies Agent exclusion; unavailable reads and omitted bypass actors remain unknown.
 
 ## Shared Checks And Rollout
 
