@@ -401,9 +401,13 @@ step, followed by its adapter in a success-dependent step. The action never
 invokes the adapter. Enrollment qualification and human review of the protected
 workflow establish that order before any copied helper runs. The released
 action owns an approved fingerprint catalog and verifies the actual
-checkout without importing or executing its copied code. Applications keep
-`.foundation/` and the adjacent `foundation.lock`; the foundation owns their
-`foundation-source-v1` export format and local import/update behavior.
+checkout without importing or executing its copied code. Applications select one
+payload at `tools/container-foundation/` (standard) or `.foundation/` (legacy
+transition), with `foundation.lock` at the checkout root. The foundation owns
+their `foundation-source-v1` export format and local import/update/migration
+behavior. The verifier resolves the sole existing fixed payload leaf, rejects
+dual or partial selections and linked targets or ancestors, and preserves
+unrelated `tools/` content.
 
 Each catalog record contains the fixed canonical foundation repository and
 numeric ID, full human-merged source commit, payload tree, export format and
@@ -413,11 +417,20 @@ verifies identity, human delivery and required checks; no personal or operator
 SSH credential is used. Independent derivation
 reads committed Git blobs and executable modes and reproduces the exact lock
 serialization; an exporter assertion or application-provided lock is insufficient.
-The source and derivation evidence remain in private retained custody. Only
-identity, commit/tree, format and opaque fingerprints enter this public catalog.
+The source and derivation evidence remain in private retained custody. Public
+records contain identity, commit/tree, format, opaque fingerprints and optional
+nonsecret supported-location metadata. The `payload_paths` field permits a nonempty,
+unique subset of the two fixed locations for a qualified helper revision.
+Records without this field permit only `.foundation`; schema version 1 accepts
+no other record fields. Placement is outside upstream identity and lock
+inventory. Consumer-provided metadata cannot grant source-layout eligibility.
 
 A record becomes usable after the existing human-reviewed `.github` merge and
 protected `v1` release. One record serves all consumers of that core revision.
+The exact core source must first be human-merged and its canonical delivery
+verified before the shared admission merge and release; application source
+updates and layout migrations follow that release. A task-branch candidate
+record does not authorize runtime use.
 The catalog starts empty until an eligible core revision is available. Multiple
 compatible approved versions can coexist. Record preparation emits a candidate;
 it cannot grant source eligibility or modify the released catalog automatically.

@@ -74,6 +74,149 @@ class FoundationAdmissionTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertFalse(self.sentinel.exists(), "candidate helper executed during authentication")
 
+    def move_to_tools(self):
+        target = self.consumer / "tools/container-foundation"
+        target.parent.mkdir(exist_ok=True)
+        self.payload.rename(target)
+        self.payload = target
+
+    def test_explicit_trusted_record_permits_both_fixed_layouts(self):
+        paths = [".foundation", "tools/container-foundation"]
+        self.write_catalog([dict(self.record, payload_paths=paths)])
+        for layout in paths:
+            with self.subTest(layout=layout):
+                if layout == "tools/container-foundation":
+                    self.move_to_tools()
+                for operation in ("verify", "update-owner"):
+                    result = self.run_gate(operation, env_extra={"CI": "true"})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(json.loads(result.stdout)["result"],
+                                     "working_pair_matches_approved_export")
+                self.assertFalse(self.sentinel.exists())
+
+    def test_catalog_layout_permission_is_independent_of_exact_inventory(self):
+        self.move_to_tools()
+        self.assertEqual(checker.inventory(self.payload), self.value["files"])
+        self.assertEqual(checker.manifest(self.raw), self.value)
+        self.refused(self.run_gate(env_extra={"CI": "true"}))
+        self.refused(self.run_gate("update-owner", env_extra={"CI": "true"}))
+        # Consumer-side capability claims cannot extend the trusted record.
+        value = dict(self.value, payload_paths=list(checker.PAYLOAD_PATHS))
+        raw = checker.encode(value)
+        (self.consumer / "foundation.lock").write_bytes(raw)
+        self.write_catalog([dict(self.record, lock_sha256=hashlib.sha256(raw).hexdigest(),
+                                 payload_paths=list(checker.PAYLOAD_PATHS))])
+        self.refused(self.run_gate())
+        (self.consumer / "foundation.lock").write_bytes(self.raw)
+        self.write_catalog([dict(self.record, payload_paths=["tools/container-foundation"])])
+        self.assertEqual(self.run_gate().returncode, 0)
+        self.payload.rename(self.consumer / ".foundation")
+        self.payload = self.consumer / ".foundation"
+        self.refused(self.run_gate())
+
+    def test_catalog_layout_extension_retains_strict_version_one_shape(self):
+        for paths in ([], ".foundation", None, [".foundation", ".foundation"],
+                      ["tools/container-foundation/"], ["tools/other"],
+                      ["./.foundation"], ["../.foundation"], [True], [{}]):
+            with self.subTest(paths=paths):
+                self.write_catalog([dict(self.record, payload_paths=paths)])
+                self.refused(self.run_gate("catalog", env_extra={"CI": "true"}))
+        self.write_catalog([dict(self.record, payload_paths=[".foundation"], extra=True)])
+        self.refused(self.run_gate("catalog"))
+        self.write_catalog([self.record, dict(self.record, payload_paths=list(checker.PAYLOAD_PATHS))])
+        self.refused(self.run_gate("catalog"))
+
+    def test_dual_layout_refuses_even_when_second_leaf_is_dangling_or_nonregular(self):
+        self.write_catalog([dict(self.record, payload_paths=list(checker.PAYLOAD_PATHS))])
+        tools = self.consumer / "tools"
+        tools.mkdir()
+        second = tools / "container-foundation"
+        for kind in ("directory", "file", "dangling-link"):
+            with self.subTest(kind=kind):
+                if kind == "directory":
+                    second.mkdir()
+                elif kind == "file":
+                    second.write_text("partial")
+                else:
+                    second.symlink_to(self.area / "missing")
+                self.refused(self.run_gate(env_extra={"CI": "true"}))
+                self.refused(self.run_gate("update-owner", env_extra={"CI": "true"}))
+                if kind == "directory":
+                    second.rmdir()
+                else:
+                    second.unlink()
+
+    def test_tools_partial_pair_is_applicable_but_unrelated_tools_is_not(self):
+        shutil.rmtree(self.payload)
+        (self.consumer / "foundation.lock").unlink()
+        tools = self.consumer / "tools"
+        tools.mkdir()
+        (tools / "unrelated").write_text("preserved")
+        result = self.run_gate("update-owner", env_extra={"CI": "true"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["result"], "foundation_not_applicable")
+        leaf = tools / "container-foundation"
+        for kind in ("directory", "file", "dangling-link"):
+            with self.subTest(kind=kind):
+                if kind == "directory":
+                    leaf.mkdir()
+                elif kind == "file":
+                    leaf.write_text("partial")
+                else:
+                    leaf.symlink_to(self.area / "missing")
+                result = self.run_gate("update-owner", env_extra={"CI": "true"})
+                self.refused(result)
+                self.assertEqual(json.loads(result.stdout)["result"], "refused")
+                if kind == "directory":
+                    leaf.rmdir()
+                else:
+                    leaf.unlink()
+        self.assertEqual((tools / "unrelated").read_text(), "preserved")
+
+    def test_tools_target_ancestor_and_transaction_links_refuse(self):
+        self.write_catalog([dict(self.record, payload_paths=list(checker.PAYLOAD_PATHS))])
+        self.move_to_tools()
+        tools = self.consumer / "tools"
+        stored_tools = self.area / "stored-tools"
+        tools.rename(stored_tools)
+        tools.symlink_to(stored_tools, target_is_directory=True)
+        self.refused(self.run_gate(env_extra={"CI": "true"}))
+        tools.unlink()
+        stored_tools.rename(tools)
+        stored_payload = self.area / "stored-payload"
+        self.payload.rename(stored_payload)
+        self.payload.symlink_to(stored_payload, target_is_directory=True)
+        self.refused(self.run_gate())
+        self.payload.unlink()
+        stored_payload.rename(self.payload)
+        state = self.consumer / ".foundation-state"
+        state.mkdir()
+        marker = state / "transaction.json"
+        marker.symlink_to(self.area / "missing")
+        self.refused(self.run_gate())
+        marker.unlink()
+        marker.write_text('{"kind":"layout-migration"}')
+        self.refused(self.run_gate())
+        marker.unlink()
+        self.assertEqual(self.run_gate().returncode, 0)
+
+    def test_tools_layout_keeps_exact_working_inventory_requirements(self):
+        self.write_catalog([dict(self.record, payload_paths=["tools/container-foundation"])])
+        self.move_to_tools()
+        target = self.payload / "nested/run"
+        target.chmod(0o644)
+        self.refused(self.run_gate())
+        target.chmod(0o755)
+        original = target.read_bytes()
+        target.write_bytes(b"changed")
+        self.refused(self.run_gate())
+        target.write_bytes(original)
+        extra = self.payload / "empty"
+        extra.mkdir()
+        self.refused(self.run_gate())
+        extra.rmdir()
+        self.assertEqual(self.run_gate().returncode, 0)
+
     def test_valid_working_pair_and_identity_evidence(self):
         result = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -294,6 +437,12 @@ class FoundationAdmissionTest(unittest.TestCase):
         self.write_catalog([])
         self.refused(run())
         self.write_catalog([self.record])
+        self.move_to_tools()
+        self.write_catalog([dict(self.record, payload_paths=["tools/container-foundation"])])
+        self.assertEqual(run().returncode, 0)
+        lock.unlink()
+        self.refused(run())
+        lock.write_bytes(self.raw)
         (self.consumer / ".github/update-policy.json").unlink()
         self.refused(run())
 

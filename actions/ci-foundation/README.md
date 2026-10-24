@@ -11,9 +11,13 @@ derivation evidence and a reviewed shared release precede real admission.
 
 ## Consumer wiring
 
-Each platform selects one `.foundation/` directory and adjacent `foundation.lock`
-at its checkout root. Component configuration stays application-owned; its
-adapter supplies the platform build root explicitly.
+Each platform selects one `tools/container-foundation/` directory and a root
+`foundation.lock`. Existing `.foundation/` imports remain supported during the
+explicit transition. Exactly one of these two fixed payload locations must
+exist; the verifier rejects dual, partial, linked or non-directory selections,
+including a linked `tools/` ancestor. Unrelated content under `tools/` is allowed.
+Component configuration stays application-owned; its adapter supplies the
+platform build root explicitly.
 
 Keep the existing required shared checks and run this gate before the
 application-owned adapter. The following steps illustrate ordering inside the
@@ -32,8 +36,10 @@ use `continue-on-error`; the adapter must not use `always()` or another conditio
 that runs after failure. Enrollment tests demonstrate the actual private
 checkout, exact resolved shared revision and adapter ordering. The gate neither
 executes the adapter nor deploys containers. An ordinary update-ownership check
-also invokes this same checker if either pair member exists. No pair there is
-reported not applicable; the standalone gate always requires the complete pair.
+also invokes this same checker if either supported payload leaf or the root lock
+exists, including dangling links and partial selections. Absence of all three is
+reported not applicable; unrelated `tools/` content does not enroll a repository.
+The standalone gate always requires the complete pair.
 
 The application integration owner prepares complete imported updates through
 human-reviewed app PRs. The fixed first-party reviewed-import profile is the
@@ -69,11 +75,28 @@ in qualified private task/artifact custody. Do not put the real lock, inventory,
 payload or private receipt into this public repository, CI logs or artifacts.
 Public self-CI uses synthetic fixtures exclusively.
 
+Catalog schema version 1 permits an optional trusted record field `payload_paths`:
+a nonempty, unique list containing only `.foundation` and/or
+`tools/container-foundation`. Existing records without the field permit only
+`.foundation`. Qualify the exact helper's support for each permitted location
+before adding the field to its record. The derived record intentionally omits
+this policy decision. The lock format, upstream identity and inventory remain
+unchanged; a consumer cannot add layout eligibility to its lock. New standard
+adoption requires a released record explicitly permitting
+`tools/container-foundation`. Preserve a compatible legacy selection until that
+record is available, then use the core-owned update and layout-migration
+procedures. Moving an older legacy-only helper does not establish compatibility.
+
 An approved record addition goes through the existing human-reviewed shared
 policy PR and protected `v1` release. All consumers reuse it; no per-app catalog
 or new credential is created. Source admission includes update-coverage review
 for that exact payload so future native-manager surfaces cannot acquire an
 overlapping updater. The current core's variable image inputs stay app-owned.
+
+For a coordinated source and layout change, human-merge the exact core source
+and verify its canonical delivery before merging its shared catalog admission
+and releasing `v1`. Application source updates and layout migrations follow
+that shared release. A proposed record in a task branch grants no runtime use.
 
 ## Evidence and failures
 
