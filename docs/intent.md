@@ -14,7 +14,10 @@ automation without copying workflow logic between repositories.
 
 ## Durable Outcomes
 
-- Every repository exposes one required merge status named `CI`.
+- Every repository retains a stable required result named `CI`. Enrolled
+  application repositories additionally require the distinct central baseline;
+  a document-only bootstrap may obtain its initial complete-profile `CI` from
+  the central workflow without inventing a product build result.
 - Every control-plane and protected production-control change is approved by
   an authorized human reviewer on its exact current revision; an agent or
   authoring-bot identity cannot substitute for that approval.

@@ -11,9 +11,12 @@ tags:
 
 ## Shared CI
 
-### REQ-001 - Single Required CI Status
+### REQ-001 - Stable CI Result And Central Baseline
 
-Shared automation SHALL preserve one required status named `CI`.
+Shared automation SHALL preserve a stable required result named `CI`. An
+enrolled application repository SHALL additionally require the central baseline
+under a distinct identity. An explicitly enrolled document-only repository MAY
+use its complete central bootstrap result as its initial `CI` producer.
 
 **Fit:** Every supported consumer can make one `CI` result required without
 depending on matrix job names. A centrally required common baseline has a
@@ -428,7 +431,7 @@ by an applicable authorized human. Separately scoped classification, proposal,
 tag rollout and deployment effects retain their own authorization; none
 authorizes an automated merge or persistent-branch push.
 
-**Fit:** Protected-branch rules require the approved human-review team for the
+**Fit:** For an enrolled team-review profile, protected-branch rules require the approved human-review team for the
 complete change and dismiss or invalidate approval when the reviewed head
 changes. A centrally enrolled team-review profile validates fresh effective
 branch rules against its trusted team identity, approval count, coverage and
@@ -440,7 +443,7 @@ their required protection. A CODEOWNERS file is not required solely to duplicate
 verified team protection in an enrolled profile. Tests exercise permitted
 proposal and verification behavior and reject automation that approves, merges,
 queues a merge, or directly updates a persistent branch. Hosted permissions,
-team eligibility and human execution require operational qualification; local
+team eligibility, bypass actors and human execution require operational qualification; local
 tests cannot prove them. This contract creates no enrollment or settings change.
 
 ### REQ-025 - Centrally Required Baseline Pilot
@@ -457,7 +460,10 @@ qualified pilot source and its required pass/fail enforcement. A restored source
 that is failed, cancelled, skipped or unexecuted is not recovery. Adding a rule,
 passing local tests or publishing source alone does
 not establish execution or enforcement. CodeQL remains separately configured.
-Broader enrollment and removal of redundant calls follow demonstrated coverage.
+Broader enrollment and removal of redundant calls require completed coverage
+across both the document-bootstrap and valid hosted Rust pilot targets,
+including their required execution, failure and recovery cases. Progress on
+one target does not establish pilot completion or authorize expansion.
 
 ### REQ-026 - Explicit Document Bootstrap
 

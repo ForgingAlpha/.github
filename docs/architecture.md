@@ -36,7 +36,9 @@ security and release Apps retain only scoped proposal, check, tag rollout and
 deployment effects; they cannot merge or update persistent branches directly.
 
 Shared technical checks are composite actions so the caller preserves a
-single required job named `CI`. Consumers call internal actions at
+stable required job named `CI`. Enrolled applications additionally require the
+distinct central baseline workflow; an enrolled document-only bootstrap can
+obtain its initial complete-profile `CI` centrally. Consumers call internal actions at
 `ForgingAlpha/.github/actions/<action>@v1`. Self-CI uses local paths so a pull
 request validates its proposed implementation.
 
@@ -51,8 +53,10 @@ credentials are verified separately from this source contract.
 
 The target central entrypoint is `.github/workflows/org-baseline.yml` in this
 repository, selected by a ForgingAlpha organization ruleset. The initial pilot
-binds an exact reviewed source SHA and explicit consumer repository/branch
-selectors. Existing rules remain in force. The workflow checks out the consumer
+binds an exact human-merged `main` source SHA with successful push CI on that
+merged revision, reverified as current `main` before initial activation, plus
+explicit consumer repository/branch selectors. The same source requirements
+apply to a new pilot revision. Existing rules remain in force. The workflow checks out the consumer
 revision separately from its own trusted checking source and records both
 identities; actual workflow-context values and GitHub App events require live
 qualification. It uses read-only pull-request execution, not a privileged
@@ -68,7 +72,9 @@ reviewers. The team-review profile reads fresh effective branch rules and
 requires the enrolled team, complete-change coverage, required approval count
 and stale-approval invalidation. Missing or partial evidence is a failure.
 Team membership and eligibility remain an operator-qualified prerequisite, not
-an inference from a team ID. This profile can replace CODEOWNERS validation
+an inference from a team ID. Bypass-actor and complete protection qualification
+also remain with the operator; effective-rule reads alone cannot prove them.
+This profile can replace CODEOWNERS validation
 only after its approved implementation and actual hosted protection are
 qualified; other callers keep their existing checks.
 
@@ -96,9 +102,23 @@ Pilot qualification starts with the document-bootstrap consumer and one
 independently verified current Rust consumer. An unborn local repository or a
 hosted documents-only branch cannot stand in for that Rust consumer. Each
 eligible target can progress without claiming missing second-target evidence.
-Activation requires an approved source plus the authorized settings path and
-observable target runs. After an initial qualified revision A, a controlled
-reviewed revision B is selected and observed, then the pilot selector is restored
+Both targets must complete the required pilot cases before any expansion or
+common-call retirement; partial progress does not complete the pilot.
+Ruleset administration retains the existing operator-owned path under REQ-016
+and the control-plane authority procedure. This amendment does not permit an
+agent to save protection changes through a human browser session or to borrow
+human credentials; browser consent alone does not establish that authority.
+Any protected executor requires separate qualification before a settings write.
+
+Activation requires the qualified merged source, that operator path and
+observable target runs. Serialize activation and rollback against the captured
+expected prior source and rule configuration; refuse stale or ambiguous state.
+Retain immutable transition evidence binding prior/new source SHAs, rules,
+successful source push CI and operator attribution. Pilot recovery accepts only
+the previously qualified human-merged source with that original green-CI and
+transition evidence, preserving the existing channel's source and recovery
+guarantees without moving `v1`. After an initial qualified revision A, a
+controlled human-merged and green revision B is selected and observed, then the pilot selector is restored
 to A. Verify that A runs successfully on valid input and again blocks the known
 invalid case; recording the selector or a failed, cancelled or skipped run does
 not establish recovery. Record target/source SHAs, saved rules and runs;
