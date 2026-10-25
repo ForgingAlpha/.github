@@ -57,6 +57,10 @@ revision separately from its own trusted checking source and records both
 identities; actual workflow-context values and GitHub App events require live
 qualification. It uses read-only pull-request execution, not a privileged
 pull-request-target path, and does not contain CodeQL initialization/analysis.
+Its shared Actions and scripts resolve from that separate trusted checkout at
+the same workflow-source SHA, using local paths within that checkout. It does
+not combine a pinned pilot workflow with sibling Actions from moving `v1`.
+Existing `@v1` callers and the protected channel remain unchanged.
 
 The central source owns explicit pilot profiles and their human-review team
 identity. A consumer cannot grant itself bootstrap or weaken its required
@@ -68,12 +72,25 @@ an inference from a team ID. This profile can replace CODEOWNERS validation
 only after its approved implementation and actual hosted protection are
 qualified; other callers keep their existing checks.
 
+Here CI enrollment means the centrally reviewed validation configuration for a
+consumer, not an unattended-authority Repository Enrollment or an Operational
+Profile. It grants no execution or merge authority and does not create a runtime
+profile assignment. Definition-only baseline repair and an enrolled document-only
+profile remain distinct; neither can substitute for the other's conditions.
+
 Bootstrap accepts only declared document/configuration inputs and refuses
 application content and executable lint configuration before invoking shared
 validators. Structural metadata does not prove human approval or Currentness.
 Product profiles retain their own builds, tests, manifests and exact runtime
 inputs. Foundation integrity stays before any copied helper or adapter;
 independent central execution alone cannot establish that ordering.
+The shared-CI owner accounts for common-check invocation and profile configuration;
+the product owner accounts for its build/test composition. Language-only
+composition is eligible only while independently verified central enforcement
+covers its common checks. Migrate by qualifying the central gate before removing
+consumer common calls; restore those calls before removing that gate. Until this
+joint invariant is verified, full composite defaults remain unchanged. A consumer
+opt-out input or configuration cannot establish the invariant.
 
 Pilot qualification starts with the document-bootstrap consumer and one
 independently verified current Rust consumer. An unborn local repository or a
