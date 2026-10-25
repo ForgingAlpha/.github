@@ -16,7 +16,11 @@ tags:
 Shared automation SHALL preserve one required status named `CI`.
 
 **Fit:** Every supported consumer can make one `CI` result required without
-depending on matrix job names.
+depending on matrix job names. A centrally required common baseline has a
+distinct identity from application CI. An explicitly enrolled document-only
+bootstrap may obtain its initial `CI` result from the central workflow only
+when that result covers its complete declared profile; it cannot replace an
+existing product CI result or its producer restrictions.
 
 ### REQ-002 - Approved Source Truth
 
@@ -417,18 +421,55 @@ applicable.
 
 Every change in a control-plane repository and every change to a repository's
 workflow or detected production-control surface SHALL require approval from an
-authorized human code owner on the exact current pull-request revision. An
+authorized human reviewer on the exact current pull-request revision. An
 agent or authoring-bot identity SHALL NOT satisfy or bypass that approval.
 Every PR merge, including dependency and security changes, SHALL be executed
 by an applicable authorized human. Separately scoped classification, proposal,
 tag rollout and deployment effects retain their own authorization; none
 authorizes an automated merge or persistent-branch push.
 
-**Fit:** Required CI validates a canonical `.github/CODEOWNERS` file whose final
-active block assigns the complete control-plane tree, or the applicable trust
-and production-control paths, to an authorized human. Protected-branch rules
-require code-owner review and dismiss or invalidate approval when the reviewed
-head changes. Tests exercise permitted proposal and verification behavior and
-reject automation that approves, merges, queues a merge, or directly updates a
-persistent branch. Hosted permissions and human execution require operational
-qualification; local tests cannot prove them.
+**Fit:** Protected-branch rules require the approved human-review team for the
+complete change and dismiss or invalidate approval when the reviewed head
+changes. A centrally enrolled team-review profile validates fresh effective
+branch rules against its trusted team identity, approval count, coverage and
+stale-approval policy; a missing, unavailable or weaker rule fails closed. A
+consumer pull request cannot select that identity or lower those requirements.
+Unmigrated callers retain the current canonical `.github/CODEOWNERS` validation
+and applicable code-owner rules until an explicit, qualified migration preserves
+their required protection. A CODEOWNERS file is not required solely to duplicate
+verified team protection in an enrolled profile. Tests exercise permitted
+proposal and verification behavior and reject automation that approves, merges,
+queues a merge, or directly updates a persistent branch. Hosted permissions,
+team eligibility and human execution require operational qualification; local
+tests cannot prove them. This contract creates no enrollment or settings change.
+
+### REQ-025 - Centrally Required Baseline Pilot
+
+Organization-required workflows SHALL execute the approved shared baseline on
+the intended consumer revision, using a coherent reviewed checking-source
+revision and read-only permissions. The pilot SHALL preserve existing CI,
+scanning, human review, branch protection and pre-execution integrity obligations.
+
+**Fit:** A narrowly selected pilot proves actual valid, invalid and repaired
+changes, GitHub App-created and already-open pull requests, and an observed
+controlled source update followed by successful restoration to the previously
+qualified pilot source and its required pass/fail enforcement. A restored source
+that is failed, cancelled, skipped or unexecuted is not recovery. Adding a rule,
+passing local tests or publishing source alone does
+not establish execution or enforcement. CodeQL remains separately configured.
+Broader enrollment and removal of redundant calls follow demonstrated coverage.
+
+### REQ-026 - Explicit Document Bootstrap
+
+A document-only bootstrap profile SHALL be explicitly enrolled by the approved
+central source, validate its governing documents and tracked Markdown, and admit
+only its declared non-executable inputs. Application profiles SHALL fail when
+their expected manifests or commands are missing rather than select bootstrap.
+
+**Fit:** Unknown enrollment, changed repository identity, application code,
+executable lint configuration, custom formatters/rules, untracked required
+inputs, malformed configuration and unavailable required evidence fail with
+actionable remediation. Bootstrap reuses existing checking implementations only
+where their behavior satisfies this boundary. It does not execute consumer
+helpers or weaken normal product validation. Transition to an application
+profile requires explicit enrollment and its meaningful product checks.

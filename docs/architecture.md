@@ -9,7 +9,7 @@ tags:
 ## Control Plane
 
 `.github` and `control-plane` are main-only control planes. Every change lands
-through a pull request with required `CI` and authorized-human code-owner
+through a pull request with required `CI` and authorized-human
 approval of the exact current revision. Application repositories use
 feature/worktree branches into protected `dev`; `main` is the deployed branch.
 
@@ -20,14 +20,15 @@ checks baseline presence and repository-specific status metadata. Only the exact
 required status marker; its own CI validates canonical IDs and upstream digests.
 These structural checks cannot establish approval or Currentness.
 
-The shared policy action validates `.github/CODEOWNERS` before lower-level
-language checks. Control-plane repositories assign their complete tree to an
+The released shared policy action validates `.github/CODEOWNERS` before lower-level
+language checks. Unmigrated control-plane repositories assign their complete tree to an
 authorized human. Consumer repositories assign `.github/` and each detected
 production-control file or directory at any tracked depth to an authorized human
 in the final active CODEOWNERS block. A detected enclosing control directory
 covers its descendants; untracked files do not expand the candidate inventory. Unsupported literal target patterns leave ownership verification
 incomplete. The validator preserves GitHub's last-match semantics. Repository
-rules require code-owner review and invalidate stale approvals. Agents and the
+rules retain their applicable code-owner review until qualified migration and
+invalidate stale approvals. Agents and the
 general-purpose authoring identity may create and update pull requests, but
 their approval cannot satisfy this boundary. An applicable authorized human
 executes every PR merge, including dependency and security updates. Updater,
@@ -45,6 +46,55 @@ merge queues; automation receives no persistent-branch update bypass.
 Approval does not schedule a merge. A human executes it under the owning
 repository's protected procedure. Hosted settings, caller enrollment and
 credentials are verified separately from this source contract.
+
+### Organization-required baseline pilot
+
+The target central entrypoint is `.github/workflows/org-baseline.yml` in this
+repository, selected by a ForgingAlpha organization ruleset. The initial pilot
+binds an exact reviewed source SHA and explicit consumer repository/branch
+selectors. Existing rules remain in force. The workflow checks out the consumer
+revision separately from its own trusted checking source and records both
+identities; actual workflow-context values and GitHub App events require live
+qualification. It uses read-only pull-request execution, not a privileged
+pull-request-target path, and does not contain CodeQL initialization/analysis.
+
+The central source owns explicit pilot profiles and their human-review team
+identity. A consumer cannot grant itself bootstrap or weaken its required
+reviewers. The team-review profile reads fresh effective branch rules and
+requires the enrolled team, complete-change coverage, required approval count
+and stale-approval invalidation. Missing or partial evidence is a failure.
+Team membership and eligibility remain an operator-qualified prerequisite, not
+an inference from a team ID. This profile can replace CODEOWNERS validation
+only after its approved implementation and actual hosted protection are
+qualified; other callers keep their existing checks.
+
+Bootstrap accepts only declared document/configuration inputs and refuses
+application content and executable lint configuration before invoking shared
+validators. Structural metadata does not prove human approval or Currentness.
+Product profiles retain their own builds, tests, manifests and exact runtime
+inputs. Foundation integrity stays before any copied helper or adapter;
+independent central execution alone cannot establish that ordering.
+
+Pilot qualification starts with the document-bootstrap consumer and one
+independently verified current Rust consumer. An unborn local repository or a
+hosted documents-only branch cannot stand in for that Rust consumer. Each
+eligible target can progress without claiming missing second-target evidence.
+Activation requires an approved source plus the authorized settings path and
+observable target runs. After an initial qualified revision A, a controlled
+reviewed revision B is selected and observed, then the pilot selector is restored
+to A. Verify that A runs successfully on valid input and again blocks the known
+invalid case; recording the selector or a failed, cancelled or skipped run does
+not establish recovery. Record target/source SHAs, saved rules and runs;
+an uncertain settings write requires readback before retry. Recover the captured
+pre-pilot rule configuration if the new rule itself cannot execute, preserving
+preexisting obligations. This pilot does not move `v1` or activate global scope.
+
+Implementation and enrollment remain pending until independently qualified.
+No workflow, profile, team membership, ruleset or operational capability is
+created merely by adopting this architecture. Scheduled shared-CI activation
+is a separate rollout change: retain normal dependency cooldowns and expedited
+security eligibility, human source merges, exact-source qualification and
+existing serialized release/rollback controls. No release hour is inferred.
 
 ## Current-Channel Rollout
 
