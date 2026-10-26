@@ -115,7 +115,8 @@ update, deletion and non-fast-forward requirements throughout.
    and `.github/workflows/org-baseline.yml`; do not select an unmerged candidate or
    move `v1` to activate this pilot. Capture existing rules and expected-old state.
 2. Select only repository and branch identities explicitly enrolled by the qualified
-   central source and the authorized operator plan. The initial implementation
+   central source and the task's authorized target scope recorded under this
+   procedure. The initial implementation
    selects repository ID `1420939261` (`ForgingAlpha/layas-learning-lab-site`) and
    `dev` only. Another branch, including `main`, needs separately approved source
    enrollment and live target-context qualification before reliance. Exclude the
@@ -155,13 +156,18 @@ update, deletion and non-fast-forward requirements throughout.
    is separate from restoration between already qualified sources.
 7. Retain exact saved configurations, source/consumer SHAs, API/check identities,
    findings and recovery records. Bind qualification to the profile and shared
-   behavior exercised. Before additional enrollment, verify that profile's required
-   execution, rejection, repair and recovery cases and its shared dependencies;
+   behavior exercised. Before additional enrollment, verify that profile's
+   complete required pilot case set from steps 3–6 and its shared dependencies,
+   including App-created/already-open triggers, attempted skip/configuration/
+   application-input refusal and observed valid-pass/invalid-block source restoration;
    then qualify the new target's identity, current head/base, token access, result
    producers and protections. Do not treat a previous branch's content evidence as
    the new branch's required check result.
 8. Review the impact of changes to shared checking sources, selection, permissions,
-   runner assumptions and other common inputs; qualify all affected profiles.
+   runner assumptions and other common inputs; qualify all affected profiles. Retain
+   the assessment in the existing task or proposal record, with independent verification
+   of Material affected-scope, unrelatedness, no-change and scope-exclusion judgments.
+   Bind complete consumer candidate/base inputs and checking-source before/after revisions.
    Unknown impact requires conservative validation or blocks the affected rollout.
    Retire consumer common calls only after independent verification that the central
    gate covers their complete obligations. The actual hosted Rust target remains
