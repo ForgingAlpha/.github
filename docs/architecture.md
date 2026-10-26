@@ -9,7 +9,7 @@ tags:
 ## Control Plane
 
 `.github` and `control-plane` are main-only control planes. Every change lands
-through a pull request with required `CI` and authorized-human code-owner
+through a pull request with required `CI` and authorized-human
 approval of the exact current revision. Application repositories use
 feature/worktree branches into protected `dev`; `main` is the deployed branch.
 
@@ -20,14 +20,15 @@ checks baseline presence and repository-specific status metadata. Only the exact
 required status marker; its own CI validates canonical IDs and upstream digests.
 These structural checks cannot establish approval or Currentness.
 
-The shared policy action validates `.github/CODEOWNERS` before lower-level
-language checks. Control-plane repositories assign their complete tree to an
+The released shared policy action validates `.github/CODEOWNERS` before lower-level
+language checks. Unmigrated control-plane repositories assign their complete tree to an
 authorized human. Consumer repositories assign `.github/` and each detected
 production-control file or directory at any tracked depth to an authorized human
 in the final active CODEOWNERS block. A detected enclosing control directory
 covers its descendants; untracked files do not expand the candidate inventory. Unsupported literal target patterns leave ownership verification
 incomplete. The validator preserves GitHub's last-match semantics. Repository
-rules require code-owner review and invalidate stale approvals. Agents and the
+rules retain their applicable code-owner review until qualified migration and
+invalidate stale approvals. Agents and the
 general-purpose authoring identity may create and update pull requests, but
 their approval cannot satisfy this boundary. An applicable authorized human
 executes every PR merge, including dependency and security updates. Updater,
@@ -35,7 +36,9 @@ security and release Apps retain only scoped proposal, check, tag rollout and
 deployment effects; they cannot merge or update persistent branches directly.
 
 Shared technical checks are composite actions so the caller preserves a
-single required job named `CI`. Consumers call internal actions at
+stable required job named `CI`. Enrolled applications additionally require the
+distinct central baseline workflow; an enrolled document-only bootstrap can
+obtain its initial complete-profile `CI` centrally. Consumers call internal actions at
 `ForgingAlpha/.github/actions/<action>@v1`. Self-CI uses local paths so a pull
 request validates its proposed implementation.
 
@@ -45,6 +48,90 @@ merge queues; automation receives no persistent-branch update bypass.
 Approval does not schedule a merge. A human executes it under the owning
 repository's protected procedure. Hosted settings, caller enrollment and
 credentials are verified separately from this source contract.
+
+### Organization-required baseline pilot
+
+The target central entrypoint is `.github/workflows/org-baseline.yml` in this
+repository, selected by a ForgingAlpha organization ruleset. The initial pilot
+binds an exact human-merged `main` source SHA with successful push CI on that
+merged revision, reverified as current `main` before initial activation, plus
+explicit consumer repository/branch selectors. The same source requirements
+apply to a new pilot revision. Existing rules remain in force. The workflow checks out the consumer
+revision separately from its own trusted checking source and records both
+identities; actual workflow-context values and GitHub App events require live
+qualification. It uses read-only pull-request execution, not a privileged
+pull-request-target path, and does not contain CodeQL initialization/analysis.
+Its shared Actions and scripts resolve from that separate trusted checkout at
+the same workflow-source SHA, using local paths within that checkout. It does
+not combine a pinned pilot workflow with sibling Actions from moving `v1`.
+Existing `@v1` callers and the protected channel remain unchanged.
+
+The central source owns explicit pilot profiles and their human-review team
+identity. A consumer cannot grant itself bootstrap or weaken its required
+reviewers. The team-review profile reads fresh effective branch rules and
+requires the enrolled team, complete-change coverage, required approval count
+and stale-approval invalidation. Missing or partial evidence is a failure.
+Team membership and eligibility remain an operator-qualified prerequisite, not
+an inference from a team ID. Bypass-actor and complete protection qualification
+also remain with the operator; effective-rule reads alone cannot prove them.
+This profile can replace CODEOWNERS validation
+only after its approved implementation and actual hosted protection are
+qualified; other callers keep their existing checks.
+
+Here CI enrollment means the centrally reviewed validation configuration for a
+consumer, not an unattended-authority Repository Enrollment or an Operational
+Profile. It grants no execution or merge authority and does not create a runtime
+profile assignment. Definition-only baseline repair and an enrolled document-only
+profile remain distinct; neither can substitute for the other's conditions.
+
+Bootstrap accepts only declared document/configuration inputs and refuses
+application content and executable lint configuration before invoking shared
+validators. Structural metadata does not prove human approval or Currentness.
+Product profiles retain their own builds, tests, manifests and exact runtime
+inputs. Foundation integrity stays before any copied helper or adapter;
+independent central execution alone cannot establish that ordering.
+The shared-CI owner accounts for common-check invocation and profile configuration;
+the product owner accounts for its build/test composition. Language-only
+composition is eligible only while independently verified central enforcement
+covers its common checks. Migrate by qualifying the central gate before removing
+consumer common calls; restore those calls before removing that gate. Until this
+joint invariant is verified, full composite defaults remain unchanged. A consumer
+opt-out input or configuration cannot establish the invariant.
+
+Pilot qualification starts with the document-bootstrap consumer and one
+independently verified current Rust consumer. An unborn local repository or a
+hosted documents-only branch cannot stand in for that Rust consumer. Each
+eligible target can progress without claiming missing second-target evidence.
+Both targets must complete the required pilot cases before any expansion or
+common-call retirement; partial progress does not complete the pilot.
+Ruleset administration retains the existing operator-owned path under REQ-016
+and the control-plane authority procedure. This amendment does not permit an
+agent to save protection changes through a human browser session or to borrow
+human credentials; browser consent alone does not establish that authority.
+Any protected executor requires separate qualification before a settings write.
+
+Activation requires the qualified merged source, that operator path and
+observable target runs. Serialize activation and rollback against the captured
+expected prior source and rule configuration; refuse stale or ambiguous state.
+Retain immutable transition evidence binding prior/new source SHAs, rules,
+successful source push CI and operator attribution. Pilot recovery accepts only
+the previously qualified human-merged source with that original green-CI and
+transition evidence, preserving the existing channel's source and recovery
+guarantees without moving `v1`. After an initial qualified revision A, a
+controlled human-merged and green revision B is selected and observed, then the pilot selector is restored
+to A. Verify that A runs successfully on valid input and again blocks the known
+invalid case; recording the selector or a failed, cancelled or skipped run does
+not establish recovery. Record target/source SHAs, saved rules and runs;
+an uncertain settings write requires readback before retry. Recover the captured
+pre-pilot rule configuration if the new rule itself cannot execute, preserving
+preexisting obligations. This pilot does not move `v1` or activate global scope.
+
+Implementation and enrollment remain pending until independently qualified.
+No workflow, profile, team membership, ruleset or operational capability is
+created merely by adopting this architecture. Scheduled shared-CI activation
+is a separate rollout change: retain normal dependency cooldowns and expedited
+security eligibility, human source merges, exact-source qualification and
+existing serialized release/rollback controls. No release hour is inferred.
 
 ## Current-Channel Rollout
 

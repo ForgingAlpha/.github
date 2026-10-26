@@ -14,10 +14,16 @@ automation without copying workflow logic between repositories.
 
 ## Durable Outcomes
 
-- Every repository exposes one required merge status named `CI`.
+- Every repository retains a stable required result named `CI`. Enrolled
+  application repositories additionally require the distinct central baseline;
+  a document-only bootstrap may obtain its initial complete-profile `CI` from
+  the central workflow without inventing a product build result.
 - Every control-plane and protected production-control change is approved by
-  an authorized human code owner on its exact current revision; an agent or
+  an authorized human reviewer on its exact current revision; an agent or
   authoring-bot identity cannot substitute for that approval.
+- Shared baseline checks can be required by an organization ruleset without
+  depending on each consumer to install a caller. Enrollment, actual execution
+  and preservation of product-specific checks are verified before reliance.
 - A reviewed, green control-plane merge reaches consumers promptly through the
   internal `@v1` current channel.
 - Every `v1` rollout is serialized, traceable, immutable-recorded, and
@@ -95,3 +101,6 @@ automation never executes untrusted pull-request code.
 - Fail closed when identity, classification, branch state, checks, or deployed
   SHA is ambiguous.
 - Centralize only genuinely cross-repository behavior.
+- Qualify centrally required CI on explicitly selected consumers before broader
+  enrollment. A document-only bootstrap profile is explicit and cannot be
+  selected merely because expected application inputs are missing.
