@@ -4,7 +4,7 @@
     {
       "repository": "ForgingAlpha/layas-learning-lab-site",
       "repository_id": 1420939261,
-      "branches": ["dev"],
+      "branches": ["dev", "main"],
       "profile": "documentation-bootstrap",
       "team_id": 20299307,
       "minimum_approvals": 1

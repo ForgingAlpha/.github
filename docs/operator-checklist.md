@@ -116,10 +116,13 @@ update, deletion and non-fast-forward requirements throughout.
    move `v1` to activate this pilot. Capture existing rules and expected-old state.
 2. Select only repository and branch identities explicitly enrolled by the qualified
    central source and the task's authorized target scope recorded under this
-   procedure. The initial implementation
+   procedure. The source catalog
    selects repository ID `1420939261` (`ForgingAlpha/layas-learning-lab-site`) and
-   `dev` only. Another branch, including `main`, needs separately approved source
-   enrollment and live target-context qualification before reliance. Exclude the
+   branches `dev` and `main`. Preserve the existing qualified `dev` selector while
+   completing the profile's required pilot cases. Select the additional `main`
+   target only from a human-merged, green source, and qualify its actual target
+   context before reliance. Other repositories or branches need separately approved
+   source enrollment and qualification. Exclude the
    defining `.github` repository. Its skipped non-consumer
    job is not a pilot pass; all-skipped required-workflow semantics are unqualified.
    Distinguish workflow names from check-run names: the source workflow is named
