@@ -1,6 +1,7 @@
 """REQ-024–026: preserve valid bootstrap and refuse trust-boundary violations."""
 import copy
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -220,6 +221,41 @@ class AdmissionTests(unittest.TestCase):
         self.fixture.head = self.fixture.git("rev-parse", "HEAD").strip()
         with self.assertRaises(ValueError):
             baseline.admit_tree(self.fixture.root, self.fixture.head)
+
+    def test_cli_logs_only_public_subject_not_authenticated_result(self):
+        event_path = Path(self.temp.name) / "event.json"
+        event_path.write_text(json.dumps(self.fixture.event()))
+        source_sha = "a" * 40
+        canary = "TEST_ONLY_AUTH_RESULT_MUST_NOT_BE_LOGGED"
+        original_git = baseline.git
+
+        def fixture_source_git(root, *args, **kwargs):
+            if root == baseline.SOURCE and args == ("rev-parse", "HEAD"):
+                return (source_sha + "\n").encode()
+            if root == baseline.SOURCE and args == ("status", "--porcelain", "--untracked-files=all"):
+                return b""
+            return original_git(root, *args, **kwargs)
+
+        output = io.StringIO()
+
+        def authenticated_side_effect(root, event, entries, api):
+            event["pull_request"]["base"]["sha"] = canary
+            return {"credential": canary}
+
+        with patch.dict(os.environ, {"GITHUB_EVENT_NAME": "pull_request", "BASELINE_SOURCE_SHA": source_sha,
+                                     "GITHUB_EVENT_PATH": str(event_path), "GITHUB_TOKEN": "fixture-credential"}), \
+                patch.object(sys, "argv", ["baseline.py", "--consumer-root", str(self.fixture.root)]), \
+                patch.object(baseline, "git", side_effect=fixture_source_git), \
+                patch.object(baseline, "Api", return_value=object()), \
+                patch.object(baseline, "run", side_effect=authenticated_side_effect) as authenticated, \
+                patch.object(sys, "stdout", output):
+            baseline.main()
+        authenticated.assert_called_once()
+        self.assertNotIn(canary, output.getvalue())
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["head"], self.fixture.head)
+        self.assertEqual(result["source_sha"], source_sha)
+        self.assertEqual(result["consumer"], ENTRY["repository"])
 
 
 class EvidenceTests(unittest.TestCase):

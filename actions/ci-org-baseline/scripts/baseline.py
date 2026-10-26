@@ -279,9 +279,17 @@ def run(root, event, entries, api):
     prove_pr(api, event, entry)
     team_configuration(api.rules(entry["repository"], branch), entry)
     admit_tree(root, head)
+    return public_receipt(root, event, entries, os.environ.get("BASELINE_SOURCE_SHA"))
+
+
+def public_receipt(root, event, entries, source_sha):
+    """Only validated public subject metadata; never serialize an API/auth result."""
+    repository, pr = event["repository"], event["pull_request"]
+    entry = select(entries, repository["full_name"], repository["id"], pr["base"]["ref"])
     return {"consumer": entry["repository"], "repository_id": entry["repository_id"], "profile": entry["profile"],
-            "base": base, "head": head, "tree": git(root, "rev-parse", "HEAD^{tree}").decode().strip(),
-            "source": SOURCE_REPOSITORY, "source_sha": os.environ.get("BASELINE_SOURCE_SHA"),
+            "base": pr["base"]["sha"], "head": git(root, "rev-parse", "HEAD").decode().strip(),
+            "tree": git(root, "rev-parse", "HEAD^{tree}").decode().strip(),
+            "source": SOURCE_REPOSITORY, "source_sha": source_sha,
             "team_configuration": "matched; membership, bypass and complete-path coverage require hosted qualification",
             "scope": "structural checks only; approval, Currentness and deployment are separate"}
 
@@ -299,7 +307,13 @@ def main():
     require(event_path.stat().st_size <= 2 * 1024 * 1024, "event evidence exceeds limit")
     event = decode(event_path.read_bytes())
     require(isinstance(event, dict), "invalid event evidence")
-    print(json.dumps(run(args.consumer_root.absolute(), event, entries, Api(os.environ.get("GITHUB_TOKEN")))))
+    root = args.consumer_root.absolute()
+    public_output = json.dumps(public_receipt(root, event, entries, source_sha))
+    api = Api(os.environ.get("GITHUB_TOKEN"))
+    run(root, event, entries, api)
+    # Discard the credential-bearing operation's return value. The logged receipt
+    # was frozen before authentication, and is emitted only after validation.
+    print(public_output)
 
 
 if __name__ == "__main__":
