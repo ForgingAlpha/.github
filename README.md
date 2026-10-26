@@ -43,7 +43,7 @@ read-only token scopes shown above.
 The organization-required entrypoint is
 [org-baseline.yml](.github/workflows/org-baseline.yml). Its trusted
 [enrollment](actions/ci-org-baseline/enrollment.json) initially selects only
-`ForgingAlpha/layas-learning-lab-site`, repository ID `1420939261`, on `dev`.
+`ForgingAlpha/layas-learning-lab-site`, repository ID `1420939261`, on `dev` and `main`.
 This documentation profile supplies `CI` without a consumer workflow. Unknown
 identities and application content fail; missing manifests never select bootstrap.
 The defining `.github` repository is outside this consumer pilot. Its baseline
@@ -73,8 +73,9 @@ and broader migrations require coverage across all affected profiles before reli
 common-call retirement. The initial documentation and actual hosted Rust cases retain
 their own complete pilot-case obligations, including App-created/already-open triggers,
 valid/invalid/repair, consumer skip/configuration/application-input refusal and source
-restoration with valid-pass and invalid-block behavior. This policy does not expand the
-current `dev`-only implementation or selectors. Existing language composites and
+restoration with valid-pass and invalid-block behavior. Source enrollment supports
+`dev` and `main`; each live selector and target still requires operational qualification
+before reliance. Existing language composites and
 ordinary `ci-markdown` behavior are unchanged.
 
 ## Shared Actions

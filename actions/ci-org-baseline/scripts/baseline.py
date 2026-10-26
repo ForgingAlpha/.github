@@ -70,7 +70,7 @@ def catalog(data):
         require(positive(entry["repository_id"]) and name not in names and entry["repository_id"] not in ids,
                 "ambiguous consumer enrollment")
         require(entry["profile"] == "documentation-bootstrap", "unsupported profile; no bootstrap fallback")
-        require(entry["branches"] == ["dev"], "unsupported bootstrap branch selection")
+        require(entry["branches"] in (["dev"], ["dev", "main"]), "unsupported bootstrap branch selection")
         require(positive(entry["team_id"]) and positive(entry["minimum_approvals"]), "invalid trusted team policy")
         names.add(name)
         ids.add(entry["repository_id"])

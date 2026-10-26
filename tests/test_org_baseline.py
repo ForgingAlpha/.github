@@ -28,14 +28,15 @@ def rules():
 
 
 class Fixture:
-    def __init__(self, root):
+    def __init__(self, root, branch="dev"):
         self.root = root
+        self.branch = branch
         root.mkdir()
-        self.git("init", "-q", "-b", "dev")
+        self.git("init", "-q", "-b", branch)
         self.git("remote", "add", "origin", "https://github.com/" + ENTRY["repository"])
         self.git("commit", "-q", "--allow-empty", "-m", "empty base")
         self.base = self.git("rev-parse", "HEAD").strip()
-        self.git("update-ref", "refs/remotes/origin/dev", self.base)
+        self.git("update-ref", f"refs/remotes/origin/{branch}", self.base)
         for name in baseline.REQUIRED - baseline.ALIASES:
             text = "# Project\n\nDocumentation.\n" if name == "PROJECT.md" else "---\nstatus: approved\n---\n\n# Document\n\nDocumentation.\n"
             self.write(name, text)
@@ -63,13 +64,14 @@ class Fixture:
     def event(self):
         repo = {"id": ENTRY["repository_id"], "full_name": ENTRY["repository"]}
         return {"repository": repo, "number": 1, "pull_request": {
-            "base": {"repo": repo, "ref": "dev", "sha": self.base},
+            "base": {"repo": repo, "ref": self.branch, "sha": self.base},
             "head": {"repo": repo, "ref": "feature/docs", "sha": self.head}}}
 
 
 class FakeApi:
     def __init__(self, fixture):
         self.fixture = fixture
+        self.base = fixture.base
         self.live = {**fixture.event()["pull_request"], "number": 1, "state": "open"}
         self.evidence = rules()
         self.reads = []
@@ -78,12 +80,12 @@ class FakeApi:
         self.reads.append(path)
         if path.endswith("/pulls/1"):
             return copy.deepcopy(self.live)
-        if path.endswith("/branches/dev"):
-            return {"commit": {"sha": self.fixture.base}}
+        if path.endswith(f"/branches/{self.fixture.branch}"):
+            return {"commit": {"sha": self.base}}
         raise AssertionError("unexpected or non-read evidence operation " + path)
 
     def rules(self, repository, branch):
-        assert repository == ENTRY["repository"] and branch == "dev"
+        assert repository == ENTRY["repository"] and branch == self.fixture.branch
         return copy.deepcopy(self.evidence)
 
 
@@ -194,6 +196,39 @@ class AdmissionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "approved structural"):
                 baseline.run(self.fixture.root, self.fixture.event(), [ENTRY], FakeApi(self.fixture))
 
+    def test_main_runs_complete_profile_with_fresh_main_evidence(self):
+        fixture = Fixture(Path(self.temp.name) / "main", branch="main")
+        api = FakeApi(fixture)
+        with patch.dict(os.environ, {"GITHUB_REPOSITORY": ENTRY["repository"],
+                                     "GITHUB_REPOSITORY_ID": str(ENTRY["repository_id"]),
+                                     "BASELINE_SOURCE_SHA": "b" * 40}):
+            result = baseline.run(fixture.root, fixture.event(), [ENTRY], api)
+        self.assertEqual((result["base"], result["head"]), (fixture.base, fixture.head))
+        self.assertEqual(result["source_sha"], "b" * 40)
+        self.assertEqual(api.reads, [f'/repos/{ENTRY["repository"]}/pulls/1',
+                                    f'/repos/{ENTRY["repository"]}/branches/main'] * 2)
+
+    def test_main_refuses_stale_or_weaker_evidence_and_application_input(self):
+        cases = [("head", "moved"), ("base", "base branch moved"),
+                 ("team", "trusted team review"), ("application", r"src/app\.astro")]
+        for case, diagnostic in cases:
+            with self.subTest(case=case):
+                fixture = Fixture(Path(self.temp.name) / ("main-" + case), branch="main")
+                if case == "application":
+                    fixture.write("src/app.astro", "<p>Application input</p>\n")
+                    fixture.commit()
+                api = FakeApi(fixture)
+                if case == "head":
+                    api.live["head"]["sha"] = "a" * 40
+                elif case == "base":
+                    api.base = "a" * 40
+                elif case == "team":
+                    api.evidence[0]["parameters"]["required_approving_review_count"] = 0
+                with patch.dict(os.environ, {"GITHUB_REPOSITORY": ENTRY["repository"],
+                                             "GITHUB_REPOSITORY_ID": str(ENTRY["repository_id"])}):
+                    with self.assertRaisesRegex(ValueError, diagnostic):
+                        baseline.run(fixture.root, fixture.event(), [ENTRY], api)
+
     def test_complete_path_refuses_executable_formatter_without_side_effect(self):
         marker = Path(self.temp.name) / "must-not-exist"
         self.fixture.write(".markdownlint-cli2.cjs", "require('fs').writeFileSync(" + json.dumps(str(marker)) + ", 'executed'); module.exports={};\n")
@@ -261,12 +296,27 @@ class AdmissionTests(unittest.TestCase):
 class EvidenceTests(unittest.TestCase):
     def test_unknown_identity_profile_and_policy_fields_are_refused(self):
         for name, identifier, branch in [("ForgingAlpha/renamed", ENTRY["repository_id"], "dev"),
-                                         (ENTRY["repository"], 2, "dev"), (ENTRY["repository"], ENTRY["repository_id"], "main")]:
+                                         (ENTRY["repository"], 2, "dev"), (ENTRY["repository"], ENTRY["repository_id"], "staging")]:
             with self.assertRaises(ValueError):
                 baseline.select([ENTRY], name, identifier, branch)
         for change in ({"profile": "rust"}, {"extra": True}, {"repository": "ForgingAlpha/.github"}, {"team_id": True}):
             with self.assertRaises(ValueError):
                 baseline.catalog({"schema_version": 1, "repositories": [{**ENTRY, **change}]})
+
+    def test_branch_enrollment_permits_main_only_when_centrally_declared(self):
+        for branch in ("dev", "main"):
+            self.assertIs(baseline.select([ENTRY], ENTRY["repository"], ENTRY["repository_id"], branch), ENTRY)
+        legacy = baseline.catalog({"schema_version": 1, "repositories": [{**ENTRY, "branches": ["dev"]}]})
+        baseline.select(legacy, ENTRY["repository"], ENTRY["repository_id"], "dev")
+        with self.assertRaisesRegex(ValueError, "unknown or changed"):
+            baseline.select(legacy, ENTRY["repository"], ENTRY["repository_id"], "main")
+        for branches in (None, [], "main", ["main"], ["dev", "dev"], ["dev", "*"],
+                         ["dev", "main", "staging"], ["dev", True]):
+            with self.subTest(branches=branches), self.assertRaisesRegex(ValueError, "branch selection"):
+                baseline.catalog({"schema_version": 1, "repositories": [{**ENTRY, "branches": branches}]})
+        missing = {key: value for key, value in ENTRY.items() if key != "branches"}
+        with self.assertRaisesRegex(ValueError, "record fields"):
+            baseline.catalog({"schema_version": 1, "repositories": [missing]})
 
     def test_weakened_team_evidence_fails_additive_rules_preserve_stronger(self):
         baseline.team_configuration(rules(), ENTRY)
