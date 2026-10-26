@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "repositories": [
+    {
+      "repository": "ForgingAlpha/layas-learning-lab-site",
+      "repository_id": 1420939261,
+      "branches": ["dev"],
+      "profile": "documentation-bootstrap",
+      "team_id": 20299307,
+      "minimum_approvals": 1
+    }
+  ]
+}

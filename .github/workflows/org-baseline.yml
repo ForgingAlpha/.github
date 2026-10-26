@@ -1,0 +1,74 @@
+name: Organization Baseline
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  baseline:
+    # The defining repository has independent CI and is never a pilot consumer.
+    # Its skipped check must not be named CI. Every external target runs admission.
+    if: github.repository != 'ForgingAlpha/.github'
+    name: ${{ github.repository == 'ForgingAlpha/layas-learning-lab-site' && 'CI' || 'Organization Baseline' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Bind defining workflow identity
+        id: source
+        env:
+          # JSON avoids dereferencing new properties absent in actionlint's schema.
+          # Missing properties fail; there is no consumer/default-branch fallback.
+          JOB_CONTEXT: ${{ toJSON(job) }}
+        run: |
+          python3 -I -B - <<'PY'
+          import json, os, re, sys
+          try:
+              raw = os.environ['JOB_CONTEXT']
+              assert len(raw) <= 262144
+              def unique(pairs):
+                  value = {}
+                  for key, item in pairs:
+                      assert key not in value
+                      value[key] = item
+                  return value
+              context = json.loads(raw, object_pairs_hook=unique)
+              repo, sha, ref = (context[key] for key in ('workflow_repository', 'workflow_sha', 'workflow_ref'))
+              assert repo == 'ForgingAlpha/.github'
+              assert isinstance(sha, str) and re.fullmatch('[a-f0-9]{40}', sha)
+              prefix = repo + '/.github/workflows/org-baseline.yml@'
+              assert isinstance(ref, str) and ref.startswith(prefix)
+              assert ref[len(prefix):] in ('refs/heads/main', sha)
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+                  out.write(f'repository={repo}\nsha={sha}\n')
+          except (AssertionError, KeyError, TypeError, ValueError, OSError):
+              sys.exit('WHAT: Defining workflow identity unavailable or invalid.\nWHY: Trusted source must match this job definition.\nHOW: Qualify GitHub job identity support and the exact central main/commit selector; no fallback is allowed.')
+          PY
+
+      - name: Checkout coherent trusted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.source.outputs.repository }}
+          ref: ${{ steps.source.outputs.sha }}
+          path: baseline-source
+          persist-credentials: false
+
+      - name: Checkout exact consumer PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: consumer
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup locked Markdown tool runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Validate the complete enrolled profile
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
