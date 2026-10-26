@@ -117,6 +117,9 @@ update, deletion and non-fast-forward requirements throughout.
 2. Select only repository ID `1420939261` (`ForgingAlpha/layas-learning-lab-site`)
    and `dev`. Exclude the defining `.github` repository. Its skipped non-consumer
    job is not a pilot pass; all-skipped required-workflow semantics are unqualified.
+   Distinguish workflow names from check-run names: the source workflow is named
+   `Organization Baseline`, while its currently skipped check retains the
+   unevaluated naming expression and supplies no `CI` result.
    Keep separate product `CI` requirements when an application profile is proposed.
 3. Qualify the actual read-only Actions token's effective-rules read and the job
    identity fields. The defining source comes from `toJSON(job)` at step scope.
@@ -131,7 +134,9 @@ update, deletion and non-fast-forward requirements throughout.
 5. Observe an already-open PR and an App-created PR executing this exact source
    and consumer head. Newly adding a rule does not trigger an existing PR: use an
    authorized update/reopen. Record check identity and mergeability without an
-   agent merge attempt. Exercise valid pass, deliberate invalid block and repair
+   agent merge attempt. Confirm the enrolled target's executed job actually reports
+   `CI` and satisfies the selected required workflow. The skipped source run does
+   not establish target job-name evaluation. Exercise valid pass, deliberate invalid block and repair
    pass, including attempted consumer skip, executable config and application input.
 6. Qualify controlled source A to human-reviewed/human-merged B and restoration to
    the previously qualified A. On restoration observe both valid pass and known

@@ -46,8 +46,10 @@ The organization-required entrypoint is
 `ForgingAlpha/layas-learning-lab-site`, repository ID `1420939261`, on `dev`.
 This documentation profile supplies `CI` without a consumer workflow. Unknown
 identities and application content fail; missing manifests never select bootstrap.
-The defining `.github` repository is outside this consumer pilot: its non-required
-`Organization Baseline` job is skipped, while its independent required `CI` remains.
+The defining `.github` repository is outside this consumer pilot. Its baseline
+workflow is skipped; GitHub currently reports the skipped check using the
+unevaluated job-name expression, distinct from `CI`. The existing required `CI`
+workflow continues to validate this repository.
 
 The job checks out the defining workflow commit separately from the exact consumer
 PR head. It admits tracked, non-executable Markdown, `.gitignore`, three enumerated

@@ -30,3 +30,5 @@ Concrete legacy callers, read at11:20–11:21UTC:
 - `ForgingAlpha/turnkeyleads-site` main `bea943b7db560662cf4ef1ac8fd3bfc90e37864c` and dev `8d7c3461827e530a79bd5ee14d095e22ba1b64f0`: `.github/workflows/dependabot-automerge.yml` calls the absent action; `.github/workflows/ci.yml` retains floating `actions/checkout@v6`.
 
 These are source defects at those revisions. They do not establish actual bot-merge execution. Migrate complete successor coverage and sole-updater ownership before retiring the old callers.
+
+Later source-repository observation at13:43UTC, candidate head `b15a30e0df5279871a6d5588f7c2e1f5c71188ae`: CI and CodeQL passed. The `Organization Baseline` workflow was skipped; its check-run name was the unevaluated job-name expression, distinct from `CI`. This source observation does not qualify execution or check naming on the enrolled target.
