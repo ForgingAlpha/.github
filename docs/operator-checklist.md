@@ -102,3 +102,60 @@ an effect. Keep deployment and tag-rollout authority separate from PR merges.
 
 Agents prepare reviewable source and commands. Humans perform PR merges,
 credential and ruleset changes, rollout enablement and protected rollback.
+
+## Organization-Required Documentation Pilot
+
+The source implementation does not save settings. Use the authorized protected
+operator path; an agent must not borrow a human browser session or credential to
+perform reserved protection writes. Preserve the existing status, scanning, review,
+update, deletion and non-fast-forward requirements throughout.
+
+1. After the human source merge, verify the exact current `.github/main` commit and
+   successful approved push `CI`. Bind the workflow selector to that eligible source
+   and `.github/workflows/org-baseline.yml`; do not select an unmerged candidate or
+   move `v1` to activate this pilot. Capture existing rules and expected-old state.
+2. Select only repository ID `1420939261` (`ForgingAlpha/layas-learning-lab-site`)
+   and `dev`. Exclude the defining `.github` repository. Its skipped non-consumer
+   job is not a pilot pass; all-skipped required-workflow semantics are unqualified.
+   Keep separate product `CI` requirements when an application profile is proposed.
+3. Qualify the actual read-only Actions token's effective-rules read and the job
+   identity fields. The defining source comes from `toJSON(job)` at step scope.
+   Missing fields fail. The public context documentation contains inconsistent
+   availability wording; local expression/parser tests are not runtime proof.
+4. Read back actual selectors, expected CI producer bindings, strict current-base
+   policy, team eligibility and bypass actors. The sampled team configuration
+   matches Team `20299307`, one approval, stale dismissal and literal `*`; the
+   string alone proves no complete-change coverage. Demonstrate review requirements
+   on root and nested documentation paths. A coverage failure returns to preparation
+   for a Material revision rather than silently changing the admitted pattern.
+5. Observe an already-open PR and an App-created PR executing this exact source
+   and consumer head. Newly adding a rule does not trigger an existing PR: use an
+   authorized update/reopen. Record check identity and mergeability without an
+   agent merge attempt. Exercise valid pass, deliberate invalid block and repair
+   pass, including attempted consumer skip, executable config and application input.
+6. Qualify controlled source A to human-reviewed/human-merged B and restoration to
+   the previously qualified A. On restoration observe both valid pass and known
+   invalid block. Failed, cancelled, skipped or unexecuted runs are not recovery.
+   Serialize selector saves against captured expected-old settings and read back
+   an outcome-unknown save before retrying. Preserve all preexisting protections.
+   If the initial new rule cannot execute and no source A has qualified yet,
+   restore the exact captured pre-pilot rule configuration through the authorized
+   protected operator path. Verify that readback and every original protection;
+   do not remove or waive an existing requirement to manufacture a pass. Reconcile
+   an outcome-unknown restoration before retrying. This initial-failure recovery
+   is separate from restoration between already qualified sources.
+7. Retain exact saved configurations, source/consumer SHAs, API/check identities,
+   findings and recovery records. One target does not complete the pilot. Require
+   the actual hosted Rust target and both targets' failure/recovery coverage before
+   expanding enrollment or retiring existing common calls. Transitioning this
+   documentation repository to application code needs an explicit product profile;
+   the documentation gate intentionally refuses that code until the transition.
+
+The profile admits JSON only at `docs/governing-source-bindings.json`,
+`docs/changes/site-foundation/production-preparation/governing-source.json`, and
+`docs/changes/site-foundation/production-preparation/retained-inputs.json`. These
+are parsed data, not grants or instructions to retrieve their referenced material.
+Required inputs are `PROJECT.md`, `AGENTS.md`, `CLAUDE.md` and the governing trio.
+The two root instruction links must point literally to the tracked regular
+`PROJECT.md`; other links and executable modes are refused. Every input must match
+the selected Git blob, and untracked inputs, including ignored files, fail.

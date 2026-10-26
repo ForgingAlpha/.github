@@ -38,6 +38,34 @@ described below and never carries unrelated `dev` work. Its CI admission reads
 Git objects, pull requests and trusted checks, so callers retain all three
 read-only token scopes shown above.
 
+## Central Documentation Pilot
+
+The organization-required entrypoint is
+[org-baseline.yml](.github/workflows/org-baseline.yml). Its trusted
+[enrollment](actions/ci-org-baseline/enrollment.json) initially selects only
+`ForgingAlpha/layas-learning-lab-site`, repository ID `1420939261`, on `dev`.
+This documentation profile supplies `CI` without a consumer workflow. Unknown
+identities and application content fail; missing manifests never select bootstrap.
+The defining `.github` repository is outside this consumer pilot: its non-required
+`Organization Baseline` job is skipped, while its independent required `CI` remains.
+
+The job checks out the defining workflow commit separately from the exact consumer
+PR head. It admits tracked, non-executable Markdown, `.gitignore`, three enumerated
+JSON data paths, and the two verified root instruction projections to `PROJECT.md`.
+It checks governing metadata, fresh exact-base team-review configuration and every
+canonical Markdown input. The data-only runner uses the existing locked tool,
+central rules and no consumer plugins, formatters, configuration discovery or inline
+rule suppression. A document's metadata is not proof of approval or Currentness.
+
+This is source implementation, not active enrollment or completed qualification.
+The job refuses missing defining-workflow identity instead of guessing another
+source. Actual token access, check producers, selectors, review coverage of root and
+nested paths, team eligibility, bypasses, triggering and source restoration require
+the [operator pilot procedure](docs/operator-checklist.md#organization-required-documentation-pilot).
+CodeQL and application builds remain separate. Both the documentation and actual
+hosted Rust cases must qualify before expansion or removal of application common
+checks. Existing language composites and ordinary `ci-markdown` behavior are unchanged.
+
 ## Shared Actions
 
 | Action | Contract |
@@ -170,9 +198,10 @@ with an expected-old lease, and creates an immutable rollback record.
 ## Security Boundary
 
 - Root workflow permissions are read-only; write permissions are job-scoped.
-- Every repository keeps an authorized human as code owner for `.github/` and
-  detected production controls; control-plane repositories require authorized
-  human ownership of the complete tree.
+- Unmigrated repositories retain authorized human CODEOWNERS validation for
+  `.github/` and production controls, including whole-tree control-plane ownership.
+  An explicitly qualified central team-review profile can provide its adopted
+  protection without a duplicate CODEOWNERS file.
 - Privileged workflows never check out or execute pull-request code.
 - Agents receive no operator SSH key or personal credential.
 - Direct deployment and release writes belong only to the scoped release
