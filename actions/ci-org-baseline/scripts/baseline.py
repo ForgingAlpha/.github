@@ -28,7 +28,8 @@ DATA_PATHS = {
 ALIASES = {"AGENTS.md", "CLAUDE.md"}
 
 
-def load_trusted(name, path):
+def load_checking_module(name, path):
+    """Import public checking code from this workflow's source checkout."""
     spec = importlib.util.spec_from_file_location(name, SOURCE / path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -37,8 +38,8 @@ def load_trusted(name, path):
 
 
 # Existing bounded Git transport and strict JSON decoder; exact same source checkout.
-foundation = load_trusted("org_baseline_git", "actions/ci-foundation/scripts/foundation_source.py")
-policy = load_trusted("org_baseline_policy", "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")
+foundation = load_checking_module("org_baseline_git", "actions/ci-foundation/scripts/foundation_source.py")
+policy = load_checking_module("org_baseline_policy", "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")
 require = foundation.require
 git = foundation.git
 
