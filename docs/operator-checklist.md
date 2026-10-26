@@ -114,8 +114,12 @@ update, deletion and non-fast-forward requirements throughout.
    successful approved push `CI`. Bind the workflow selector to that eligible source
    and `.github/workflows/org-baseline.yml`; do not select an unmerged candidate or
    move `v1` to activate this pilot. Capture existing rules and expected-old state.
-2. Select only repository ID `1420939261` (`ForgingAlpha/layas-learning-lab-site`)
-   and `dev`. Exclude the defining `.github` repository. Its skipped non-consumer
+2. Select only repository and branch identities explicitly enrolled by the qualified
+   central source and the authorized operator plan. The initial implementation
+   selects repository ID `1420939261` (`ForgingAlpha/layas-learning-lab-site`) and
+   `dev` only. Another branch, including `main`, needs separately approved source
+   enrollment and live target-context qualification before reliance. Exclude the
+   defining `.github` repository. Its skipped non-consumer
    job is not a pilot pass; all-skipped required-workflow semantics are unqualified.
    Distinguish workflow names from check-run names: the source workflow is named
    `Organization Baseline`, while its currently skipped check retains the
@@ -150,11 +154,23 @@ update, deletion and non-fast-forward requirements throughout.
    an outcome-unknown restoration before retrying. This initial-failure recovery
    is separate from restoration between already qualified sources.
 7. Retain exact saved configurations, source/consumer SHAs, API/check identities,
-   findings and recovery records. One target does not complete the pilot. Require
-   the actual hosted Rust target and both targets' failure/recovery coverage before
-   expanding enrollment or retiring existing common calls. Transitioning this
-   documentation repository to application code needs an explicit product profile;
-   the documentation gate intentionally refuses that code until the transition.
+   findings and recovery records. Bind qualification to the profile and shared
+   behavior exercised. Before additional enrollment, verify that profile's required
+   execution, rejection, repair and recovery cases and its shared dependencies;
+   then qualify the new target's identity, current head/base, token access, result
+   producers and protections. Do not treat a previous branch's content evidence as
+   the new branch's required check result.
+8. Review the impact of changes to shared checking sources, selection, permissions,
+   runner assumptions and other common inputs; qualify all affected profiles.
+   Unknown impact requires conservative validation or blocks the affected rollout.
+   Retire consumer common calls only after independent verification that the central
+   gate covers their complete obligations. The actual hosted Rust target remains
+   required for Rust and shared behavior affecting it; documents cannot substitute
+   for that evidence. One target does not complete the whole pilot, while missing
+   unrelated-profile evidence does not block an otherwise qualified profile.
+   Transitioning this documentation repository to application code still needs an
+   explicit product profile and its meaningful checks; the documentation gate
+   intentionally refuses that code until the transition.
 
 The profile admits JSON only at `docs/governing-source-bindings.json`,
 `docs/changes/site-foundation/production-preparation/governing-source.json`, and
