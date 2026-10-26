@@ -98,12 +98,41 @@ consumer common calls; restore those calls before removing that gate. Until this
 joint invariant is verified, full composite defaults remain unchanged. A consumer
 opt-out input or configuration cannot establish the invariant.
 
-Pilot qualification starts with the document-bootstrap consumer and one
-independently verified current Rust consumer. An unborn local repository or a
-hosted documents-only branch cannot stand in for that Rust consumer. Each
-eligible target can progress without claiming missing second-target evidence.
-Both targets must complete the required pilot cases before any expansion or
-common-call retirement; partial progress does not complete the pilot.
+The initial pilot includes the document-bootstrap consumer and an independently verified
+current Rust consumer. An unborn local repository or hosted documents-only branch cannot
+stand in for the Rust consumer. Each target establishes evidence only for the profile
+and shared behavior it actually exercises; neither supplies missing second-target
+evidence or completes the whole pilot by itself.
+
+Qualification and enrollment follow that affected scope. The shared-CI owner retains a
+reviewed impact assessment in the existing task or proposal record, identifying complete
+consumer candidate inputs and base state, dependencies and exact checking-source
+before/after revisions. Material judgments about affected scope or unrelatedness,
+including no-change and scope exclusions, require independent verification. Shared
+inputs include workflow loading, profile selection, permissions, runner assumptions,
+result aggregation and pre-execution integrity. Changes affecting these responsibilities
+receive coverage across the affected profiles. Unknown impact requires conservative
+additional validation or leaves the affected rollout blocked. A missing consumer
+manifest or changed file extension cannot select a less demanding profile.
+
+A profile with every required pilot case verified and qualified shared dependencies may
+progress independently of unrelated profiles. Cases include valid/invalid/repair,
+App-created and already-open triggers, consumer skip/configuration/application-input
+refusal and observed source restoration with valid-pass and invalid-block behavior.
+Adding a repository or branch still requires explicit central enrollment and live
+qualification of that target's identity, head/base, token access, check producers and
+required protections. Reusable content evidence does not replace current-target CI or
+review. The full declared profile runs against the complete proposed tree; this rule
+introduces no changed-file test selector.
+
+Every additional enrollment or migration identifies and qualifies its affected profiles
+and shared behavior. Common-call retirement requires complete coverage for that affected
+scope; whole-pilot completion requires all initial targets and cases. Product-specific
+checks remain mandatory, and consumer common calls remain until the central gate's
+coverage of those obligations is independently verified. Rust qualification remains
+required wherever Rust behavior or shared enforcement affecting it is in scope; it is
+not a blanket dependency of an otherwise independently qualified document profile.
+
 Ruleset administration retains the existing operator-owned path under REQ-016
 and the control-plane authority procedure. This amendment does not permit an
 agent to save protection changes through a human browser session or to borrow

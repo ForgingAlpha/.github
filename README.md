@@ -64,9 +64,18 @@ The job refuses missing defining-workflow identity instead of guessing another
 source. Actual token access, check producers, selectors, review coverage of root and
 nested paths, team eligibility, bypasses, triggering and source restoration require
 the [operator pilot procedure](docs/operator-checklist.md#organization-required-documentation-pilot).
-CodeQL and application builds remain separate. Both the documentation and actual
-hosted Rust cases must qualify before expansion or removal of application common
-checks. Existing language composites and ordinary `ci-markdown` behavior are unchanged.
+CodeQL and application builds remain separate. Qualification follows the enrolled
+profile and affected shared behavior, with independently verified Material impact
+judgments retained in the existing task or proposal record. A qualified profile can
+progress independently of unrelated profiles; each additional repository or branch still
+needs explicit enrollment and actual target-context checks. Shared-enforcement changes
+and broader migrations require coverage across all affected profiles before reliance or
+common-call retirement. The initial documentation and actual hosted Rust cases retain
+their own complete pilot-case obligations, including App-created/already-open triggers,
+valid/invalid/repair, consumer skip/configuration/application-input refusal and source
+restoration with valid-pass and invalid-block behavior. This policy does not expand the
+current `dev`-only implementation or selectors. Existing language composites and
+ordinary `ci-markdown` behavior are unchanged.
 
 ## Shared Actions
 

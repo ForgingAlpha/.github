@@ -453,6 +453,34 @@ the intended consumer revision, using a coherent reviewed checking-source
 revision and read-only permissions. The pilot SHALL preserve existing CI,
 scanning, human review, branch protection and pre-execution integrity obligations.
 
+Qualification SHALL cover the enrolled CI profile and the shared behavior that the
+proposed change can affect. The shared-CI owner SHALL retain a source-bound, reviewed
+impact assessment in the existing task or proposal record, using complete consumer
+candidate inputs and base state, checking-source before/after revisions and
+dependencies. Material affected-scope and unrelatedness judgments SHALL receive
+independent verification, including no-change and scope-exclusion dispositions. A
+consumer SHALL NOT narrow its own profile or required coverage. Uncertain impact SHALL
+require conservative additional validation or block the affected rollout.
+
+A qualified profile MAY progress independently of unrelated profiles only when all of
+its required pilot cases and the shared behavior it relies on are verified. These cases
+include valid, invalid and repaired changes, App-created and already-open pull-request
+triggers, consumer skip/configuration/application-input refusal, and source restoration
+with observed valid-pass and invalid-block behavior. A new repository or branch SHALL
+additionally qualify its actual target context, identity, current-base checks, result
+producers and required protections; earlier content validation is not a current-target
+CI result. Changes to shared enforcement, profile selection, permissions or other common
+inputs SHALL receive qualification across every affected profile.
+
+The document-bootstrap and actual hosted Rust targets establish their own scoped
+evidence; neither can substitute for the other or establish whole-pilot completion.
+Their presence in the initial pilot does not make an unrelated profile's missing
+evidence a blanket prerequisite for additional enrollment. Every proposed enrollment or
+migration SHALL identify and qualify its affected profiles and shared behavior. Removal
+of consumer common calls requires complete coverage for that affected scope, preserving
+product-specific checks; whole-pilot completion requires all initial pilot targets and
+their required cases.
+
 **Fit:** A narrowly selected pilot proves actual valid, invalid and repaired
 changes, GitHub App-created and already-open pull requests, and an observed
 controlled source update followed by successful restoration to the previously
@@ -460,10 +488,6 @@ qualified pilot source and its required pass/fail enforcement. A restored source
 that is failed, cancelled, skipped or unexecuted is not recovery. Adding a rule,
 passing local tests or publishing source alone does
 not establish execution or enforcement. CodeQL remains separately configured.
-Broader enrollment and removal of redundant calls require completed coverage
-across both the document-bootstrap and valid hosted Rust pilot targets,
-including their required execution, failure and recovery cases. Progress on
-one target does not establish pilot completion or authorize expansion.
 
 ### REQ-026 - Explicit Document Bootstrap
 
