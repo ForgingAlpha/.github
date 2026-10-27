@@ -359,8 +359,18 @@ legacy-tag exception.
 
 Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
-commercial-use allowlist; callers SHALL NOT disable the review, substitute a
-denylist, or exempt individual packages. Missing, unknown, or custom license
+approved SPDX allowlist; callers SHALL NOT disable the review, substitute a
+denylist, or exempt individual packages. The standard allowlist SHALL preserve
+its existing permissive license identifiers and add `LGPL-3.0-or-later`. This
+identifier permits selection of LGPL version 3; its inclusion SHALL NOT imply
+blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
+custom or unknown licenses. Those require a separate reviewed central policy
+decision unless an applicable existing artifact exception already covers them.
+For a compound SPDX expression, every obligation in the selected licensing
+alternative SHALL be centrally eligible: every member of `AND` must be approved;
+`OR` requires at least one fully approved alternative. A `WITH` exception SHALL
+require explicit central approval of the complete expression. An unknown or
+malformed expression SHALL fail closed. Missing, unknown, or custom license
 evidence SHALL fail closed for third-party dependencies except for a reviewed
 central repository-and-artifact exception as specified below. When GitHub omits
 license metadata for a third-party GitHub Action pinned to an exact commit SHA,
@@ -407,6 +417,32 @@ and malformed or oversized files SHALL fail closed. This exception SHALL NOT rel
 vulnerability review, the SPDX default, or other evidence classes. Later artifact
 updates SHALL require a new reviewed central policy change.
 
+Standard license eligibility SHALL NOT establish compliance for a particular use.
+The accountable product release owner SHALL assess the actual use and contents
+being delivered. For LGPL-covered library modifications, linked/combined works
+or redistribution, the owner SHALL identify and satisfy applicable copyright and
+license notices, license-copy, corresponding-source, replacement/relinking,
+reverse-engineering and installation-information conditions before delivery.
+Required evidence SHALL be retained with the existing product release record,
+bound to the delivered contents and applicable license terms. Unresolved
+applicable obligations SHALL stop the affected delivery. A dependency's optional
+or development classification alone SHALL NOT establish that it is absent from
+the delivered product. Internal build use and generated output SHALL be assessed
+from the actual output: using a tool alone SHALL NOT be treated as licensing all
+its output under LGPL, and covered content copied into output SHALL NOT be
+assumed exempt. Ordinary maintenance that changes neither the applicable terms
+nor their use/distribution basis SHALL reuse applicable existing compliance
+evidence; it SHALL NOT require a new central package/version exception.
+
+The shared-CI owner SHALL enforce standard SPDX eligibility through the official
+dependency-review action and the existing mandatory evidence guard. Product
+release owners retain actual-use compliance responsibility; a green license check
+SHALL NOT be represented as legal clearance. Vulnerability severity and scope
+thresholds, existing evidence classes, the Mapbox artifact exception and human
+approval/merge requirements SHALL remain unchanged. Source adoption alone SHALL
+NOT establish released enforcement; the consumed gate revision SHALL implement
+the adopted policy before operational reliance.
+
 **Fit:** Approved third-party SPDX evidence passes; non-approved evidence
 fails; the exact-revision third-party resolver fails closed on malformed
 identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
@@ -419,6 +455,14 @@ including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
+The enforcing release must demonstrate that an approved LGPL expression passes
+eligibility, while mixed expressions with an unapproved mandatory license and
+standalone GPL/AGPL or unknown/custom evidence fail without an applicable central
+exception. Product release verification checks the owner's assessment against the
+actual use, delivered contents and applicable terms, including covered generated
+content, library redistribution and changed distribution. Missing required evidence
+or unresolved applicable obligations refuse delivery; CI eligibility alone cannot
+satisfy these release obligations.
 
 ### REQ-024 - Human Trust-Surface Approval
 
