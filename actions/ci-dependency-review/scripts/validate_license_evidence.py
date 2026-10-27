@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require recognized commercial-license evidence for dependency changes."""
+"""Require exact approved license evidence for dependency changes."""
 
 from __future__ import annotations
 
@@ -17,7 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from license_policy import APPROVED_SPDX, artifact_exception, repository_identity
+from license_policy import (
+    APPROVED_SPDX,
+    approved_license_expression,
+    artifact_exception,
+    repository_identity,
+)
 
 
 GITHUB_ACTION_PURL = re.compile(
@@ -760,6 +765,11 @@ def validate_changes(changes: list[dict[str, Any]]) -> None:
             continue
         license_value = change.get("license")
         if isinstance(license_value, str) and license_value.strip():
+            if not approved_license_expression(license_value):
+                raise EvidenceError(
+                    f"Dependency {change.get('package_url') or change.get('name') or '<unknown package>'!r} "
+                    f"has an unapproved or malformed license expression {license_value[:200]!r}."
+                )
             continue
         if license_value is not None and not isinstance(license_value, str):
             raise EvidenceError(

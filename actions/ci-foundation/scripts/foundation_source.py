@@ -28,6 +28,7 @@ GIT_TIMEOUT = 30
 GIT_ID = re.compile(r"[a-f0-9]{40}\Z")
 SHA256 = re.compile(r"[a-f0-9]{64}\Z")
 IDENTITY_KEYS = {"repository", "repository_id", "format", "commit", "tree"}
+PAYLOAD_PATHS = (".foundation", "tools/container-foundation")
 
 
 class Refused(ValueError):
@@ -101,9 +102,16 @@ def catalog(data):
             "invalid or oversized catalog")
     commits, digests = set(), set()
     for row in records:
-        require(isinstance(row, dict) and set(row) == IDENTITY_KEYS | {"lock_sha256"},
+        require(isinstance(row, dict) and set(row) in (
+                    IDENTITY_KEYS | {"lock_sha256"},
+                    IDENTITY_KEYS | {"lock_sha256", "payload_paths"}),
                 "invalid catalog record shape")
         identity(row)
+        if "payload_paths" in row:
+            paths = row["payload_paths"]
+            require(isinstance(paths, list) and paths and
+                    all(isinstance(path, str) and path in PAYLOAD_PATHS for path in paths) and
+                    len(paths) == len(set(paths)), "invalid catalog payload paths")
         require(isinstance(row["lock_sha256"], str) and SHA256.fullmatch(row["lock_sha256"]),
                 "invalid manifest fingerprint")
         require(row["commit"] not in commits and row["lock_sha256"] not in digests,
@@ -187,11 +195,24 @@ def root_path(raw):
     return root
 
 
+def selected_payload(root):
+    present = [name for name in PAYLOAD_PATHS if os.path.lexists(root / name)]
+    require(len(present) == 1, "exactly one supported payload location required")
+    name = present[0]
+    path = root
+    for part in PurePosixPath(name).parts:
+        path = path / part
+        require(path.is_dir() and not path.is_symlink(),
+                "payload directory or ancestor missing, nonregular or linked")
+    return name, path
+
+
 def verify(root, records, evidence):
     state = root / ".foundation-state"
     if os.path.lexists(state):
         require(state.is_dir() and not state.is_symlink(), "invalid selection state")
         require(not os.path.lexists(state / "transaction.json"), "incomplete source import")
+    payload_name, payload = selected_payload(root)
     raw, _ = read_regular(root / "foundation.lock", METADATA_LIMIT)
     digest = sha256(raw)
     evidence["lock_sha256"] = digest
@@ -200,7 +221,9 @@ def verify(root, records, evidence):
     value = manifest(raw)
     require(all(value[name] == approved[0][name] for name in IDENTITY_KEYS),
             "manifest identity differs from approved record")
-    require(inventory(root / ".foundation") == value["files"],
+    require(payload_name in approved[0].get("payload_paths", [".foundation"]),
+            "approved source does not support selected payload location")
+    require(inventory(payload) == value["files"],
             "actual working payload differs from approved manifest")
     return {"result": "working_pair_matches_approved_export",
             "source_commit": value["commit"], "source_tree": value["tree"],
@@ -323,7 +346,7 @@ def main():
             return 0
         root = root_path(args.root)
         if args.operation == "update-owner" and not any(
-                os.path.lexists(root / name) for name in (".foundation", "foundation.lock")):
+                os.path.lexists(root / name) for name in (*PAYLOAD_PATHS, "foundation.lock")):
             print(json.dumps(dict(evidence, result="foundation_not_applicable"), sort_keys=True))
             return 0
         decision = verify(root, records, evidence)

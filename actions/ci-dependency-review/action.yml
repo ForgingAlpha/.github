@@ -15,7 +15,7 @@
 #         - uses: ForgingAlpha/.github/actions/ci-dependency-review@v1
 
 name: CI Dependency Review
-description: "Mandatory PR vulnerability and commercial-license review"
+description: "Mandatory PR vulnerability and approved-license review"
 
 runs:
   using: composite
@@ -29,7 +29,7 @@ runs:
         echo "  WHY: dependency review compares dependency changes introduced by pull requests."
         echo "  HOW: run this action from a pull_request workflow to enforce dependency review."
 
-    - name: Load central commercial license policy
+    - name: Load central approved license policy
       id: license-policy
       if: ${{ github.event_name == 'pull_request' }}
       shell: bash
@@ -47,7 +47,7 @@ runs:
         allow-licenses: ${{ steps.license-policy.outputs.allow_licenses }}
         allow-dependencies-licenses: ${{ steps.license-policy.outputs.allow_dependencies_licenses }}
 
-    - name: Reject missing license evidence
+    - name: Validate dependency license evidence
       if: ${{ github.event_name == 'pull_request' && always() }}
       shell: bash
       env:

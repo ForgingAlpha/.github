@@ -11,12 +11,19 @@ tags:
 
 ## Shared CI
 
-### REQ-001 - Single Required CI Status
+### REQ-001 - Stable CI Result And Central Baseline
 
-Shared automation SHALL preserve one required status named `CI`.
+Shared automation SHALL preserve a stable required result named `CI`. An
+enrolled application repository SHALL additionally require the central baseline
+under a distinct identity. An explicitly enrolled document-only repository MAY
+use its complete central bootstrap result as its initial `CI` producer.
 
 **Fit:** Every supported consumer can make one `CI` result required without
-depending on matrix job names.
+depending on matrix job names. A centrally required common baseline has a
+distinct identity from application CI. An explicitly enrolled document-only
+bootstrap may obtain its initial `CI` result from the central workflow only
+when that result covers its complete declared profile; it cannot replace an
+existing product CI result or its producer restrictions.
 
 ### REQ-002 - Approved Source Truth
 
@@ -363,8 +370,18 @@ legacy-tag exception.
 
 Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
-commercial-use allowlist; callers SHALL NOT disable the review, substitute a
-denylist, or exempt individual packages. Missing, unknown, or custom license
+approved SPDX allowlist; callers SHALL NOT disable the review, substitute a
+denylist, or exempt individual packages. The standard allowlist SHALL preserve
+its existing permissive license identifiers and add `LGPL-3.0-or-later`. This
+identifier permits selection of LGPL version 3; its inclusion SHALL NOT imply
+blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
+custom or unknown licenses. Those require a separate reviewed central policy
+decision unless an applicable existing artifact exception already covers them.
+For a compound SPDX expression, every obligation in the selected licensing
+alternative SHALL be centrally eligible: every member of `AND` must be approved;
+`OR` requires at least one fully approved alternative. A `WITH` exception SHALL
+require explicit central approval of the complete expression. An unknown or
+malformed expression SHALL fail closed. Missing, unknown, or custom license
 evidence SHALL fail closed for third-party dependencies except for a reviewed
 central repository-and-artifact exception as specified below. When GitHub omits
 license metadata for a third-party GitHub Action pinned to an exact commit SHA,
@@ -411,6 +428,32 @@ and malformed or oversized files SHALL fail closed. This exception SHALL NOT rel
 vulnerability review, the SPDX default, or other evidence classes. Later artifact
 updates SHALL require a new reviewed central policy change.
 
+Standard license eligibility SHALL NOT establish compliance for a particular use.
+The accountable product release owner SHALL assess the actual use and contents
+being delivered. For LGPL-covered library modifications, linked/combined works
+or redistribution, the owner SHALL identify and satisfy applicable copyright and
+license notices, license-copy, corresponding-source, replacement/relinking,
+reverse-engineering and installation-information conditions before delivery.
+Required evidence SHALL be retained with the existing product release record,
+bound to the delivered contents and applicable license terms. Unresolved
+applicable obligations SHALL stop the affected delivery. A dependency's optional
+or development classification alone SHALL NOT establish that it is absent from
+the delivered product. Internal build use and generated output SHALL be assessed
+from the actual output: using a tool alone SHALL NOT be treated as licensing all
+its output under LGPL, and covered content copied into output SHALL NOT be
+assumed exempt. Ordinary maintenance that changes neither the applicable terms
+nor their use/distribution basis SHALL reuse applicable existing compliance
+evidence; it SHALL NOT require a new central package/version exception.
+
+The shared-CI owner SHALL enforce standard SPDX eligibility through the official
+dependency-review action and the existing mandatory evidence guard. Product
+release owners retain actual-use compliance responsibility; a green license check
+SHALL NOT be represented as legal clearance. Vulnerability severity and scope
+thresholds, existing evidence classes, the Mapbox artifact exception and human
+approval/merge requirements SHALL remain unchanged. Source adoption alone SHALL
+NOT establish released enforcement; the consumed gate revision SHALL implement
+the adopted policy before operational reliance.
+
 **Fit:** Approved third-party SPDX evidence passes; non-approved evidence
 fails; the exact-revision third-party resolver fails closed on malformed
 identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
@@ -423,23 +466,95 @@ including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
+The enforcing release must demonstrate that an approved LGPL expression passes
+eligibility, while mixed expressions with an unapproved mandatory license and
+standalone GPL/AGPL or unknown/custom evidence fail without an applicable central
+exception. Product release verification checks the owner's assessment against the
+actual use, delivered contents and applicable terms, including covered generated
+content, library redistribution and changed distribution. Missing required evidence
+or unresolved applicable obligations refuse delivery; CI eligibility alone cannot
+satisfy these release obligations.
 
 ### REQ-024 - Human Trust-Surface Approval
 
 Every change in a control-plane repository and every change to a repository's
 workflow or detected production-control surface SHALL require approval from an
-authorized human code owner on the exact current pull-request revision. An
+authorized human reviewer on the exact current pull-request revision. An
 agent or authoring-bot identity SHALL NOT satisfy or bypass that approval.
 Every PR merge, including dependency and security changes, SHALL be executed
 by an applicable authorized human. Separately scoped classification, proposal,
 tag rollout and deployment effects retain their own authorization; none
 authorizes an automated merge or persistent-branch push.
 
-**Fit:** Required CI validates a canonical `.github/CODEOWNERS` file whose final
-active block assigns the complete control-plane tree, or the applicable trust
-and production-control paths, to an authorized human. Protected-branch rules
-require code-owner review and dismiss or invalidate approval when the reviewed
-head changes. Tests exercise permitted proposal and verification behavior and
-reject automation that approves, merges, queues a merge, or directly updates a
-persistent branch. Hosted permissions and human execution require operational
-qualification; local tests cannot prove them.
+**Fit:** For an enrolled team-review profile, protected-branch rules require the approved human-review team for the
+complete change and dismiss or invalidate approval when the reviewed head
+changes. A centrally enrolled team-review profile validates fresh effective
+branch rules against its trusted team identity, approval count, coverage and
+stale-approval policy; a missing, unavailable or weaker rule fails closed. A
+consumer pull request cannot select that identity or lower those requirements.
+Unmigrated callers retain the current canonical `.github/CODEOWNERS` validation
+and applicable code-owner rules until an explicit, qualified migration preserves
+their required protection. A CODEOWNERS file is not required solely to duplicate
+verified team protection in an enrolled profile. Tests exercise permitted
+proposal and verification behavior and reject automation that approves, merges,
+queues a merge, or directly updates a persistent branch. Hosted permissions,
+team eligibility, bypass actors and human execution require operational qualification; local
+tests cannot prove them. This contract creates no enrollment or settings change.
+
+### REQ-025 - Centrally Required Baseline Pilot
+
+Organization-required workflows SHALL execute the approved shared baseline on
+the intended consumer revision, using a coherent reviewed checking-source
+revision and read-only permissions. The pilot SHALL preserve existing CI,
+scanning, human review, branch protection and pre-execution integrity obligations.
+
+Qualification SHALL cover the enrolled CI profile and the shared behavior that the
+proposed change can affect. The shared-CI owner SHALL retain a source-bound, reviewed
+impact assessment in the existing task or proposal record, using complete consumer
+candidate inputs and base state, checking-source before/after revisions and
+dependencies. Material affected-scope and unrelatedness judgments SHALL receive
+independent verification, including no-change and scope-exclusion dispositions. A
+consumer SHALL NOT narrow its own profile or required coverage. Uncertain impact SHALL
+require conservative additional validation or block the affected rollout.
+
+A qualified profile MAY progress independently of unrelated profiles only when all of
+its required pilot cases and the shared behavior it relies on are verified. These cases
+include valid, invalid and repaired changes, App-created and already-open pull-request
+triggers, consumer skip/configuration/application-input refusal, and source restoration
+with observed valid-pass and invalid-block behavior. A new repository or branch SHALL
+additionally qualify its actual target context, identity, current-base checks, result
+producers and required protections; earlier content validation is not a current-target
+CI result. Changes to shared enforcement, profile selection, permissions or other common
+inputs SHALL receive qualification across every affected profile.
+
+The document-bootstrap and actual hosted Rust targets establish their own scoped
+evidence; neither can substitute for the other or establish whole-pilot completion.
+Their presence in the initial pilot does not make an unrelated profile's missing
+evidence a blanket prerequisite for additional enrollment. Every proposed enrollment or
+migration SHALL identify and qualify its affected profiles and shared behavior. Removal
+of consumer common calls requires complete coverage for that affected scope, preserving
+product-specific checks; whole-pilot completion requires all initial pilot targets and
+their required cases.
+
+**Fit:** A narrowly selected pilot proves actual valid, invalid and repaired
+changes, GitHub App-created and already-open pull requests, and an observed
+controlled source update followed by successful restoration to the previously
+qualified pilot source and its required pass/fail enforcement. A restored source
+that is failed, cancelled, skipped or unexecuted is not recovery. Adding a rule,
+passing local tests or publishing source alone does
+not establish execution or enforcement. CodeQL remains separately configured.
+
+### REQ-026 - Explicit Document Bootstrap
+
+A document-only bootstrap profile SHALL be explicitly enrolled by the approved
+central source, validate its governing documents and tracked Markdown, and admit
+only its declared non-executable inputs. Application profiles SHALL fail when
+their expected manifests or commands are missing rather than select bootstrap.
+
+**Fit:** Unknown enrollment, changed repository identity, application code,
+executable lint configuration, custom formatters/rules, untracked required
+inputs, malformed configuration and unavailable required evidence fail with
+actionable remediation. Bootstrap reuses existing checking implementations only
+where their behavior satisfies this boundary. It does not execute consumer
+helpers or weaken normal product validation. Transition to an application
+profile requires explicit enrollment and its meaningful product checks.

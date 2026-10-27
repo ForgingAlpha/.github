@@ -11,9 +11,9 @@ tags:
 `.github` and `control-plane` are main-only control planes. `container-foundation`
 is a main-only shared code component; its code classification and baseline checks
 remain unchanged. Each takes feature/worktree PRs into protected `main`, with required
-`CI` and authorized-human code-owner approval of the exact current revision.
+`CI` and authorized-human approval of the exact current revision under REQ-024.
 Existing application repositories retain feature/worktree PRs into protected `dev`
-and their governed production promotion to `main`. Changing an application's flow
+and their governed production promotion to deployed `main`. Changing an application's flow
 requires its owning release change; this shared-component policy does not migrate apps.
 
 The repository's selected integration policy determines admission; a retained old `dev`
@@ -27,14 +27,15 @@ checks baseline presence and repository-specific status metadata. Only the exact
 required status marker; its own CI validates canonical IDs and upstream digests.
 These structural checks cannot establish approval or Currentness.
 
-The shared policy action validates `.github/CODEOWNERS` before lower-level
-language checks. Control-plane repositories assign their complete tree to an
+The released shared policy action validates `.github/CODEOWNERS` before lower-level
+language checks. Unmigrated control-plane repositories assign their complete tree to an
 authorized human. Consumer repositories assign `.github/` and each detected
 production-control file or directory at any tracked depth to an authorized human
 in the final active CODEOWNERS block. A detected enclosing control directory
 covers its descendants; untracked files do not expand the candidate inventory. Unsupported literal target patterns leave ownership verification
 incomplete. The validator preserves GitHub's last-match semantics. Repository
-rules require code-owner review and invalidate stale approvals. Agents and the
+rules retain their applicable code-owner review until qualified migration and
+invalidate stale approvals. Agents and the
 general-purpose authoring identity may create and update pull requests, but
 their approval cannot satisfy this boundary. An applicable authorized human
 executes every PR merge, including dependency and security updates. Updater,
@@ -42,7 +43,9 @@ security and release Apps retain only scoped proposal, check, tag rollout and
 deployment effects; they cannot merge or update persistent branches directly.
 
 Shared technical checks are composite actions so the caller preserves a
-single required job named `CI`. Consumers call internal actions at
+stable required job named `CI`. Enrolled applications additionally require the
+distinct central baseline workflow; an enrolled document-only bootstrap can
+obtain its initial complete-profile `CI` centrally. Consumers call internal actions at
 `ForgingAlpha/.github/actions/<action>@v1`. Self-CI uses local paths so a pull
 request validates its proposed implementation.
 
@@ -63,8 +66,9 @@ are unavailable evidence. Source publication does not install this boundary.
 
 The allowlist is qualified only with nonadministrative Agent credentials and exclusion
 of Agent-invocable equivalent paths, including workflow tokens. A human's own allowed
-update is not a quality bypass. Keep required human CODEOWNER and last-push review,
-trusted-source `CI`, applicable scanning, approved merge methods, and force-push/deletion
+update is not a quality bypass. Keep the applicable human-review profile under REQ-024
+and required last-push review, trusted-source `CI`, applicable scanning, approved merge
+methods, and force-push/deletion
 protection independent of actor admission. Inventory inherited exceptions and default
 workflow-token permissions; a missing read leaves qualification incomplete. Repository
 auto-merge remains disabled under the human merge policy. Classic restrictions can admit
@@ -78,9 +82,14 @@ one exact task-branch candidate from the current reviewed `dev` source, aligning
 baseline comparison, updater target and repository instructions with `main`. Protect main
 to the required human-review and trusted-check contract before that transition; copying
 the weaker observed main settings is insufficient.
-Where the target base lacks CODEOWNERS, use the existing exact-human-reviewed bootstrap
-procedure and verify the merged file and rules before claiming its technical enforcement;
-an unmerged candidate cannot enforce itself.
+For an unmigrated CODEOWNERS-based profile, where the target base lacks CODEOWNERS,
+use the existing exact-human-reviewed bootstrap procedure and verify the merged file
+and rules before claiming its technical enforcement; an unmerged candidate cannot
+enforce itself. These repositories retain their unmigrated CODEOWNERS obligations.
+A future team-review migration may replace them only through an applicable centrally
+approved profile and explicit enrollment, after its implementation and actual hosted
+protection, team eligibility and bypass controls are qualified under REQ-024. This
+proposal supplies neither that future profile nor its enrollment or qualification.
 
 Bind the current main/dev commits, qualified shared-action revision, candidate and settings
 preimage in the existing task record. The human settings owner selects main, and the
@@ -96,6 +105,119 @@ Verify the resulting main/default/CI/updater agreement and approved export avail
 Existing catalog selections remain valid; future admissions bind an exact human-merged
 main source after the transition. Retain dev for outstanding proposals/history until a
 separately authorized retirement; its existence does not change main-only admission.
+
+### Organization-required baseline pilot
+
+The target central entrypoint is `.github/workflows/org-baseline.yml` in this
+repository, selected by a ForgingAlpha organization ruleset. The initial pilot
+binds an exact human-merged `main` source SHA with successful push CI on that
+merged revision, reverified as current `main` before initial activation, plus
+explicit consumer repository/branch selectors. The same source requirements
+apply to a new pilot revision. Existing rules remain in force. The workflow checks out the consumer
+revision separately from its own trusted checking source and records both
+identities; actual workflow-context values and GitHub App events require live
+qualification. It uses read-only pull-request execution, not a privileged
+pull-request-target path, and does not contain CodeQL initialization/analysis.
+Its shared Actions and scripts resolve from that separate trusted checkout at
+the same workflow-source SHA, using local paths within that checkout. It does
+not combine a pinned pilot workflow with sibling Actions from moving `v1`.
+Existing `@v1` callers and the protected channel remain unchanged.
+
+The central source owns explicit pilot profiles and their human-review team
+identity. A consumer cannot grant itself bootstrap or weaken its required
+reviewers. The team-review profile reads fresh effective branch rules and
+requires the enrolled team, complete-change coverage, required approval count
+and stale-approval invalidation. Missing or partial evidence is a failure.
+Team membership and eligibility remain an operator-qualified prerequisite, not
+an inference from a team ID. Bypass-actor and complete protection qualification
+also remain with the operator; effective-rule reads alone cannot prove them.
+This profile can replace CODEOWNERS validation
+only after its approved implementation and actual hosted protection are
+qualified; other callers keep their existing checks.
+
+Here CI enrollment means the centrally reviewed validation configuration for a
+consumer, not an unattended-authority Repository Enrollment or an Operational
+Profile. It grants no execution or merge authority and does not create a runtime
+profile assignment. Definition-only baseline repair and an enrolled document-only
+profile remain distinct; neither can substitute for the other's conditions.
+
+Bootstrap accepts only declared document/configuration inputs and refuses
+application content and executable lint configuration before invoking shared
+validators. Structural metadata does not prove human approval or Currentness.
+Product profiles retain their own builds, tests, manifests and exact runtime
+inputs. Foundation integrity stays before any copied helper or adapter;
+independent central execution alone cannot establish that ordering.
+The shared-CI owner accounts for common-check invocation and profile configuration;
+the product owner accounts for its build/test composition. Language-only
+composition is eligible only while independently verified central enforcement
+covers its common checks. Migrate by qualifying the central gate before removing
+consumer common calls; restore those calls before removing that gate. Until this
+joint invariant is verified, full composite defaults remain unchanged. A consumer
+opt-out input or configuration cannot establish the invariant.
+
+The initial pilot includes the document-bootstrap consumer and an independently verified
+current Rust consumer. An unborn local repository or hosted documents-only branch cannot
+stand in for the Rust consumer. Each target establishes evidence only for the profile
+and shared behavior it actually exercises; neither supplies missing second-target
+evidence or completes the whole pilot by itself.
+
+Qualification and enrollment follow that affected scope. The shared-CI owner retains a
+reviewed impact assessment in the existing task or proposal record, identifying complete
+consumer candidate inputs and base state, dependencies and exact checking-source
+before/after revisions. Material judgments about affected scope or unrelatedness,
+including no-change and scope exclusions, require independent verification. Shared
+inputs include workflow loading, profile selection, permissions, runner assumptions,
+result aggregation and pre-execution integrity. Changes affecting these responsibilities
+receive coverage across the affected profiles. Unknown impact requires conservative
+additional validation or leaves the affected rollout blocked. A missing consumer
+manifest or changed file extension cannot select a less demanding profile.
+
+A profile with every required pilot case verified and qualified shared dependencies may
+progress independently of unrelated profiles. Cases include valid/invalid/repair,
+App-created and already-open triggers, consumer skip/configuration/application-input
+refusal and observed source restoration with valid-pass and invalid-block behavior.
+Adding a repository or branch still requires explicit central enrollment and live
+qualification of that target's identity, head/base, token access, check producers and
+required protections. Reusable content evidence does not replace current-target CI or
+review. The full declared profile runs against the complete proposed tree; this rule
+introduces no changed-file test selector.
+
+Every additional enrollment or migration identifies and qualifies its affected profiles
+and shared behavior. Common-call retirement requires complete coverage for that affected
+scope; whole-pilot completion requires all initial targets and cases. Product-specific
+checks remain mandatory, and consumer common calls remain until the central gate's
+coverage of those obligations is independently verified. Rust qualification remains
+required wherever Rust behavior or shared enforcement affecting it is in scope; it is
+not a blanket dependency of an otherwise independently qualified document profile.
+
+Ruleset administration retains the existing operator-owned path under REQ-016
+and the control-plane authority procedure. This amendment does not permit an
+agent to save protection changes through a human browser session or to borrow
+human credentials; browser consent alone does not establish that authority.
+Any protected executor requires separate qualification before a settings write.
+
+Activation requires the qualified merged source, that operator path and
+observable target runs. Serialize activation and rollback against the captured
+expected prior source and rule configuration; refuse stale or ambiguous state.
+Retain immutable transition evidence binding prior/new source SHAs, rules,
+successful source push CI and operator attribution. Pilot recovery accepts only
+the previously qualified human-merged source with that original green-CI and
+transition evidence, preserving the existing channel's source and recovery
+guarantees without moving `v1`. After an initial qualified revision A, a
+controlled human-merged and green revision B is selected and observed, then the pilot selector is restored
+to A. Verify that A runs successfully on valid input and again blocks the known
+invalid case; recording the selector or a failed, cancelled or skipped run does
+not establish recovery. Record target/source SHAs, saved rules and runs;
+an uncertain settings write requires readback before retry. Recover the captured
+pre-pilot rule configuration if the new rule itself cannot execute, preserving
+preexisting obligations. This pilot does not move `v1` or activate global scope.
+
+Implementation and enrollment remain pending until independently qualified.
+No workflow, profile, team membership, ruleset or operational capability is
+created merely by adopting this architecture. Scheduled shared-CI activation
+is a separate rollout change: retain normal dependency cooldowns and expedited
+security eligibility, human source merges, exact-source qualification and
+existing serialized release/rollback controls. No release hour is inferred.
 
 ## Current-Channel Rollout
 
@@ -147,8 +269,15 @@ Dialyzer. Missing required tools fail clearly.
 Markdown validation always enumerates all tracked `.md` and `.markdown` files;
 there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
-low-or-higher vulnerabilities and licenses outside a centrally owned permissive
-commercial-use SPDX allowlist, subject to the central artifact exception below.
+low-or-higher vulnerabilities and licenses outside a centrally owned approved
+SPDX allowlist, subject to the central artifact admission below. The shared-CI
+owner must implement the standard policy's existing permissive identifiers and
+`LGPL-3.0-or-later`. Released enforcement must evaluate compound SPDX expressions
+under REQ-023: all mandatory terms in an approved alternative must be eligible.
+The owner verifies that behavior through the actual pinned official action and
+mandatory evidence guard before release; this architecture specifies required
+behavior and does not attest to current execution. No broad LGPL package-family
+exclusion or consumer-selected license override is permitted.
 A following fail-closed check inspects the official dependency-change output.
 Recognized licenses need no additional
 network lookup. Null or empty third-party licenses still fail except for GitHub
@@ -212,6 +341,37 @@ noncanonical PURLs, missing evidence, and unsafe manifest files fail closed.
 Vulnerability checks remain independent and unchanged. Other repositories receive
 no exclusion; no caller input selects an exception. Any later artifact needs a new
 reviewed central policy change.
+
+The central license-policy implementation owns standard SPDX identifiers and
+license eligibility. The product release owner owns the actual delivered
+contents, the selected licensing alternative when a choice matters, and
+applicable compliance evidence in the existing release record. LGPL is a
+conditional license, not a permissive-license classification. The owner
+reconciles library modifications, combined/linked works, redistribution and
+covered content in generated output against the applicable terms, retaining
+required notices, license copies, source/relinking or replacement arrangements
+and installation information as applicable. Internal use of a build tool does
+not alone license its output under LGPL; actual content and distribution decide
+which obligations apply. A changed use/distribution basis requires renewed
+product assessment; routine dependency updates do not require a centrally fixed
+package/version or whole-manifest/build-file digest.
+
+The LGPL version-3 terms are available from the
+[SPDX license text](https://spdx.org/licenses/LGPL-3.0-or-later.html), including the
+incorporated GPL terms. `LGPL-3.0-or-later` permits selecting version 3 for this
+policy; it is not blanket adoption of future terms or other SPDX identifiers.
+The gate supplies dependency eligibility evidence, not a legal-compliance
+certificate. Unresolved applicable obligations stop product delivery under
+REQ-023. The shared-CI owner preserves existing vulnerability thresholds,
+first-party and missing-license evidence paths, and the separate Mapbox exception.
+Standalone GPL/AGPL, other LGPL identifiers and custom/unknown evidence require
+a separate central decision unless already covered by an applicable exception.
+
+The shared-CI owner verifies actual SPDX expression handling and vulnerability,
+unknown-license and Mapbox regressions before releasing changed enforcement.
+The consumed gate revision must implement the adopted policy before reliance;
+source adoption and a list-entry unit test alone do not prove provider behavior
+or fresh consumer CI success.
 
 Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.
@@ -460,9 +620,13 @@ step, followed by its adapter in a success-dependent step. The action never
 invokes the adapter. Enrollment qualification and human review of the protected
 workflow establish that order before any copied helper runs. The released
 action owns an approved fingerprint catalog and verifies the actual
-checkout without importing or executing its copied code. Applications keep
-`.foundation/` and the adjacent `foundation.lock`; the foundation owns their
-`foundation-source-v1` export format and local import/update behavior.
+checkout without importing or executing its copied code. Applications select one
+payload at `tools/container-foundation/` (standard) or `.foundation/` (legacy
+transition), with `foundation.lock` at the checkout root. The foundation owns
+their `foundation-source-v1` export format and local import/update/migration
+behavior. The verifier resolves the sole existing fixed payload leaf, rejects
+dual or partial selections and linked targets or ancestors, and preserves
+unrelated `tools/` content.
 
 Each catalog record contains the fixed canonical foundation repository and
 numeric ID, full human-merged source commit, payload tree, export format and
@@ -472,11 +636,20 @@ verifies identity, human delivery and required checks; no personal or operator
 SSH credential is used. Independent derivation
 reads committed Git blobs and executable modes and reproduces the exact lock
 serialization; an exporter assertion or application-provided lock is insufficient.
-The source and derivation evidence remain in private retained custody. Only
-identity, commit/tree, format and opaque fingerprints enter this public catalog.
+The source and derivation evidence remain in private retained custody. Public
+records contain identity, commit/tree, format, opaque fingerprints and optional
+nonsecret supported-location metadata. The `payload_paths` field permits a nonempty,
+unique subset of the two fixed locations for a qualified helper revision.
+Records without this field permit only `.foundation`; schema version 1 accepts
+no other record fields. Placement is outside upstream identity and lock
+inventory. Consumer-provided metadata cannot grant source-layout eligibility.
 
 A record becomes usable after the existing human-reviewed `.github` merge and
 protected `v1` release. One record serves all consumers of that core revision.
+The exact core source must first be human-merged and its canonical delivery
+verified before the shared admission merge and release; application source
+updates and layout migrations follow that release. A task-branch candidate
+record does not authorize runtime use.
 The catalog starts empty until an eligible core revision is available. Multiple
 compatible approved versions can coexist. Record preparation emits a candidate;
 it cannot grant source eligibility or modify the released catalog automatically.
