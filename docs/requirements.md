@@ -134,14 +134,21 @@ derived projections rather than independent owners.
 Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
 of three days for patches, seven days for minors, and thirty days for majors.
 
-**Fit:** Eligible patch, minor, and major proposals target a code repository's
-protected `dev`; an authorized human merges them after exact-head `CI` and
+**Fit:** Eligible patch, minor, and major proposals target the repository's
+protected integration branch; an authorized human merges them after exact-head `CI` and
 applicable approval. Renovate and platform auto-merge are disabled, including
 policy overrides. Runtime and tool changes use the same path after their exact generated
-locks and integrity data pass CI. Main-only control-plane updates merge through
-protected `main` only after their complete control-plane gates pass.
+locks and integrity data pass CI. Main-only control planes and shared components target
+protected `main`; split application integration remains on `dev`.
 
 ### REQ-013 - Immediate Security Updates
+
+The three main-only shared repositories SHALL receive security-only Dependabot PRs
+on their governed default `main`, without normal-update cooldown. Their required human
+review, trusted CI, applicable scanning and human merge remain mandatory. They SHALL NOT
+use a `dev` source merge or production patch projection. The classification and projection
+obligations below and in REQ-014 apply to enrolled split-branch application projections;
+this shared-component route changes no application enrollment or quality requirement.
 
 Only a Dependabot pull request with a re-provable official GitHub
 vulnerability-alert association and a trusted automation-App classification
@@ -273,7 +280,7 @@ vulnerable revision.
 
 ### REQ-015 - Protected Branches And Refs
 
-Application `dev` SHALL require pull requests and `CI`. Application `main`,
+Each governed integration branch SHALL require pull requests and `CI`. Application `main`,
 deployment refs, and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
 
@@ -283,6 +290,10 @@ applicable authorized human executes PR merges. Automation has no bypass
 authorizing persistent-branch updates, including after human approval.
 Repository auto-merge and merge queues are disabled. Separately scoped tag
 rollout and deployment permissions do not confer branch or merge authority.
+The three shared repositories identified in Architecture SHALL enforce the same human approval and Agent exclusion without
+requiring an intermediate `dev` branch. Hosted actor restrictions SHALL deny Agent-accessible
+principals ordinary protected-branch updates as well as bypass. Authorized human PR merges
+SHALL retain all required review and quality checks.
 
 ### REQ-016 - Operator Boundary
 

@@ -8,10 +8,17 @@ tags:
 
 ## Control Plane
 
-`.github` and `control-plane` are main-only control planes. Every change lands
-through a pull request with required `CI` and authorized-human
-approval of the exact current revision. Application repositories use
-feature/worktree branches into protected `dev`; `main` is the deployed branch.
+`.github` and `control-plane` are main-only control planes. `container-foundation`
+is a main-only shared code component; its code classification and baseline checks
+remain unchanged. Each takes feature/worktree PRs into protected `main`, with required
+`CI` and authorized-human approval of the exact current revision under REQ-024.
+Existing application repositories retain feature/worktree PRs into protected `dev`
+and their governed production promotion to deployed `main`. Changing an application's flow
+requires its owning release change; this shared-component policy does not migrate apps.
+
+The repository's selected integration policy determines admission; a retained old `dev`
+branch does not make a main-only shared component use split flow. The updater target,
+repository default, CI triggers and baseline comparison must agree with that policy.
 
 The shared policy action uses the runner-provisioned Python 3/PyYAML parser for
 bounded YAML frontmatter, rejecting malformed syntax and duplicate keys. It
@@ -48,6 +55,56 @@ merge queues; automation receives no persistent-branch update bypass.
 Approval does not schedule a merge. A human executes it under the owning
 repository's protected procedure. Hosted settings, caller enrollment and
 credentials are verified separately from this source contract.
+
+For the three shared repositories, a human-only protected-branch push allowlist
+provides the actor boundary while required PR review, trusted `CI`, scanning and
+merge-shape rules remain enforced. Agents and release/updater identities receive
+no ordinary `main` update or bypass route. Existing inherited rules still apply;
+verify the complete effective protection before replacing an update-only restriction
+that makes normal human merges use a bypass. Missing or omitted permission fields
+are unavailable evidence. Source publication does not install this boundary.
+
+The allowlist is qualified only with nonadministrative Agent credentials and exclusion
+of Agent-invocable equivalent paths, including workflow tokens. A human's own allowed
+update is not a quality bypass. Keep the applicable human-review profile under REQ-024
+and required last-push review, trusted-source `CI`, applicable scanning, approved merge
+methods, and force-push/deletion
+protection independent of actor admission. Inventory inherited exceptions and default
+workflow-token permissions; a missing read leaves qualification incomplete. Repository
+auto-merge remains disabled under the human merge policy. Classic restrictions can admit
+administrators, so the allowlist name alone does not prove Agent exclusion.
+
+### Shared component transition
+
+The GitHub automation owner publishes and verifies main-only component admission before
+the settings owner switches Container Foundation's default. The component owner prepares
+one exact task-branch candidate from the current reviewed `dev` source, aligning CI,
+baseline comparison, updater target and repository instructions with `main`. Protect main
+to the required human-review and trusted-check contract before that transition; copying
+the weaker observed main settings is insufficient.
+For an unmigrated CODEOWNERS-based profile, where the target base lacks CODEOWNERS,
+use the existing exact-human-reviewed bootstrap procedure and verify the merged file
+and rules before claiming its technical enforcement; an unmerged candidate cannot
+enforce itself. These repositories retain their unmigrated CODEOWNERS obligations.
+A future team-review migration may replace them only through an applicable centrally
+approved profile and explicit enrollment, after its implementation and actual hosted
+protection, team eligibility and bypass controls are qualified under REQ-024. This
+proposal supplies neither that future profile nor its enrollment or qualification.
+
+Bind the current main/dev commits, qualified shared-action revision, candidate and settings
+preimage in the existing task record. The human settings owner selects main, and the
+human reviews and merges the exact task-branch PR there after required checks. This is
+the explicit shared-component reclassification, not an invented routine application
+dev-to-main promotion. While default and committed updater/CI settings differ, normal
+updates and unrelated main changes remain blocked; do not treat that intermediate state
+as qualified operation. Before the candidate merges, the human may restore the original
+default only if the bound branch preimages and original configuration remain unchanged.
+After merge, recover through a coherent reviewed main change rather than a stale default.
+
+Verify the resulting main/default/CI/updater agreement and approved export availability.
+Existing catalog selections remain valid; future admissions bind an exact human-merged
+main source after the transition. Retain dev for outstanding proposals/history until a
+separately authorized retirement; its existence does not change main-only admission.
 
 ### Organization-required baseline pilot
 
@@ -376,11 +433,11 @@ digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
 after three, seven, and thirty days respectively. Renovate proposes a pull
-request into protected code-repository `dev`; a human merges it after exact-head
+request into the repository's protected integration branch; a human merges it after exact-head
 `CI` and applicable approval. Root bot and platform auto-merge are explicitly
 disabled. The central validator admits only the defined policy shapes, and
-consumer configurations cannot override them. Main-only control-plane updates target
-protected `main`; `.github` release remains independently gated by coherent
+consumer configurations cannot override them. Main-only control-plane and shared-component updates target
+protected `main`; split application updates retain `dev`. `.github` release remains independently gated by coherent
 consumer validation before `v1` moves.
 
 For enrolled repositories, repository-local Dependabot entries remain only to customize
@@ -390,6 +447,14 @@ repository. It also validates the applicable central preset and local coverage,
 Dependabot configuration, annotated literals, and exactly one owner per
 detected surface.
 
+For the three main-only shared repositories, Dependabot security remediation targets
+current default main directly, without normal-update cooldown, under required human
+review, trusted CI, applicable scanning and human merge. It uses no dev-source chain,
+production projector or security-App grant. GitHub's security updates follow the default
+branch; update-owner configuration omits Dependabot target-branch. Qualify this default
+and configuration together during the component transition.
+
+The following classification/projection path applies to enrolled split-branch applications.
 Security classification never depends on a Dependabot-triggered workflow having
 access to an Actions secret. The unprivileged pull-request CI run is only a wake
 for a default-branch `workflow_run` job. Before entering an environment or

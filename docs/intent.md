@@ -37,9 +37,9 @@ automation without copying workflow logic between repositories.
 - Renovate owns normal external updates across supported manifests, locks, and
   annotated literals. Internal `ForgingAlpha/.github@v1` movement remains
   owned by the protected control-plane rollout. Cooled normal updates enter
-  code-repository `dev` through human-merged pull requests with exact-head CI.
-- Dependabot owns security remediation only so trusted classification can prove
-  GitHub's official vulnerability-alert-to-pull-request association.
+  each repository's governed integration branch through human-merged pull requests with exact-head CI.
+- Dependabot owns security remediation. Enrolled application projections retain trusted
+  classification of GitHub's official vulnerability-alert-to-pull-request association.
 - Runtime and tool upgrades follow the same normal patch, minor, and major
   automation path while preserving exact committed locks and integrity data.
 - Application security promotion projects only the exact independently
