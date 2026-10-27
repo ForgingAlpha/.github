@@ -290,10 +290,10 @@ class CiDependencyReviewTest(unittest.TestCase):
             self.assertLessEqual(receipt[measured], receipt["bounds"][limit])
 
     def test_other_repository_does_not_claim_artifact_approval(self):
-        # The official SPDX action still owns rejecting this custom license there;
-        # the supplementary evidence guard must not claim the central exception.
+        # Neither stage may admit this custom license outside its exact exception.
         code, stdout, stderr = self.run_main([self.artifact_change()], token="")
-        self.assertEqual(code, 0, stderr)
+        self.assertEqual(code, 1, stderr)
+        self.assertIn("unapproved or malformed license expression", stderr)
         self.assertNotIn("Verified reviewed artifact", stdout)
 
     def test_artifact_guard_rejects_mismatched_or_missing_change_evidence(self):
@@ -460,7 +460,7 @@ class CiDependencyReviewTest(unittest.TestCase):
     def test_missing_license_guard_runs_even_if_official_review_fails(self):
         action = self.load_action()
         guard = next(
-            step for step in action["runs"]["steps"] if step.get("name") == "Reject missing license evidence"
+            step for step in action["runs"]["steps"] if step.get("name") == "Validate dependency license evidence"
         )
         self.assertIn("always()", guard["if"])
         self.assertEqual(guard["env"]["DEPENDENCY_REPOSITORY"], "${{ github.repository }}")
@@ -493,6 +493,96 @@ class CiDependencyReviewTest(unittest.TestCase):
             self.assertEqual(code, 0, stderr)
         fetch.assert_not_called()
         first_party_fetch.assert_not_called()
+
+    def test_real_astro_licenses_and_complete_approved_alternatives_pass(self):
+        expressions = (
+            "LGPL-3.0-or-later",
+            "Apache-2.0 AND LGPL-3.0-or-later",
+            "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
+            "0BSD", "BSD-3-Clause", "ISC",
+            "MIT OR GPL-3.0-only",
+            "MIT AND (Apache-2.0 OR GPL-3.0-only)",
+            "(MIT OR LGPL-2.1-or-later) AND Apache-2.0",
+            "(Apache-2.0 WITH LLVM-exception) OR MIT",
+            "MIT OR LicenseRef-unknown",
+            "MIT OR LicenseRef-X.OTHER",
+            "MIT OR DocumentRef-X.OTHER:LicenseRef-unknown",
+        )
+        changes = [
+            {"change_type": "added", "package_url": f"pkg:npm/example-{index}@1", "license": expression}
+            for index, expression in enumerate(expressions)
+        ]
+        with mock.patch.object(validator, "fetch_github_license") as github_lookup, mock.patch.object(
+            validator, "fetch_npm_registry_release"
+        ) as npm_lookup:
+            code, _, stderr = self.run_main(changes, token="")
+        self.assertEqual(code, 0, stderr)
+        github_lookup.assert_not_called()
+        npm_lookup.assert_not_called()
+
+    def test_guard_rejects_unapproved_ranges_and_malformed_raw_license_evidence(self):
+        expressions = (
+            "LGPL-3.0-only", "LGPL-2.1-or-later", "LGPL-2.1-only",
+            "GPL-3.0-only", "AGPL-3.0-only", "MPL-2.0",
+            "MIT AND GPL-3.0-only", "Apache-2.0 WITH LLVM-exception",
+            "MIT WITH LLVM-exception AND Apache-2.0",
+            "NOASSERTION", "LicenseRef-unknown",
+            "OTHER", "MIT OR OTHER", "OTHER OR MIT", "MIT OR OTHER.0",
+            "MIT AND (Apache-2.0 OR OTHER)", "MIT OR OTHER:LicenseRef-X",
+            "MIT OR", "MIT AND", "MIT Apache-2.0",
+            "MIT || Apache-2.0", "MIT && Apache-2.0", "MIT;True",
+            "__import__(os)", "not MIT", "MIT == MIT", "MIT(MIT)",
+            "()", "(MIT", "MIT)", "MIT WITH", "WITH MIT",
+            "MIT WITH LLVM-exception WITH Autoconf-exception-3.0",
+            "MIT OR (Apache-2.0 AND)",
+            "MIT and Apache-2.0", "MIT oR LGPL-3.0-only",
+        )
+        for expression in expressions:
+            with self.subTest(expression=expression):
+                change = {"change_type": "added", "package_url": "pkg:npm/example@1", "license": expression}
+                code, _, stderr = self.run_main([change], token="")
+                self.assertEqual(code, 1, stderr)
+                self.assertIn("unapproved or malformed license expression", stderr)
+                self.assertIn("WHAT:", stderr)
+                self.assertIn("WHY:", stderr)
+                self.assertIn("HOW:", stderr)
+
+    def test_expression_bounds_refuse_adversarial_input_before_ast_parsing(self):
+        expressions = (
+            "(" * 1024 + "MIT" + ")" * 1024,
+            " OR ".join(["MIT"] * 10000),
+            " OR ".join(["MIT"] * 300),
+        )
+        for expression in expressions:
+            with self.subTest(bytes=len(expression)), mock.patch(
+                "license_policy.ast.parse", side_effect=AssertionError("Unbounded input reached AST parser")
+            ):
+                self.assertFalse(validator.approved_license_expression(expression))
+
+    def test_complete_with_expression_requires_its_own_central_approval(self):
+        expression = "Apache-2.0 WITH LLVM-exception"
+        self.assertFalse(validator.approved_license_expression(expression))
+        with mock.patch("license_policy.APPROVED_SPDX", (*validator.APPROVED_SPDX, expression)):
+            self.assertTrue(validator.approved_license_expression(expression))
+            self.assertFalse(validator.approved_license_expression("MIT WITH LLVM-exception"))
+
+    def test_revision_bound_license_lookup_keeps_exact_lgpl_identifiers(self):
+        identity = validator.parse_github_action_identity({
+            "package_url": f"pkg:githubactions/actions/checkout@{CHECKOUT_SHA}",
+            "source_repository_url": "https://github.com/actions/checkout",
+        })
+        assert identity is not None
+        for identifier, allowed in (
+            ("LGPL-3.0-or-later", True), ("LGPL-3.0-only", False), ("LGPL-2.1-or-later", False)
+        ):
+            with self.subTest(identifier=identifier):
+                response = io.BytesIO(json.dumps({"license": {"spdx_id": identifier}}).encode())
+                with mock.patch.object(validator.urllib.request, "urlopen", return_value=response):
+                    if allowed:
+                        self.assertEqual(validator.fetch_github_license(identity, "read-token"), identifier)
+                    else:
+                        with self.assertRaises(validator.EvidenceError):
+                            validator.fetch_github_license(identity, "read-token")
 
     def test_exact_github_action_uses_revision_bound_approved_license(self):
         changes = [
