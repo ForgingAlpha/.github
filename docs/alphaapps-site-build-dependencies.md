@@ -107,12 +107,16 @@ It must require exactly one approved artifact,
 the root manifest/lock binding, exact name, version, install path, registry URL,
 SHA512 integrity, declared license expression, optional lock state, and the fixed
 build/deploy inputs. It must reject unlisted family members, wrong versions,
-nested or additional installations of an admitted artifact, duplicate records, encoded or noncanonical
-identities, license drift, conflicts, missing evidence, symlinked manifest/lock
+nested or additional installations of an admitted artifact, duplicate records,
+PURLs differing from the exact recorded canonical representation, license drift,
+conflicts, missing evidence, symlinked manifest/lock
 paths or ancestors, link descriptors, non-regular files and
 malformed or oversized inputs. No SPDX-only shortcut or use of another approved
 artifact may cover a mismatch. Routine CI compares the reviewed immutable evidence;
 it does not download or execute these archives.
+The recorded `%40img` namespace encoding is valid. Extra escaping, double encoding
+such as `%2540img`, or any other representation differing from that exact approved
+PURL is rejected; normalization never creates an additional accepted form.
 Pre-existing unchanged nested versions receive no admission from this policy;
 their normal dependency and vulnerability obligations remain. Their presence
 must not be misrepresented as an additional installation of an admitted version,
