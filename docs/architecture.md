@@ -213,7 +213,7 @@ Markdown validation always enumerates all tracked `.md` and `.markdown` files;
 there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
 low-or-higher vulnerabilities and licenses outside a centrally owned permissive
-commercial-use SPDX allowlist, subject to the central artifact exception below.
+commercial-use SPDX allowlist, subject to the central artifact admissions below.
 A following fail-closed check inspects the official dependency-change output.
 Recognized licenses need no additional
 network lookup. Null or empty third-party licenses still fail except for GitHub
@@ -277,6 +277,27 @@ noncanonical PURLs, missing evidence, and unsafe manifest files fail closed.
 Vulnerability checks remain independent and unchanged. Other repositories receive
 no exclusion; no caller input selects an exception. Any later artifact needs a new
 reviewed central policy change.
+
+The separate [Alpha Apps static-build policy](alphaapps-site-build-dependencies.md)
+defines a limited admission for fourteen exact optional Sharp/libvips
+artifacts. Its source-bound identity and packaged-notice evidence is in
+`docs/audits/2026-10-26-alphaapps-site-sharp-artifacts.json`. It does not classify
+LGPL as permissive or modify the existing Mapbox record. Packaged README notice
+tables supply component attribution evidence; they do not supply a legal approval
+or prove every applicable obligation has been met.
+
+The shared-CI owner is responsible for a subsequently reviewed implementation
+that binds each dependency-change record and lock entry to the central artifact
+set, validates the fixed build envelope on every consumer PR while the admission
+is present, and rejects the complete protected families before normal license
+shortcuts. The product release owner supplies exact output and distribution
+evidence for the required CI composition check and exact delivery. The named human
+decides the use basis and obligations through the policy's original-source binding;
+the enforcing successor's human reviewer verifies it before operational release.
+Source adoption alone does not implement
+the admission: the current executable gate remains Mapbox-only and continues
+to reject these LGPL-containing dependencies until the enforcing successor is
+reviewed, human-merged and released through the normal current-channel procedure.
 
 Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.

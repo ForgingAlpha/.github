@@ -399,13 +399,44 @@ adoption under REQ-024. Callers SHALL NOT supply or broaden exceptions.
 
 If the official action's package exclusion ignores versions, the independent,
 mandatory evidence guard SHALL inspect every added dependency in its normalized
-matching family before accepting nonempty license metadata. Only the single
-approved canonical record, matching manifest and npm v3 lock, exact artifact, and
-unambiguous runtime declaration SHALL pass. Other versions, manifests, duplicate
+matching family before accepting nonempty license metadata. Each such dependency
+SHALL match exactly one approved canonical artifact record, manifest and npm v3
+lock, exact artifact, and the admission's required use binding. Custom-licensed
+admission SHALL still require its unambiguous runtime declaration.
+Other versions, manifests, duplicate
 records, conflicting identities, additional installs, missing evidence, symlinks,
 and malformed or oversized files SHALL fail closed. This exception SHALL NOT relax
 vulnerability review, the SPDX default, or other evidence classes. Later artifact
 updates SHALL require a new reviewed central policy change.
+
+Separate from that custom-license class, central policy MAY admit only the fourteen
+immutable optional Sharp/libvips artifacts recorded in
+[the Alpha Apps static-build policy](alphaapps-site-build-dependencies.md), solely
+for `ForgingAlpha/alphaapps-site` under that policy's build and delivery conditions.
+Their recorded LGPL-containing SPDX expressions SHALL remain outside the general
+allowlist. This admission SHALL bind the exact repository, root manifest and npm
+v3 lock paths, package identity, version, install path, registry URL, SHA512
+integrity, declared license expression, and integrity-verified packaged notice
+member digest. A notice table in `package/README.md` MAY supply that member;
+its identity SHALL NOT establish complete terms, corresponding source, compliance,
+or an authorized human's use-basis decision.
+
+Before this admission is operational, an authorized human SHALL resolve the
+applicable terms and obligations for the recorded build use through the policy's
+attributable decision binding, and a reviewed
+enforcing implementation SHALL satisfy that policy's complete acceptance.
+Every added or updated member of its protected package families SHALL receive
+independent exact-record validation before any nonempty-license shortcut.
+Unlisted identities or versions, duplicate or additional installations, changed
+license expressions, missing or conflicting evidence, and use outside the approved
+build envelope SHALL fail closed. Optional or development metadata alone SHALL
+NOT prove build-only use. Vulnerability review, other repositories and the
+existing custom-license admission SHALL remain unchanged. Later artifact or
+build-envelope changes SHALL require a new reviewed central policy proposal.
+While this admission is present in the consumer lock, its fixed build/deploy
+input verification SHALL run on every pull request, including changes with no
+dependency diff. Release admission SHALL separately require the exact candidate's
+retained output-composition evidence and verification result under that policy.
 
 **Fit:** Approved third-party SPDX evidence passes; non-approved evidence
 fails; the exact-revision third-party resolver fails closed on malformed
@@ -419,6 +450,11 @@ including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
+The separate Alpha Apps dependency guard rejects cross-repository reuse and
+unreviewed artifact or input-envelope mutation, including an envelope-only pull
+request. Release admission refuses missing, mismatched or nonconforming output
+composition and use outside its conditions. Neither admission can pass solely
+because a notice digest or an agent-authored decision status matches.
 
 ### REQ-024 - Human Trust-Surface Approval
 
