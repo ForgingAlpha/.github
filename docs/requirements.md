@@ -359,8 +359,18 @@ legacy-tag exception.
 
 Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
-commercial-use allowlist; callers SHALL NOT disable the review, substitute a
-denylist, or exempt individual packages. Missing, unknown, or custom license
+approved SPDX allowlist; callers SHALL NOT disable the review, substitute a
+denylist, or exempt individual packages. The standard allowlist SHALL preserve
+its existing permissive license identifiers and add `LGPL-3.0-or-later`. This
+identifier permits selection of LGPL version 3; its inclusion SHALL NOT imply
+blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
+custom or unknown licenses. Those require a separate reviewed central policy
+decision unless an applicable existing artifact exception already covers them.
+For a compound SPDX expression, every obligation in the selected licensing
+alternative SHALL be centrally eligible: every member of `AND` must be approved;
+`OR` requires at least one fully approved alternative. A `WITH` exception SHALL
+require explicit central approval of the complete expression. An unknown or
+malformed expression SHALL fail closed. Missing, unknown, or custom license
 evidence SHALL fail closed for third-party dependencies except for a reviewed
 central repository-and-artifact exception as specified below. When GitHub omits
 license metadata for a third-party GitHub Action pinned to an exact commit SHA,
@@ -399,44 +409,39 @@ adoption under REQ-024. Callers SHALL NOT supply or broaden exceptions.
 
 If the official action's package exclusion ignores versions, the independent,
 mandatory evidence guard SHALL inspect every added dependency in its normalized
-matching family before accepting nonempty license metadata. Each such dependency
-SHALL match exactly one approved canonical artifact record, manifest and npm v3
-lock, exact artifact, and the admission's required use binding. Custom-licensed
-admission SHALL still require its unambiguous runtime declaration.
-Other versions, manifests, duplicate
+matching family before accepting nonempty license metadata. Only the single
+approved canonical record, matching manifest and npm v3 lock, exact artifact, and
+unambiguous runtime declaration SHALL pass. Other versions, manifests, duplicate
 records, conflicting identities, additional installs, missing evidence, symlinks,
 and malformed or oversized files SHALL fail closed. This exception SHALL NOT relax
 vulnerability review, the SPDX default, or other evidence classes. Later artifact
 updates SHALL require a new reviewed central policy change.
 
-Separate from that custom-license class, central policy MAY admit only the fourteen
-immutable optional Sharp/libvips artifacts recorded in
-[the Alpha Apps static-build policy](alphaapps-site-build-dependencies.md), solely
-for `ForgingAlpha/alphaapps-site` under that policy's build and delivery conditions.
-Their recorded LGPL-containing SPDX expressions SHALL remain outside the general
-allowlist. This admission SHALL bind the exact repository, root manifest and npm
-v3 lock paths, package identity, version, install path, registry URL, SHA512
-integrity, declared license expression, and integrity-verified packaged notice
-member digest. A notice table in `package/README.md` MAY supply that member;
-its identity SHALL NOT establish complete terms, corresponding source, compliance,
-or an authorized human's use-basis decision.
+Standard license eligibility SHALL NOT establish compliance for a particular use.
+The accountable product release owner SHALL assess the actual use and contents
+being delivered. For LGPL-covered library modifications, linked/combined works
+or redistribution, the owner SHALL identify and satisfy applicable copyright and
+license notices, license-copy, corresponding-source, replacement/relinking,
+reverse-engineering and installation-information conditions before delivery.
+Required evidence SHALL be retained with the existing product release record,
+bound to the delivered contents and applicable license terms. Unresolved
+applicable obligations SHALL stop the affected delivery. A dependency's optional
+or development classification alone SHALL NOT establish that it is absent from
+the delivered product. Internal build use and generated output SHALL be assessed
+from the actual output: using a tool alone SHALL NOT be treated as licensing all
+its output under LGPL, and covered content copied into output SHALL NOT be
+assumed exempt. Ordinary maintenance that changes neither the applicable terms
+nor their use/distribution basis SHALL reuse applicable existing compliance
+evidence; it SHALL NOT require a new central package/version exception.
 
-Before this admission is operational, an authorized human SHALL resolve the
-applicable terms and obligations for the recorded build use through the policy's
-attributable decision binding, and a reviewed
-enforcing implementation SHALL satisfy that policy's complete acceptance.
-Every added or updated member of its protected package families SHALL receive
-independent exact-record validation before any nonempty-license shortcut.
-Unlisted identities or versions, duplicate or additional installations, changed
-license expressions, missing or conflicting evidence, and use outside the approved
-build envelope SHALL fail closed. Optional or development metadata alone SHALL
-NOT prove build-only use. Vulnerability review, other repositories and the
-existing custom-license admission SHALL remain unchanged. Later artifact or
-build-envelope changes SHALL require a new reviewed central policy proposal.
-While this admission is present in the consumer lock, its fixed build/deploy
-input verification SHALL run on every pull request, including changes with no
-dependency diff. Release admission SHALL separately require the exact candidate's
-retained output-composition evidence and verification result under that policy.
+The shared-CI owner SHALL enforce standard SPDX eligibility through the official
+dependency-review action and the existing mandatory evidence guard. Product
+release owners retain actual-use compliance responsibility; a green license check
+SHALL NOT be represented as legal clearance. Vulnerability severity and scope
+thresholds, existing evidence classes, the Mapbox artifact exception and human
+approval/merge requirements SHALL remain unchanged. Source adoption alone SHALL
+NOT establish released enforcement; the consumed gate revision SHALL implement
+the adopted policy before operational reliance.
 
 **Fit:** Approved third-party SPDX evidence passes; non-approved evidence
 fails; the exact-revision third-party resolver fails closed on malformed
@@ -450,11 +455,14 @@ including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
-The separate Alpha Apps dependency guard rejects cross-repository reuse and
-unreviewed artifact or input-envelope mutation, including an envelope-only pull
-request. Release admission refuses missing, mismatched or nonconforming output
-composition and use outside its conditions. Neither admission can pass solely
-because a notice digest or an agent-authored decision status matches.
+The enforcing release must demonstrate that an approved LGPL expression passes
+eligibility, while mixed expressions with an unapproved mandatory license and
+standalone GPL/AGPL or unknown/custom evidence fail without an applicable central
+exception. Product release verification checks the owner's assessment against the
+actual use, delivered contents and applicable terms, including covered generated
+content, library redistribution and changed distribution. Missing required evidence
+or unresolved applicable obligations refuse delivery; CI eligibility alone cannot
+satisfy these release obligations.
 
 ### REQ-024 - Human Trust-Surface Approval
 

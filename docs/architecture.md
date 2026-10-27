@@ -212,8 +212,15 @@ Dialyzer. Missing required tools fail clearly.
 Markdown validation always enumerates all tracked `.md` and `.markdown` files;
 there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
-low-or-higher vulnerabilities and licenses outside a centrally owned permissive
-commercial-use SPDX allowlist, subject to the central artifact admissions below.
+low-or-higher vulnerabilities and licenses outside a centrally owned approved
+SPDX allowlist, subject to the central artifact admission below. The shared-CI
+owner must implement the standard policy's existing permissive identifiers and
+`LGPL-3.0-or-later`. Released enforcement must evaluate compound SPDX expressions
+under REQ-023: all mandatory terms in an approved alternative must be eligible.
+The owner verifies that behavior through the actual pinned official action and
+mandatory evidence guard before release; this architecture specifies required
+behavior and does not attest to current execution. No broad LGPL package-family
+exclusion or consumer-selected license override is permitted.
 A following fail-closed check inspects the official dependency-change output.
 Recognized licenses need no additional
 network lookup. Null or empty third-party licenses still fail except for GitHub
@@ -278,26 +285,36 @@ Vulnerability checks remain independent and unchanged. Other repositories receiv
 no exclusion; no caller input selects an exception. Any later artifact needs a new
 reviewed central policy change.
 
-The separate [Alpha Apps static-build policy](alphaapps-site-build-dependencies.md)
-defines a limited admission for fourteen exact optional Sharp/libvips
-artifacts. Its source-bound identity and packaged-notice evidence is in
-`docs/audits/2026-10-26-alphaapps-site-sharp-artifacts.json`. It does not classify
-LGPL as permissive or modify the existing Mapbox record. Packaged README notice
-tables supply component attribution evidence; they do not supply a legal approval
-or prove every applicable obligation has been met.
+The central license-policy implementation owns standard SPDX identifiers and
+license eligibility. The product release owner owns the actual delivered
+contents, the selected licensing alternative when a choice matters, and
+applicable compliance evidence in the existing release record. LGPL is a
+conditional license, not a permissive-license classification. The owner
+reconciles library modifications, combined/linked works, redistribution and
+covered content in generated output against the applicable terms, retaining
+required notices, license copies, source/relinking or replacement arrangements
+and installation information as applicable. Internal use of a build tool does
+not alone license its output under LGPL; actual content and distribution decide
+which obligations apply. A changed use/distribution basis requires renewed
+product assessment; routine dependency updates do not require a centrally fixed
+package/version or whole-manifest/build-file digest.
 
-The shared-CI owner is responsible for a subsequently reviewed implementation
-that binds each dependency-change record and lock entry to the central artifact
-set, validates the fixed build envelope on every consumer PR while the admission
-is present, and rejects the complete protected families before normal license
-shortcuts. The product release owner supplies exact output and distribution
-evidence for the required CI composition check and exact delivery. The named human
-decides the use basis and obligations through the policy's original-source binding;
-the enforcing successor's human reviewer verifies it before operational release.
-Source adoption alone does not implement
-the admission: the current executable gate remains Mapbox-only and continues
-to reject these LGPL-containing dependencies until the enforcing successor is
-reviewed, human-merged and released through the normal current-channel procedure.
+The LGPL version-3 terms are available from the
+[SPDX license text](https://spdx.org/licenses/LGPL-3.0-or-later.html), including the
+incorporated GPL terms. `LGPL-3.0-or-later` permits selecting version 3 for this
+policy; it is not blanket adoption of future terms or other SPDX identifiers.
+The gate supplies dependency eligibility evidence, not a legal-compliance
+certificate. Unresolved applicable obligations stop product delivery under
+REQ-023. The shared-CI owner preserves existing vulnerability thresholds,
+first-party and missing-license evidence paths, and the separate Mapbox exception.
+Standalone GPL/AGPL, other LGPL identifiers and custom/unknown evidence require
+a separate central decision unless already covered by an applicable exception.
+
+The shared-CI owner verifies actual SPDX expression handling and vulnerability,
+unknown-license and Mapbox regressions before releasing changed enforcement.
+The consumed gate revision must implement the adopted policy before reliance;
+source adoption and a list-entry unit test alone do not prove provider behavior
+or fresh consumer CI success.
 
 Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.
