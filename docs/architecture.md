@@ -35,10 +35,17 @@ executes every PR merge, including dependency and security updates. Updater,
 security and release Apps retain only scoped proposal, check, tag rollout and
 deployment effects; they cannot merge or update persistent branches directly.
 
-Shared technical checks are composite actions so the caller preserves a
-stable required job named `CI`. Enrolled applications additionally require the
-distinct central baseline workflow; an enrolled document-only bootstrap can
-obtain its initial complete-profile `CI` centrally. Consumers call internal actions at
+Shared technical checks remain composite actions for unmigrated consumers, whose
+repository workflow owns the stable required result named `CI`. An explicitly
+enrolled full application profile may instead assign that product result to the
+central workflow. In either case, an enrolled application additionally requires
+the distinct common baseline result; common-policy success cannot substitute for
+product checks. An explicitly enrolled document-only bootstrap can obtain its
+initial complete-profile `CI` centrally. These responsibilities implement REQ-001,
+REQ-003, REQ-004 and REQ-025. For a central-product profile, lane composition and
+aggregation move to the shared-CI owner; the product owner retains product behavior,
+command meaning and test completeness. Human merge authority does not move.
+Consumers of the existing composites use
 `ForgingAlpha/.github/actions/<action>@v1`. Self-CI uses local paths so a pull
 request validates its proposed implementation.
 
@@ -90,13 +97,95 @@ validators. Structural metadata does not prove human approval or Currentness.
 Product profiles retain their own builds, tests, manifests and exact runtime
 inputs. Foundation integrity stays before any copied helper or adapter;
 independent central execution alone cannot establish that ordering.
-The shared-CI owner accounts for common-check invocation and profile configuration;
-the product owner accounts for its build/test composition. Language-only
+The shared-CI owner accounts for common-check invocation and profile configuration.
+For an unmigrated caller, the product owner accounts for build/test composition;
+for a central-product profile the shared-CI owner composes the declared lanes while
+the product owner accounts for their command meaning and complete product coverage. Language-only
 composition is eligible only while independently verified central enforcement
 covers its common checks. Migrate by qualifying the central gate before removing
 consumer common calls; restore those calls before removing that gate. Until this
 joint invariant is verified, full composite defaults remain unchanged. A consumer
 opt-out input or configuration cannot establish the invariant.
+
+### Full application profiles and producer transitions
+
+The same centrally owned enrollment binds a complete application profile, its
+component roots and its selected product `CI` producer. Supported Rust, Astro and
+mixed profiles consume the existing language-check implementations; they do not
+create a second registry or a general test-selection engine. Discovery inspects
+tracked manifests in the exact complete consumer commit and verifies the declared
+components. An undeclared component, missing expected manifest, lock, runtime or
+required command fails rather than selecting a lighter profile or bootstrap.
+Changing only documentation does not narrow an application profile's coverage.
+Runtime tuples remain owned by the existing runtime catalog under REQ-010.
+
+For a central-product profile, the trusted central workflow owns the stable
+product `CI` result and records its checking source, consumer head/base and complete
+applicable profile. Its common baseline retains a distinct result identity. Shared
+checks run once; every required product lane must finish successfully before the
+product result passes. Failed, cancelled, missing or unexpectedly skipped required
+lanes cannot become an accepted aggregate success. Product owners retain the meaning
+and completeness of their tests and commands; central execution does not redefine
+those obligations. Required foundation/source integrity precedes consumer helpers.
+Consumer build/test code receives no production credentials or privileged executor.
+CodeQL analysis and configuration remain separate from this required workflow.
+
+The shared-CI owner coordinates each producer transition with the consumer owner
+and the protection operator. Bind the old and new workflow identities, exact
+consumer head/base, checking source, complete profile, result producer and preserved
+protections before activation. Source capability alone does not enroll a consumer,
+retire its caller or select a runtime. Unmigrated callers keep their full default
+checks and their selected product result. Missing or ambiguous producer ownership
+blocks acceptance; the system must not accept whichever result happens to pass. Qualification may
+coexist under a distinct provisional central result while the current caller
+continues to own required `CI`, on an explicitly enrolled qualification target.
+That target binds the complete candidate and preserved controls; its result is
+not an accepted production `CI`. After equivalent coverage is established, the
+operator and consumer owner perform a source-bound serialized handover with saved
+state readback. For an existing caller, select the central producer before merging
+the retirement head; that head removes the caller's `CI` and obtains `CI` solely
+from the central producer. The bounded handover explicitly admits pre-retirement
+heads that still carry the caller and therefore can emit dual `CI` results:
+the separately required common-baseline gate must refuse every such head, regardless
+of either `CI` result. Preserve strict current-base protection throughout. After
+retirement merges, those heads must update to the post-retirement base and pass
+the unique producer's complete checks before acceptance. Bind REQ-025's already-open
+pull-request qualification to this stale-head refusal and updated-head success.
+The transition record binds affected heads and start/terminal conditions; the window
+ends after the retirement merge and current-base new-producer qualification, or
+after recovery of the captured prior configuration. Remaining stale heads stay
+refused. Outside that controlled state, duplicate indistinguishable producers block
+activation. Required `CI` stays in force; a missing result remains an unsatisfied
+merge gate and is never waived. If the handover cannot enforce these refusals or
+preserve controls, retain the caller. There is no automatic retirement in this revision.
+Before caller retirement, recovery preserves the previous qualified producer and
+full protection configuration. After retirement, restoring that caller requires
+a separately reviewed human-merged consumer recovery change; a ruleset revert
+alone is insufficient. Retain the exact recovery source, checks and transition
+evidence before retirement. Reconcile an unknown outcome before another effect.
+This source responsibility does not authorize
+hosted rule changes, runtime assignments, release activation or a PR merge.
+
+Transition discovery inventories consumers of the CI result, not just its job
+name. This revision does not activate central-product profiles for consumers
+whose security classifier/verifier is bound to repository-local CI, or whose
+required CI relies on push events: they retain their existing producer and full
+composite. Organization-required pull-request workflows do not establish their
+`workflow_run` wake, exact CI-path binding or push-event coverage. A later migration
+must rebind and qualify those dependencies with the security/release owners before
+retirement; this source change does not alter that automation or its protections.
+
+Pinned central sources are delivered separately from `@v1` composite callers.
+The shared-CI rollout owner binds and qualifies each immutable workflow pin and
+its repository/branch selectors. A successful channel release is reusable source
+evidence, not proof of that target's enrollment or enforcement. All central helpers
+and cores resolve from the same checking-source checkout.
+
+The existing central implementation is documentation-only. Full application profile
+support, coherent core extraction, producer-transition admission and affected-profile
+qualification are implementation work under these responsibilities. They must be
+completed before broader enrollment; this architecture is not evidence that a
+universal dispatcher or organization-wide rollout already exists.
 
 The initial pilot includes the document-bootstrap consumer and an independently verified
 current Rust consumer. An unborn local repository or hosted documents-only branch cannot
@@ -131,7 +220,7 @@ scope; whole-pilot completion requires all initial targets and cases. Product-sp
 checks remain mandatory, and consumer common calls remain until the central gate's
 coverage of those obligations is independently verified. Rust qualification remains
 required wherever Rust behavior or shared enforcement affecting it is in scope; it is
-not a blanket dependency of an otherwise independently qualified document profile.
+not a blanket dependency of an otherwise independently qualified non-Rust profile.
 
 Ruleset administration retains the existing operator-owned path under REQ-016
 and the control-plane authority procedure. This amendment does not permit an
@@ -197,6 +286,27 @@ The rollout is intentionally fail-closed: if current `main` is red or stale,
 not an out-of-order release.
 
 ## Shared CI Profiles
+
+The existing `actions/ci-rust/action.yml` and `actions/ci-astro/action.yml` are the
+language-check sources for extraction into coherent central checking cores.
+Their present existence is not evidence that central dispatch, complete runtime
+admission or producer migration is already implemented or qualified. The shared-CI
+owner preserves the full composite entrypoints for unmigrated callers while
+implementing the following full application profile contracts under REQ-003,
+REQ-004 and REQ-010:
+
+- Rust binds each declared Cargo workspace/root, its tracked manifests and lock,
+  and approved locked runtime/tools. Static work includes formatting, Clippy with
+  warnings denied, dead-code compilation and dependency audit. Product test lanes
+  run all declared targets/features and owner-required tests with locked inputs.
+- Astro binds each declared package root, tracked `package.json` and package lock,
+  and approved `mise.toml`/`mise.lock` runtime projection. Locked installation,
+  formatting, lint, Astro type checking and build checks form the static surface;
+  product test lanes run the owner-required test commands. Missing commands or
+  tools fail rather than silently omit promised coverage.
+- Mixed profiles compose all declared Rust and Astro components. Common checks
+  and each static surface run once; product test lanes do not repeat static work.
+  No Rust component or runtime is inferred for an Astro-only consumer.
 
 `ci-elixir` exposes `full`, `static`, and `test` profiles. `full` runs all
 cross-cutting/static work and the caller test command. `static` runs the same
@@ -550,11 +660,16 @@ defined non-merge effects. No SSH or personal credentials are available to agent
 
 ## Selected Container Foundation Source
 
-Each consumer workflow runs the standalone `ci-foundation@v1` gate as a required
-step, followed by its adapter in a success-dependent step. The action never
-invokes the adapter. Enrollment qualification and human review of the protected
-workflow establish that order before any copied helper runs. The released
-action owns an approved fingerprint catalog and verifies the actual
+An unmigrated consumer workflow runs the standalone `ci-foundation@v1` gate as
+a required step, followed by its adapter in a success-dependent step. For a
+centrally produced application profile, the central workflow performs that same
+gate using the single verifier and catalog from its coherent trusted source
+checkout before its success-dependent adapter or any consumer helper. It does
+not resolve that central gate from moving `v1`, duplicate the validator, or retain
+an otherwise unnecessary consumer caller solely for foundation checking. The gate
+does not invoke the adapter. Enrollment qualification and human review of the
+selected producer establish this order before any copied helper runs. The source
+owns an approved fingerprint catalog and verifies the actual
 checkout without importing or executing its copied code. Applications select one
 payload at `tools/container-foundation/` (standard) or `.foundation/` (legacy
 transition), with `foundation.lock` at the checkout root. The foundation owns
@@ -581,6 +696,13 @@ inventory. Consumer-provided metadata cannot grant source-layout eligibility.
 
 A record becomes usable after the existing human-reviewed `.github` merge and
 protected `v1` release. One record serves all consumers of that core revision.
+Before a central workflow pin is activated, its own catalog must contain only
+records that have completed that admission and release; a proposed catalog entry
+cannot become eligible by selecting its source SHA. Execution uses that pinned
+catalog, not a second catalog fetched from moving `v1`. Subsequent admission or
+withdrawal changes require the rollout owner to reconcile affected central pins
+and consumer compatibility as well as composite-channel delivery; a source/tag
+update alone is not evidence that pinned consumers received the changed policy.
 The exact core source must first be human-merged and its canonical delivery
 verified before the shared admission merge and release; application source
 updates and layout migrations follow that release. A task-branch candidate
@@ -613,8 +735,9 @@ profile mechanically; it is not a caller-selected general exception. Other
 dependencies and images retain their existing update owners.
 
 Each decision records the actual verifier and catalog content fingerprints and
-action reference. Hosted evidence also retains the runner's resolved action
-commit from its native action acquisition log; `v1` and the consumer workflow
+action reference. Composite hosted evidence also retains the runner's resolved action
+commit from its native action acquisition log; a central local invocation instead
+retains the exact checking checkout and verifier/catalog fingerprints. `v1` and the consumer workflow
 SHA are not substitutes for that identity. Candidate self-CI establishes source
 qualification, not protected release or operational consumer admission. Public
 self-CI uses synthetic source/lock fixtures only; real private locks, inventories
