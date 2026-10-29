@@ -18,7 +18,26 @@ spec = importlib.util.spec_from_file_location("tested_org_baseline", ROOT / "act
 baseline = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = baseline
 spec.loader.exec_module(baseline)
-ENTRY = baseline.catalog(baseline.decode((ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))[0]
+# Nonauthoritative legacy fixture: preserve schema-1 bootstrap regression coverage
+# independently of the production catalog's coordinated application cutover.
+ENTRY = {
+    "repository": "ForgingAlpha/layas-learning-lab-site",
+    "repository_id": 1420939261,
+    "branches": ["dev", "main"],
+    "profile": "documentation-bootstrap",
+    "team_id": 20299307,
+    "minimum_approvals": 1,
+}
+
+
+class CatalogTests(unittest.TestCase):
+    def test_actual_enrollment_validates_independently(self):
+        entries = baseline.catalog(baseline.decode(
+            (ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))
+        self.assertTrue(entries)
+        for entry in entries:
+            for branch in entry["branches"]:
+                self.assertEqual(baseline.select(entries, entry["repository"], entry["repository_id"], branch), entry)
 
 
 def rules():

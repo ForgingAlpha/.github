@@ -1,13 +1,55 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "repositories": [
     {
       "repository": "ForgingAlpha/layas-learning-lab-site",
       "repository_id": 1420939261,
-      "branches": ["dev", "main"],
-      "profile": "documentation-bootstrap",
-      "team_id": 20299307,
-      "minimum_approvals": 1
+      "branches": [
+        "dev",
+        "main"
+      ],
+      "profile": "astro",
+      "producer": "central-product",
+      "qualification_subject": {
+        "kind": "none"
+      },
+      "release_route": {
+        "declarations": [
+          {
+            "kind": "direct",
+            "path": "PROJECT.md",
+            "start": "The Alpha Apps Control Plane owns shared process. Resolve its physical `GLOBAL.md`",
+            "end": "Read [Intent](docs/intent.md), [Requirements](docs/requirements.md), and",
+            "text": "from the loaded global entry and use its `README.md` to select the applicable route.\nThis project introduces no exceptions to that process.\n\n"
+          }
+        ],
+        "transition": "none",
+        "reconciliation_sha256": "e896148027f7a9cb7b91f27a3df39e36ec89689eb8e63ddfe9c4f45da3456740"
+      },
+      "review_policy": {
+        "kind": "qualified-team",
+        "team_id": 20299307,
+        "minimum_approvals": 1
+      },
+      "foundation": "not-applicable",
+      "components": [
+        {
+          "kind": "astro",
+          "root": ".",
+          "static_scripts": [
+            "ci:browser",
+            "test:root-build"
+          ],
+          "tests": {
+            "kind": "required",
+            "scripts": [
+              "test",
+              "test:publication",
+              "test:dev"
+            ]
+          }
+        }
+      ]
     }
   ]
 }
