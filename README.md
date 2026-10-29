@@ -5,8 +5,10 @@ plane.
 
 ## Consumer Contract
 
-Every repository exposes one required job named `CI`. Shared checks run as
-composite actions so the caller keeps that stable status name.
+Every repository exposes one required result named `CI`. Unmigrated callers retain
+the full composite and their existing producer. An explicitly qualified central
+application profile can instead select the organization workflow as that producer,
+with a separately required `Organization Baseline` result.
 
 ```yaml
 name: CI
@@ -32,8 +34,10 @@ jobs:
 
 Main-only control-plane repositories use `push` and `pull_request` on `main`.
 Application repositories use feature/worktree pull requests into protected
-`dev`; routine production releases use a separate governed `dev` to `main`
-pull request. Security remediation uses the narrower exact-patch projection
+`dev`; routine production releases follow the product
+owner’s declared direct or staged route. The legacy merge-flow wrapper still has
+its known dev-only promotion behavior; central schema-2 admission uses the explicit
+owner-declared route and does not infer it from branch existence. Security remediation uses the narrower exact-patch projection
 described below and never carries unrelated `dev` work. Its CI admission reads
 Git objects, pull requests and trusted checks, so callers retain all three
 read-only token scopes shown above.
@@ -47,9 +51,17 @@ The organization-required entrypoint is
 This documentation profile supplies `CI` without a consumer workflow. Unknown
 identities and application content fail; missing manifests never select bootstrap.
 The defining `.github` repository is outside this consumer pilot. Its baseline
-workflow is skipped; GitHub currently reports the skipped check using the
-unevaluated job-name expression, distinct from `CI`. The existing required `CI`
+workflow excludes source-repository jobs, whose names remain distinct from `CI`
+even when skipped. Actual target result naming requires hosted qualification. The existing required `CI`
 workflow continues to validate this repository.
+
+This candidate changes the bootstrap check topology: `CI` moves from the `baseline`
+job to the final `result` job, and `baseline` reports `Organization Baseline`.
+The retained live Q6 source B is still adopted source
+`97a8a94c884f43c039278d117d0d9313d1465ec9`, with the old topology. Its results do not
+qualify this candidate. After human merge, any new source activation must reconcile
+both check identities and the recovery binding, then qualify the exact target before
+reliance. No live selector or Q6 binding changes with this source proposal.
 
 The job checks out the defining workflow commit separately from the exact consumer
 PR head. It admits tracked, non-executable Markdown, `.gitignore`, three enumerated
@@ -64,7 +76,8 @@ The job refuses missing defining-workflow identity instead of guessing another
 source. Actual token access, check producers, selectors, review coverage of root and
 nested paths, team eligibility, bypasses, triggering and source restoration require
 the [operator pilot procedure](docs/operator-checklist.md#organization-required-documentation-pilot).
-CodeQL and application builds remain separate. Qualification follows the enrolled
+CodeQL remains separate. Application execution is available only through an explicitly
+qualified full application profile described below. Qualification follows the enrolled
 profile and affected shared behavior, with independently verified Material impact
 judgments retained in the existing task or proposal record. A qualified profile can
 progress independently of unrelated profiles; each additional repository or branch still
@@ -77,6 +90,58 @@ restoration with valid-pass and invalid-block behavior. Source enrollment suppor
 `dev` and `main`; each live selector and target still requires operational qualification
 before reliance. Existing language composites and
 ordinary `ci-markdown` behavior are unchanged.
+
+## Complete Application Profile Source
+
+The [organization baseline contract](actions/ci-org-baseline/README.md) defines the
+strict schema-2 source capability for Astro, Rust and mixed complete component trees.
+The shipped enrollment, runtime catalog and foundation catalog retain their existing
+assignments. Source fixtures exercise schema 2; they do not enroll a consumer.
+Rust/mixed remain fixture-only until actual approved runtime and consumer evidence exists.
+
+Admission and common checking process consumer data without executing its scripts.
+They check complete manifests, declared release route, source/foundation/runtime
+integrity, policy, controlled Markdown, workflow safety, dependency and update ownership.
+Product static checks and tests run in separate jobs on fresh bound checkouts; a final
+trusted job rederives the plan, requires every applicable job to succeed and refuses
+missing or mismatched component outputs. Changing only Markdown still runs the full
+application profile. No matrix result or consumer output can reduce required coverage.
+
+Qualification preserves the exact legacy workflow path/job/blob and emits only
+`Organization Profile Qualification`. Current head/base observations belong to each
+run, allowing valid, invalid, repaired and already-open revisions without a source
+repin. Central-product mode instead refuses any remaining indistinguishable local CI.
+Actual required-check producer, permissions and transition/recovery behavior must be
+qualified before changing hosted selectors or retiring the caller.
+Reusable-workflow jobs and dynamic job names are unsupported in application admission.
+Central-product also refuses a literal `CI` producer in any workflow, including a
+manual-only workflow; organizational probe wrappers are not an exception.
+
+Only the trusted baseline job adds `checks: read` to the existing contents and
+pull-request reads. The unchanged canonical security-projection verifier requires
+that metadata read to validate exact check-run proof. Product jobs and the finalizer
+do not receive this additional scope; there is no write permission or hosted grant
+operation. The staged-route shortcut still refuses before the security carveout.
+
+Runtime projection and version-output checks do not establish binary or backend
+provenance. The runtime owner must supply that evidence before actual activation.
+The pinned mise action exports `MISE_TRUSTED_CONFIG_PATHS` as the job workspace root;
+its `working_directory` controls execution in `baseline-source`. Consumer installation
+runs separately through the owned sanitized command. A real locked Astro sequence
+through install and fresh static admission remains an activation prerequisite; the
+command-stub tests do not prove that installation leaves a clean consumer checkout.
+Actionlint retains consumer `.github/actionlint.yaml` configuration, including ignore
+patterns that can suppress its findings. The separate full Python safety checker and
+its existing reasoned allowlist remain required; this change adds no actionlint policy.
+
+Legacy language wrappers retain their default common coverage, setup and commands;
+their checking cores come from the same acquired repository archive. The optional
+`ci-dependency-review` workspace input defaults to the existing workflow workspace;
+central execution supplies its separate consumer checkout explicitly.
+Shared tool literals retain their existing owner YAML locations and values. The current
+Renovate configuration does not prove automated coverage for every numeric tool literal.
+Consumer execution on a shared runner is not a hostile-code sandbox; separate trusted
+jobs protect plan authority, not helper files after a consumer lifecycle script runs.
 
 ## Shared Actions
 

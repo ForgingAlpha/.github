@@ -17,6 +17,12 @@
 name: CI Dependency Review
 description: "Mandatory PR vulnerability and approved-license review"
 
+inputs:
+  workspace:
+    description: "Exact consumer checkout for license evidence"
+    required: false
+    default: ${{ github.workspace }}
+
 runs:
   using: composite
   steps:
@@ -53,6 +59,6 @@ runs:
       env:
         DEPENDENCY_REPOSITORY: ${{ github.repository }}
         DEPENDENCY_CHANGES: ${{ steps.review.outputs.dependency-changes }}
-        DEPENDENCY_WORKSPACE: ${{ github.workspace }}
+        DEPENDENCY_WORKSPACE: ${{ inputs.workspace }}
         GITHUB_LICENSE_TOKEN: ${{ github.token }}
       run: python3 "$GITHUB_ACTION_PATH/scripts/validate_license_evidence.py"

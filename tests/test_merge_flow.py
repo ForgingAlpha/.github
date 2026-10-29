@@ -51,3 +51,10 @@ class MergeFlowBehaviorTest(unittest.TestCase):
     def test_main_only_repository_keeps_ordinary_feature_admission(self):
         result, _ = self.run_guard("contributor/example", dev_exists=False)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_declared_direct_staged_pairs_and_dev_preservation(self):
+        helper = ROOT / "actions/ci-merge-flow/scripts/check_merge_flow.sh"
+        for route, head, base, expected in [("direct","dev","main",0),("staged","dev","staging",0),("staged","staging","main",0),("staged","dev","main",1),("direct","main","dev",0),("staged","staging","dev",0),("unknown","dev","main",1),("direct","feature","staging",1)]:
+            env = {**os.environ,"DECLARED_ROUTE":route,"HEAD_REF":head,"BASE_REF":base,"HEAD_REPOSITORY":"ForgingAlpha/example","GITHUB_REPOSITORY":"ForgingAlpha/example","PR_NUMBER":"42","GITHUB_ACTION_PATH":str(ROOT/"actions/ci-merge-flow")}
+            result=subprocess.run(["bash",str(helper),"declared-route"],env=env,capture_output=True)
+            with self.subTest(route=route,head=head,base=base):self.assertEqual(result.returncode==0,expected==0,result.stderr)

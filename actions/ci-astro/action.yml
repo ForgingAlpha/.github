@@ -188,26 +188,26 @@ runs:
       run: mise current
 
     - name: Install dependencies
-      run: npm ci
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_astro.sh" legacy install
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Check formatting (Prettier)
-      run: npx prettier --check .
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_astro.sh" legacy format
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Lint (ESLint)
-      run: npx eslint --max-warnings 0 .
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_astro.sh" legacy lint
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Type check (Astro)
-      run: npx astro check
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_astro.sh" legacy types
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Build check
-      run: npm run build
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_astro.sh" legacy build
       shell: bash
       working-directory: ${{ inputs.working-directory }}

@@ -183,30 +183,32 @@ runs:
         workspaces: ${{ inputs.working-directory }} -> target
 
     - name: Check formatting
-      run: cargo fmt --all -- --check
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy fmt
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Clippy (deny warnings)
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy clippy
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Compile (deny dead code)
-      run: RUSTFLAGS="-D dead_code" cargo check --all-targets
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Run tests
-      run: cargo test --all-targets --all-features
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy test
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Install cargo-audit
-      run: cargo install cargo-audit --locked --version 0.22.2
+      env:
+        CARGO_AUDIT_VERSION: "0.22.2"
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy install-audit
       shell: bash
 
     - name: Audit dependencies
-      run: cargo audit
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy audit
       shell: bash
       working-directory: ${{ inputs.working-directory }}

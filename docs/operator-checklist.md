@@ -189,3 +189,63 @@ Required inputs are `PROJECT.md`, `AGENTS.md`, `CLAUDE.md` and the governing tri
 The two root instruction links must point literally to the tracked regular
 `PROJECT.md`; other links and executable modes are refused. Every input must match
 the selected Git blob, and untracked inputs, including ignored files, fail.
+
+## Full Application Profile Entry and Recovery
+
+Use the [owner contract](../actions/ci-org-baseline/README.md) for exact schema and
+interfaces. Source qualification alone does not authorize a hosted change.
+
+1. Retain complete consumer tree/base, product-owned required static/test obligations
+   (including an attributable explicit no-tests decision when applicable), actual
+   runtime assignment, foundation scope and complete current release-route declaration.
+   Confirm all tracked Markdown meets the central rules and byte limits; retain any
+   additional product rules as selected static checks. Unsupported workspaces, missing
+   inputs or unknown scope block that consumer rather than select bootstrap.
+2. Inventory actual consumers of CI: security paths/wake events, push requirements,
+   CodeQL, release controls, existing result producers and protection. Consumers whose
+   local-CI security or required push contracts cannot be preserved retain their caller.
+   Do not treat a fixture or a matching team ID as hosted qualification.
+   Reusable-workflow jobs, unresolved dynamic names and any independent literal `CI`
+   producer (including manual-only workflows) are admission exclusions. Organizational
+   probe wrappers must be reconciled before activation rather than silently skipped.
+3. Qualify the stable repository/branch and exact legacy workflow path/job/blob under
+   the distinct qualification result. Observe valid, invalid and repaired revisions,
+   App-created and already-open heads, moving current bases and controlled source
+   restoration without weakening existing required CI or human review.
+4. Before central-product cutover, capture the exact selectors, old/new producer,
+   current retirement head/base and recoverable caller source. Preserve a separately
+   required common baseline that refuses stale dual-producer heads, even if either CI
+   passes. Keep strict current-base protection and required product CI throughout.
+5. Before retirement, recovery restores the captured qualified configuration. After
+   retirement, restoring the caller additionally requires its reviewed human-merged
+   source change and observed valid-pass/invalid-block behavior. A settings revert or
+   failed/cancelled/skipped/missing restored run is not recovery. Reconcile unknown
+   effects before retrying.
+
+The current source catalogs are unchanged. Actual Rust backend/lock/tool selection,
+consumer route/foundation/review scope and hosted results still need their own evidence.
+The existing legacy guard drift and numeric-tool update-coverage gap remain explicit.
+
+The retained Q6 source B is adopted `97a8a94c884f43c039278d117d0d9313d1465ec9`:
+its baseline job produces bootstrap `CI`. This candidate moves `CI` to the final
+result job and names the common job `Organization Baseline`. Keep the current live
+binding unchanged. A future human-merged source and new source activation must
+explicitly reconcile that topology with required checks and restoration expectations,
+then qualify both check identities on the exact target. Existing Q6 results cannot
+prove the candidate topology.
+
+Before any application enrollment, execute the actual pinned mise setup, owned locked
+install, fresh clean-tree admission and full Astro static/test sequence on an eligible
+locked fixture. Record installation side effects and repair any unsupported output;
+mocked command success is insufficient. `MISE_TRUSTED_CONFIG_PATHS` is exported as the
+workspace root, while setup executes in the trusted source directory. Runtime version
+and projection validation are separate from runtime-owner binary/backend provenance.
+Consumer actionlint ignore configuration remains inherited behavior; the independent
+Python safety checker still applies in full.
+
+The candidate's trusted baseline metadata job alone declares `checks: read` for the
+existing canonical security verifier; product jobs retain their narrower read scope.
+Source qualification does not activate a consumer security pipeline or change its
+credentials, installation, protections or bindings. Required hosted source CI,
+including `shellcheck -S style` for all extracted helpers, remains pending. Bash syntax
+and actionlint with ShellCheck disabled do not waive that mandatory gate.

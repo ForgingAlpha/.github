@@ -181,11 +181,12 @@ its repository/branch selectors. A successful channel release is reusable source
 evidence, not proof of that target's enrollment or enforcement. All central helpers
 and cores resolve from the same checking-source checkout.
 
-The existing central implementation is documentation-only. Full application profile
-support, coherent core extraction, producer-transition admission and affected-profile
-qualification are implementation work under these responsibilities. They must be
-completed before broader enrollment; this architecture is not evidence that a
-universal dispatcher or organization-wide rollout already exists.
+Central source includes closed Rust, Astro and mixed profile interfaces with fixed
+common, static, test and finalization stages. Live enrollment remains the Laya
+documentation-bootstrap profile. Application source-fixture checks do not establish
+hosted activation or producer handover; Rust and mixed additionally lack an approved
+real Rust runtime assignment. Existing consumer producers and all target-specific
+qualification obligations remain in place.
 
 The initial pilot includes the document-bootstrap consumer and an independently verified
 current Rust consumer. An unborn local repository or hosted documents-only branch cannot
