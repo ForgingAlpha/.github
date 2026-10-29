@@ -64,32 +64,40 @@ caller preparation, and their assigned tests.
 
 ## Rollout And Protection
 
-### REQ-005 - Reviewed Green Current-Channel Rollout
+### REQ-005 - Protected Main Is Active
 
-A reviewed merge to `.github/main` SHALL advance mutable `v1` only after the
-approved `CI` workflow succeeds from a `push` on that exact merged commit and it
-remains the current `main` SHA.
+Protected, human-merged `.github/main` SHALL be the active first-party shared
+automation source. Required exact-revision checks and authorized human review
+SHALL precede the human merge. A separate tag promotion, post-merge acceptance
+or recurring source-pin update SHALL NOT be required to activate that source.
 
-**Fit:** A red, stale, or superseded commit cannot move `v1`.
+**Fit:** A new applicable execution selects protected `main`; a successful
+merge does not wait for `v1`, an operator repin or a second source approval.
+Post-merge failures remain observable and do not silently select older code.
 
-### REQ-006 - Serialized And Recorded Rollout
+### REQ-006 - Exact Execution Source Evidence
 
-Every `v1` movement SHALL be serialized, use an expected-old raw-ref lease, and
-SHALL create an immutable rollout or rollback tag plus a summary containing the
-previous SHA, new SHA, CI run or rollback source, and actor. Mutable movement
-and immutable record creation SHALL use one atomic push so a failure changes
-neither ref.
+Shared execution SHALL retain the exact resolved automation commit, applicable
+workflow or Action identity, consumer revision and outcome. The source selected
+for an execution SHALL remain coherent with its helpers and policy inputs.
+An already resolved execution SHALL NOT substitute a later `main` revision.
 
-**Fit:** Concurrent runs cannot reorder `v1`; every deployed control-plane
-version has an immutable recovery point.
+**Fit:** Central workflow jobs use their defining workflow commit throughout
+admission, product lanes and finalization. Composite execution retains the native
+resolved Action commit and applicable verifier/catalog fingerprints. A branch
+name or consumer commit alone cannot stand in for executed-source identity.
 
-### REQ-007 - Constrained Rollback
+### REQ-007 - Human-Reviewed Source Recovery
 
-Rollback SHALL require operator approval and SHALL accept only an existing
-protected immutable rollout tag whose commit historically passed `CI`.
+Recovery of active shared automation SHALL use a corrective or revert pull
+request through the same required checks, exact-head human approval and human
+merge into protected `main`. It SHALL preserve the affected run/source evidence.
+Automation SHALL NOT force-update `main`, select a historical tag as an active
+fallback or grant itself rollback or merge authority.
 
-**Fit:** Arbitrary refs, non-`main` ancestry, and shell input are rejected;
-immutable tags never move, and every eligible target has the required CI evidence.
+**Fit:** A reviewed recovery merge becomes active through REQ-005. Earlier
+commits and tag/run records remain historical evidence without a second channel
+or an automatic restoration of withdrawn policy approvals.
 
 ### REQ-008 - Least-Privilege Trusted Automation
 
@@ -106,8 +114,8 @@ reviewed release comment. Downloaded tools SHALL use an exact version and
 verified integrity or provenance.
 
 **Fit:** CI rejects floating external tags, branches, and unqualified images.
-Internal `ForgingAlpha/.github/...@v1` remains the documented current-channel
-exception.
+Only fixed first-party `ForgingAlpha/.github/...@main` references are the
+documented active-source exception. This does not relax third-party pins.
 
 ## Runtime And Dependencies
 
@@ -293,8 +301,9 @@ rollout and deployment permissions do not confer branch or merge authority.
 ### REQ-016 - Operator Boundary
 
 Agents MAY prepare changes, tests, commits, and operator scripts. Destructive
-pushes, ruleset administration, rollout enablement, and rollback execution
-remain operator-owned.
+pushes, ruleset administration, credential/App setup and settings transitions
+remain operator-owned. Only an authorized human executes a source-recovery PR
+merge; this does not create a separate source-activation step after that merge.
 
 **Fit:** Automation and agent workflows contain no operator SSH key, personal
 access token, or agent-readable personal credential.
@@ -311,8 +320,8 @@ request is open.
 
 Renovate SHALL own normal external version updates and SHALL NOT create
 vulnerability-remediation pull requests. Internal
-`ForgingAlpha/.github@v1` references SHALL remain excluded from Renovate and
-owned by the protected control-plane rollout. Dependabot SHALL own security
+`ForgingAlpha/.github@main` references SHALL remain excluded from Renovate and
+owned by the protected human-merge path. Dependabot SHALL own security
 remediation and SHALL NOT create normal version-update pull requests.
 
 **Fit:** Required CI validates the central Renovate preset, security-only
@@ -330,16 +339,18 @@ separate writer verifies bot identity, exact head, and an allowlisted file diff
 before committing only the expected generated artifacts. The new exact head
 must pass locked-mode `CI`.
 
-### REQ-020 - Version-Coherent Control-Plane Release
+### REQ-020 - Coherent Premerge Consumer Validation
 
-For repositories enrolled in the version-coherent consumer gate, an update to
-shared automation SHALL NOT advance `v1` until representative consumer profiles exercise one
-coherent candidate revision and the exact merged control-plane commit remains
-green and current. Every rollout SHALL satisfy REQ-005 through REQ-007 and the
-operator checklist, whether or not the consumer gate is enrolled.
+Before a shared automation change merges, required validation SHALL exercise
+one coherent candidate revision and the affected consumer-profile behavior.
+An enrolled version-coherent consumer gate SHALL remain a required premerge
+obligation; changing the active-source mechanism SHALL NOT silently remove it.
+The impact assessment SHALL distinguish preserved coverage, changed obligations
+and operational observations still needed for affected consumers.
 
-**Fit:** Candidate tests cannot mix proposed top-level Actions with sibling
-Actions from the already-live `v1`; failure or ambiguity leaves `v1` unchanged.
+**Fit:** Candidate checks cannot mix proposed top-level code with helpers from
+another mutable reference. Missing required premerge coverage blocks the merge;
+execution observations after merge record delivery and do not activate source.
 
 ### REQ-021 - External Plugin Update Ownership
 
@@ -383,10 +394,10 @@ license metadata for a third-party GitHub Action pinned to an exact commit SHA,
 the central gate MAY resolve the repository license at that exact revision
 through GitHub's official license API and SHALL accept only an SPDX identifier
 already present in the same central allowlist. A centrally fixed
-`ForgingAlpha/.github/actions/*@v1` first-party action MAY instead satisfy the
-gate through strict ownership and release provenance: the evidence record
-SHALL match the fixed repository and major channel exactly, the protected `v1`
-reference SHALL resolve directly to a commit, and that exact commit SHALL
+`ForgingAlpha/.github/actions/*@main` first-party action MAY instead satisfy the
+gate through strict ownership and protected-main provenance: the evidence record
+SHALL match the fixed repository and main reference exactly, that reference
+SHALL resolve directly to a commit, and that exact commit SHALL
 contain the named action. Callers SHALL NOT select or broaden this first-party
 evidence class. When GitHub reports a null license for an exact pinned root npm
 alias, the central gate MAY normalize it to the underlying package only when the
@@ -452,7 +463,7 @@ the adopted policy before operational reliance.
 **Fit:** Approved third-party SPDX evidence passes; non-approved evidence
 fails; the exact-revision third-party resolver fails closed on malformed
 identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
-first-party resolver fails closed on any schema, repository, channel, commit,
+first-party resolver fails closed on any schema, repository, reference, commit,
 tree, or action-path mismatch; npm alias normalization fails closed on any manifest,
 PURL, spec, lock format, target, registry, artifact, integrity, license, redirect,
 availability, response-size, or lookup-count mismatch;
@@ -514,7 +525,8 @@ candidate inputs and base state, checking-source before/after revisions and
 dependencies. Material affected-scope and unrelatedness judgments SHALL receive
 independent verification, including no-change and scope-exclusion dispositions. A
 consumer SHALL NOT narrow its own profile or required coverage. Uncertain impact SHALL
-require conservative additional validation or block the affected rollout.
+require conservative additional validation or block the affected source or
+consumer-change proposal before reliance.
 
 A qualified profile MAY progress independently of unrelated profiles only when all of
 its required pilot cases and the shared behavior it relies on are verified. These cases
@@ -539,17 +551,19 @@ Changing the application CI producer SHALL preserve every dependent security,
 release and event-trigger contract, including required push-event checks. A
 consumer whose existing local-CI security binding or push-event obligations
 cannot be preserved and qualified SHALL retain its existing producer. Source
-capability and channel publication SHALL NOT activate a consumer or update an
-organization ruleset's repository, branch or immutable source selection.
-Each source-pin rollout SHALL independently bind approved source, target,
+capability SHALL NOT enroll a consumer or update an organization ruleset's
+repository or branch selection. An existing enrolled rule SHALL follow protected
+`.github/main` after the one-time human-executed settings transition; later human
+merges SHALL NOT require a recurring source-pin update or source-activation gate.
+Initial enrollment, selector or producer changes SHALL still bind target,
 preserved controls and observed enforcement/recovery evidence. Producer retirement
 SHALL follow equivalent-coverage qualification, with a recoverable consumer change
 where restoring a removed caller requires source delivery rather than a settings revert.
 
 **Fit:** A narrowly selected pilot proves actual valid, invalid and repaired
 changes, GitHub App-created and already-open pull requests, and an observed
-controlled source update followed by successful restoration to the previously
-qualified pilot source and its required pass/fail enforcement. A restored source
+controlled source update followed by human-reviewed main recovery with recorded
+resulting source and required pass/fail enforcement. A recovered source
 that is failed, cancelled, skipped or unexecuted is not recovery. Adding a rule,
 passing local tests or publishing source alone does
 not establish execution or enforcement. CodeQL remains separately configured.

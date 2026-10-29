@@ -26,12 +26,12 @@ automation without copying workflow logic between repositories.
 - Shared baseline and complete applicable product checks can be required by an organization ruleset without
   depending on each consumer to install a caller. Enrollment, actual execution
   and preservation of product-specific checks are verified before reliance.
-- A reviewed, green control-plane merge reaches composite callers promptly through
-  the internal `@v1` current channel. Centrally required workflow consumers receive
-  separately qualified source-pin updates with preserved protection and recovery;
-  publishing the channel alone does not update those pins or enroll consumers.
-- Every `v1` rollout is serialized, traceable, immutable-recorded, and
-  operator-reversible.
+- Protected, human-merged `.github/main` is the active shared automation source.
+  Required checks and exact-revision human review precede the merge; no later tag
+  promotion, source acceptance or recurring ruleset repin makes it active.
+- Every shared execution retains its exact resolved source revision and consumer
+  revision. Recovery uses the protected human-reviewed source-change path and
+  preserves earlier execution evidence.
 - Normal dependency proposals receive a deliberate cooldown; eligible security
   proposals receive immediate classification and exact-patch verification.
   An authorized human performs every pull-request merge after its required gates.
@@ -39,8 +39,8 @@ automation without copying workflow logic between repositories.
   has exactly one discoverable update owner; unmanaged version literals fail
   required CI.
 - Renovate owns normal external updates across supported manifests, locks, and
-  annotated literals. Internal `ForgingAlpha/.github@v1` movement remains
-  owned by the protected control-plane rollout. Cooled normal updates enter
+  annotated literals. Internal `ForgingAlpha/.github@main` references follow
+  the protected human-merge path. Cooled normal updates enter
   code-repository `dev` through human-merged pull requests with exact-head CI.
 - Dependabot owns security remediation only so trusted classification can prove
   GitHub's official vulnerability-alert-to-pull-request association.
@@ -87,16 +87,16 @@ automation never executes untrusted pull-request code.
 
 ## Invariants And Tradeoffs
 
-- `@v1` is the current approved internal automation channel, not a SemVer
-  backward-compatibility promise.
+- `main` is the single active first-party automation source. Existing tags and
+  run records retain historical provenance; they are not another active channel.
 - The control plane publishes one strict current contract. Obsolete rollout
   exceptions, incremental Markdown enforcement, and compatibility entrypoints
   are removed rather than carried forward.
 - Every control-plane change lands through a reviewed pull request with green
   `CI`, authorized-human approval of the exact current revision, and human
-  execution of the merge; after
-  merge, the exact merged commit and version-coherent consumer profiles are
-  verified before rollout.
+  execution of the merge. Coherent candidate and affected-consumer validation
+  belongs before merge. Main membership makes the resulting source active;
+  execution observations do not add another activation decision.
 - Normal and security automation have disjoint authority. Renovate does not
   remediate vulnerability alerts, and Dependabot does not create normal version
   updates.
