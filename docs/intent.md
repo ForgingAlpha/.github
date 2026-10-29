@@ -17,15 +17,19 @@ automation without copying workflow logic between repositories.
 - Every repository retains a stable required result named `CI`. Enrolled
   application repositories additionally require the distinct central baseline;
   a document-only bootstrap may obtain its initial complete-profile `CI` from
-  the central workflow without inventing a product build result.
+  the central workflow without inventing a product build result. An explicitly
+  enrolled application may also receive its complete product `CI` centrally,
+  while its product owner retains meaningful product checks and behavior.
 - Every control-plane and protected production-control change is approved by
   an authorized human reviewer on its exact current revision; an agent or
   authoring-bot identity cannot substitute for that approval.
-- Shared baseline checks can be required by an organization ruleset without
+- Shared baseline and complete applicable product checks can be required by an organization ruleset without
   depending on each consumer to install a caller. Enrollment, actual execution
   and preservation of product-specific checks are verified before reliance.
-- A reviewed, green control-plane merge reaches consumers promptly through the
-  internal `@v1` current channel.
+- A reviewed, green control-plane merge reaches composite callers promptly through
+  the internal `@v1` current channel. Centrally required workflow consumers receive
+  separately qualified source-pin updates with preserved protection and recovery;
+  publishing the channel alone does not update those pins or enroll consumers.
 - Every `v1` rollout is serialized, traceable, immutable-recorded, and
   operator-reversible.
 - Normal dependency proposals receive a deliberate cooldown; eligible security

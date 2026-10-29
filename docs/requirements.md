@@ -17,13 +17,19 @@ Shared automation SHALL preserve a stable required result named `CI`. An
 enrolled application repository SHALL additionally require the central baseline
 under a distinct identity. An explicitly enrolled document-only repository MAY
 use its complete central bootstrap result as its initial `CI` producer.
+An explicitly enrolled full application profile MAY assign its product `CI`
+producer to the central workflow only with complete applicable product checks,
+an unambiguous producer, preserved protection and qualified transition/recovery.
 
 **Fit:** Every supported consumer can make one `CI` result required without
 depending on matrix job names. A centrally required common baseline has a
 distinct identity from application CI. An explicitly enrolled document-only
 bootstrap may obtain its initial `CI` result from the central workflow only
 when that result covers its complete declared profile; it cannot replace an
-existing product CI result or its producer restrictions.
+existing product CI result or its producer restrictions. Application migration
+preserves those restrictions and complete product coverage; a common-baseline
+result cannot substitute for product CI. A transition cannot accept duplicate
+indistinguishable results or weaken required checks while changing producers.
 
 ### REQ-002 - Approved Source Truth
 
@@ -496,6 +502,10 @@ Organization-required workflows SHALL execute the approved shared baseline on
 the intended consumer revision, using a coherent reviewed checking-source
 revision and read-only permissions. The pilot SHALL preserve existing CI,
 scanning, human review, branch protection and pre-execution integrity obligations.
+An explicitly enrolled application profile MAY additionally produce complete
+product `CI` under REQ-001. Its profile SHALL run the full declared Rust, Astro
+or mixed component coverage on the complete consumer revision; missing inputs
+or a documentation-only diff SHALL NOT select a lighter profile.
 
 Qualification SHALL cover the enrolled CI profile and the shared behavior that the
 proposed change can affect. The shared-CI owner SHALL retain a source-bound, reviewed
@@ -524,6 +534,17 @@ migration SHALL identify and qualify its affected profiles and shared behavior. 
 of consumer common calls requires complete coverage for that affected scope, preserving
 product-specific checks; whole-pilot completion requires all initial pilot targets and
 their required cases.
+
+Changing the application CI producer SHALL preserve every dependent security,
+release and event-trigger contract, including required push-event checks. A
+consumer whose existing local-CI security binding or push-event obligations
+cannot be preserved and qualified SHALL retain its existing producer. Source
+capability and channel publication SHALL NOT activate a consumer or update an
+organization ruleset's repository, branch or immutable source selection.
+Each source-pin rollout SHALL independently bind approved source, target,
+preserved controls and observed enforcement/recovery evidence. Producer retirement
+SHALL follow equivalent-coverage qualification, with a recoverable consumer change
+where restoring a removed caller requires source delivery rather than a settings revert.
 
 **Fit:** A narrowly selected pilot proves actual valid, invalid and repaired
 changes, GitHub App-created and already-open pull requests, and an observed
