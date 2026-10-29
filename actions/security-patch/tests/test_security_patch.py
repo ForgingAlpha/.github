@@ -2593,6 +2593,38 @@ class ReviewRegressionTest(unittest.TestCase):
                         security_patch.verify_projection_admission(ScopedApi(), self.repository, 44, "main")
                 self.assertFalse(api.posts or api.puts or api.patches)
 
+    def test_central_baseline_effective_scopes_preserve_exact_admission(self):
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/org-baseline.yml').read_text())
+        permissions = workflow['jobs']['baseline'].get('permissions', workflow['permissions'])
+        self.assertEqual(permissions, {'contents': 'read', 'pull-requests': 'read', 'checks': 'read'})
+        for name, job in workflow['jobs'].items():
+            if name != 'baseline':
+                self.assertNotIn('checks', job.get('permissions', workflow['permissions']))
+        for invalid in (False, True):
+            api = admission_fixture()
+            if invalid:
+                self.projection_check(api, sha('b'))[0]['external_id'] = 'invalid-attestation'
+            calls = []
+            class ScopedApi:
+                def access(self, method, path, **kwargs):
+                    scope = 'checks' if '/check-runs' in path else 'pull-requests' if '/pulls' in path else 'contents'
+                    calls.append(scope)
+                    if permissions.get(scope) != 'read':
+                        raise security_patch.PolicyError('missing ' + scope + ' read scope')
+                    return getattr(api, method)(path, **kwargs)
+                def get(self, path, **kwargs): return self.access('get', path, **kwargs)
+                def pages(self, path, **kwargs): return self.access('pages', path, **kwargs)
+            with self.subTest(invalid=invalid):
+                if invalid:
+                    with self.assertRaises(security_patch.PolicyError):
+                        security_patch.verify_projection_admission(ScopedApi(), self.repository, 44, 'main')
+                else:
+                    result = security_patch.verify_projection_admission(ScopedApi(), self.repository, 44, 'main')
+                    self.assertEqual(result.projection_head, sha('b'))
+                self.assertIn('checks', calls)
+                self.assertFalse(api.posts or api.puts or api.patches)
+
     def test_projection_consumers_require_exact_check_payload_and_custody(self):
         for factory, admission, head in ((admission_fixture, True, sha("b")), (full_projection_fixture, False, sha("6"))):
             for drift in ("external_id", "title", "extra-summary-field", "base", "maintainer-enabled", "maintainer-missing", "alternate-manifest", "alternate-lock"):
@@ -2830,6 +2862,8 @@ class ActionContractTest(unittest.TestCase):
 
     def test_merge_flow_admits_only_app_attested_projection_to_ci(self):
         text = MERGE_FLOW_ACTION.read_text()
+        self.assertIn('bash "$GITHUB_ACTION_PATH/scripts/check_merge_flow.sh" legacy-observed', text)
+        text += (MERGE_FLOW_ACTION.parent / "scripts/check_merge_flow.sh").read_text()
         for fragment in (
             "verify-ci-admission",
             "github.event.pull_request.number",

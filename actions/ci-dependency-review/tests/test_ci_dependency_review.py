@@ -35,6 +35,38 @@ class CiDependencyReviewTest(unittest.TestCase):
     def load_action(self):
         return yaml.safe_load(ACTION.read_text(encoding="utf-8"))
 
+    def test_explicit_workspace_interface_preserves_legacy_default(self):
+        action=self.load_action()
+        self.assertEqual(action["inputs"]["workspace"]["default"],"${{ github.workspace }}")
+        step=next(s for s in action["runs"]["steps"] if s.get("name")=="Validate dependency license evidence")
+        self.assertEqual(step["env"]["DEPENDENCY_WORKSPACE"],"${{ inputs.workspace }}")
+        self.assertEqual(step["env"]["GITHUB_LICENSE_TOKEN"],"${{ github.token }}")
+        self.assertTrue(any(s.get("uses")==OFFICIAL_ACTION for s in action["runs"]["steps"]))
+
+    def test_explicit_secondary_workspace_wins_over_decoy_default(self):
+        aliases = (("tool-alias", "real-tool", "1.2.3"),)
+        change = self.npm_alias_change(*aliases[0])
+        concrete = {
+            "change_type": "added", "ecosystem": "npm", "manifest": "package-lock.json",
+            "name": "real-tool", "version": "1.2.3", "package_url": "pkg:npm/real-tool@1.2.3",
+            "license": "Apache-2.0",
+        }
+        with self.npm_alias_workspace(aliases) as consumer, tempfile.TemporaryDirectory() as decoy, mock.patch.object(
+            validator, "fetch_npm_registry_release"
+        ) as fetch:
+            Path(decoy, "package.json").write_text('{}')
+            Path(decoy, "package-lock.json").write_text('{}')
+            environment = {"GITHUB_WORKSPACE": decoy, "DEPENDENCY_WORKSPACE": str(consumer)}
+            code, _, error = self.run_main([change, concrete], extra_env=environment)
+            self.assertEqual(code, 0, error)
+            lock = consumer / "package-lock.json"
+            value = json.loads(lock.read_text())
+            value["packages"]["node_modules/tool-alias"]["version"] = "9.9.9"
+            lock.write_text(json.dumps(value))
+            code, _, _ = self.run_main([change, concrete], extra_env=environment)
+            self.assertNotEqual(code, 0)
+            fetch.assert_not_called()
+
     def run_validator(self, changes, token=None, extra_env=None):
         value = changes if isinstance(changes, str) else json.dumps(changes)
         env = {**os.environ, "DEPENDENCY_CHANGES": value, "DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"}
@@ -408,7 +440,7 @@ class CiDependencyReviewTest(unittest.TestCase):
 
     def test_contract_has_no_caller_bypass_or_license_override(self):
         action = self.load_action()
-        self.assertNotIn("inputs", action)
+        self.assertEqual(set(action["inputs"]), {"workspace"})
         text = ACTION.read_text(encoding="utf-8")
         for obsolete in ("enabled", "deny-licenses", "warn-only"):
             self.assertNotIn(obsolete, text)
@@ -472,7 +504,7 @@ class CiDependencyReviewTest(unittest.TestCase):
         self.assertNotIn("DEPENDENCY_BASE_SHA", guard["env"])
         self.assertEqual(
             guard["env"]["DEPENDENCY_WORKSPACE"],
-            "${{ github.workspace }}",
+            "${{ inputs.workspace }}",
         )
 
     def test_validator_accepts_known_license_and_ignores_removals(self):

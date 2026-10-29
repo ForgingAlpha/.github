@@ -63,9 +63,12 @@ class CheckWorkflowsTest(unittest.TestCase):
             "WHY: workflow validation behavior must remain reproducible across repos. "
             "HOW: restore the pinned ACTIONLINT_VERSION env value.",
         )
+        self.assertIn('bash "$GITHUB_ACTION_PATH/scripts/install_actionlint.sh"', run_blocks)
+        installer = (ACTION.parent / "scripts/install_actionlint.sh").read_text()
+        self.assertLess(installer.index("sha256sum -c -"), installer.index("tar -xzf"))
         self.assertIn(
             "sha256sum -c -",
-            run_blocks,
+            installer,
             "ci-github-actions must verify the downloaded actionlint archive checksum. "
             "WHY: downloaded binaries must be integrity-checked before execution. "
             "HOW: restore the checksum verification step before tar extraction.",

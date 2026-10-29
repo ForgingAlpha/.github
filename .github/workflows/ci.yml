@@ -146,6 +146,12 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s actions/security-patch/tests
 
+      - name: Test Rust and Astro checking cores
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s actions/ci-rust/tests
+          python3 -m unittest discover -s actions/ci-astro/tests
+
       - name: Test Elixir CI profiles
         run: |
           set -euo pipefail

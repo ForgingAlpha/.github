@@ -1,74 +1,324 @@
 name: Organization Baseline
-on:
-  pull_request:
-
+'on':
+  pull_request: null
 permissions:
   contents: read
   pull-requests: read
-
 jobs:
   baseline:
-    # The defining repository has independent CI and is never a pilot consumer.
-    # Its skipped check must not be named CI. Every external target runs admission.
     if: github.repository != 'ForgingAlpha/.github'
-    name: ${{ github.repository == 'ForgingAlpha/layas-learning-lab-site' && 'CI' || 'Organization Baseline' }}
+    name: Organization Baseline
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      profile: ${{ steps.plan.outputs.profile }}
+      producer: ${{ steps.plan.outputs.producer }}
+      result_name: ${{ steps.plan.outputs.result_name }}
+      mise_version: ${{ steps.plan.outputs.mise_version }}
+    steps:
+    - name: Bind defining workflow identity
+      id: source
+      env:
+        JOB_CONTEXT: ${{ toJSON(job) }}
+      run: |
+        python3 -I -B - <<'PY'
+        import json, os, re, sys
+        try:
+            raw = os.environ['JOB_CONTEXT']
+            assert len(raw) <= 262144
+            def unique(pairs):
+                value = {}
+                for key, item in pairs:
+                    assert key not in value
+                    value[key] = item
+                return value
+            context = json.loads(raw, object_pairs_hook=unique)
+            repo, sha, ref = (context[key] for key in ('workflow_repository', 'workflow_sha', 'workflow_ref'))
+            assert repo == 'ForgingAlpha/.github'
+            assert isinstance(sha, str) and re.fullmatch('[a-f0-9]{40}', sha)
+            prefix = repo + '/.github/workflows/org-baseline.yml@'
+            assert isinstance(ref, str) and ref.startswith(prefix)
+            assert ref[len(prefix):] in ('refs/heads/main', sha)
+            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+                out.write(f'repository={repo}\nsha={sha}\n')
+        except (AssertionError, KeyError, TypeError, ValueError, OSError):
+            sys.exit('WHAT: Defining workflow identity unavailable or invalid.\nWHY: Trusted source must match this job definition.\nHOW: Qualify GitHub job identity support and the exact central main/commit selector; no fallback is allowed.')
+        PY
+    - name: Checkout coherent trusted source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ steps.source.outputs.repository }}
+        ref: ${{ steps.source.outputs.sha }}
+        path: baseline-source
+        persist-credentials: 'false'
+        fetch-depth: '0'
+    - name: Checkout exact consumer PR head
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        path: consumer
+        fetch-depth: '0'
+        persist-credentials: 'false'
+    - name: Setup locked Markdown tool runtime
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: '24'
+    - name: Admit complete profile and common checks
+      id: plan
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+      run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+        --stage admit
+    - name: Review application dependencies
+      if: steps.plan.outputs.profile != 'documentation-bootstrap'
+      uses: ./baseline-source/actions/ci-dependency-review
+      with:
+        workspace: ${{ github.workspace }}/consumer
+  static:
+    needs:
+    - baseline
+    if: github.repository != 'ForgingAlpha/.github' && needs.baseline.outputs.profile != 'documentation-bootstrap'
+    name: Organization Product Static
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      receipt: ${{ steps.product.outputs.receipt }}
+    steps:
+    - name: Bind defining workflow identity
+      id: source
+      env:
+        JOB_CONTEXT: ${{ toJSON(job) }}
+      run: |
+        python3 -I -B - <<'PY'
+        import json, os, re, sys
+        try:
+            raw = os.environ['JOB_CONTEXT']
+            assert len(raw) <= 262144
+            def unique(pairs):
+                value = {}
+                for key, item in pairs:
+                    assert key not in value
+                    value[key] = item
+                return value
+            context = json.loads(raw, object_pairs_hook=unique)
+            repo, sha, ref = (context[key] for key in ('workflow_repository', 'workflow_sha', 'workflow_ref'))
+            assert repo == 'ForgingAlpha/.github'
+            assert isinstance(sha, str) and re.fullmatch('[a-f0-9]{40}', sha)
+            prefix = repo + '/.github/workflows/org-baseline.yml@'
+            assert isinstance(ref, str) and ref.startswith(prefix)
+            assert ref[len(prefix):] in ('refs/heads/main', sha)
+            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+                out.write(f'repository={repo}\nsha={sha}\n')
+        except (AssertionError, KeyError, TypeError, ValueError, OSError):
+            sys.exit('WHAT: Defining workflow identity unavailable or invalid.\nWHY: Trusted source must match this job definition.\nHOW: Qualify GitHub job identity support and the exact central main/commit selector; no fallback is allowed.')
+        PY
+    - name: Checkout coherent trusted source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ steps.source.outputs.repository }}
+        ref: ${{ steps.source.outputs.sha }}
+        path: baseline-source
+        persist-credentials: 'false'
+        fetch-depth: '0'
+    - name: Checkout exact consumer PR head
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        path: consumer
+        fetch-depth: '0'
+        persist-credentials: 'false'
+    - name: Verify exact product inputs before setup
+      env:
+        BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        BASELINE_PLAN: ${{ needs.baseline.outputs.plan }}
+      run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+        --stage preflight
+    - name: Setup pinned mise in trusted source
+      uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      env:
+        GITHUB_TOKEN: ''
+        GH_TOKEN: ''
+        GITHUB_LICENSE_TOKEN: ''
+        MISE_GITHUB_TOKEN: ''
+        INPUT_GITHUB_TOKEN: ''
+      with:
+        github_token: ''
+        version: ${{ needs.baseline.outputs.mise_version }}
+        working_directory: baseline-source
+        install: false
+        env: false
+        export_path: false
+        cache: false
+        reshim: false
+        add_shims_to_path: false
+    - name: Install approved runtime without runner credentials
+      env:
+        BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        BASELINE_PLAN: ${{ needs.baseline.outputs.plan }}
+      run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+        --stage install
+    - name: Run complete static profile
+      id: product
+      env:
+        BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        BASELINE_PLAN: ${{ needs.baseline.outputs.plan }}
+      run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+        --stage static
+  tests:
+    needs:
+    - baseline
+    - static
+    if: github.repository != 'ForgingAlpha/.github' && needs.baseline.outputs.profile != 'documentation-bootstrap'
+    name: Organization Product Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      receipt: ${{ steps.product.outputs.receipt }}
+    steps:
+    - name: Bind defining workflow identity
+      id: source
+      env:
+        JOB_CONTEXT: ${{ toJSON(job) }}
+      run: |
+        python3 -I -B - <<'PY'
+        import json, os, re, sys
+        try:
+            raw = os.environ['JOB_CONTEXT']
+            assert len(raw) <= 262144
+            def unique(pairs):
+                value = {}
+                for key, item in pairs:
+                    assert key not in value
+                    value[key] = item
+                return value
+            context = json.loads(raw, object_pairs_hook=unique)
+            repo, sha, ref = (context[key] for key in ('workflow_repository', 'workflow_sha', 'workflow_ref'))
+            assert repo == 'ForgingAlpha/.github'
+            assert isinstance(sha, str) and re.fullmatch('[a-f0-9]{40}', sha)
+            prefix = repo + '/.github/workflows/org-baseline.yml@'
+            assert isinstance(ref, str) and ref.startswith(prefix)
+            assert ref[len(prefix):] in ('refs/heads/main', sha)
+            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+                out.write(f'repository={repo}\nsha={sha}\n')
+        except (AssertionError, KeyError, TypeError, ValueError, OSError):
+            sys.exit('WHAT: Defining workflow identity unavailable or invalid.\nWHY: Trusted source must match this job definition.\nHOW: Qualify GitHub job identity support and the exact central main/commit selector; no fallback is allowed.')
+        PY
+    - name: Checkout coherent trusted source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ steps.source.outputs.repository }}
+        ref: ${{ steps.source.outputs.sha }}
+        path: baseline-source
+        persist-credentials: 'false'
+        fetch-depth: '0'
+    - name: Checkout exact consumer PR head
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        path: consumer
+        fetch-depth: '0'
+        persist-credentials: 'false'
+    - name: Verify exact product inputs before setup
+      env:
+        BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        BASELINE_PLAN: ${{ needs.baseline.outputs.plan }}
+      run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+        --stage preflight
+    - name: Setup pinned mise in trusted source
+      uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      env:
+        GITHUB_TOKEN: ''
+        GH_TOKEN: ''
+        GITHUB_LICENSE_TOKEN: ''
+        MISE_GITHUB_TOKEN: ''
+        INPUT_GITHUB_TOKEN: ''
+      with:
+        github_token: ''
+        version: ${{ needs.baseline.outputs.mise_version }}
+        working_directory: baseline-source
+        install: false
+        env: false
+        export_path: false
+        cache: false
+        reshim: false
+        add_shims_to_path: false
+    - name: Install approved runtime without runner credentials
+      env:
+        BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        BASELINE_PLAN: ${{ needs.baseline.outputs.plan }}
+      run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+        --stage install
+    - name: Run complete tests profile
+      id: product
+      env:
+        BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        BASELINE_PLAN: ${{ needs.baseline.outputs.plan }}
+      run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+        --stage tests
+  result:
+    needs:
+    - baseline
+    - static
+    - tests
+    if: always() && github.repository != 'ForgingAlpha/.github'
+    name: ${{ github.repository != 'ForgingAlpha/.github' && needs.baseline.outputs.result_name || 'Organization Profile Result'
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Bind defining workflow identity
-        id: source
-        env:
-          # JSON avoids dereferencing new properties absent in actionlint's schema.
-          # Missing properties fail; there is no consumer/default-branch fallback.
-          JOB_CONTEXT: ${{ toJSON(job) }}
-        run: |
-          python3 -I -B - <<'PY'
-          import json, os, re, sys
-          try:
-              raw = os.environ['JOB_CONTEXT']
-              assert len(raw) <= 262144
-              def unique(pairs):
-                  value = {}
-                  for key, item in pairs:
-                      assert key not in value
-                      value[key] = item
-                  return value
-              context = json.loads(raw, object_pairs_hook=unique)
-              repo, sha, ref = (context[key] for key in ('workflow_repository', 'workflow_sha', 'workflow_ref'))
-              assert repo == 'ForgingAlpha/.github'
-              assert isinstance(sha, str) and re.fullmatch('[a-f0-9]{40}', sha)
-              prefix = repo + '/.github/workflows/org-baseline.yml@'
-              assert isinstance(ref, str) and ref.startswith(prefix)
-              assert ref[len(prefix):] in ('refs/heads/main', sha)
-              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-                  out.write(f'repository={repo}\nsha={sha}\n')
-          except (AssertionError, KeyError, TypeError, ValueError, OSError):
-              sys.exit('WHAT: Defining workflow identity unavailable or invalid.\nWHY: Trusted source must match this job definition.\nHOW: Qualify GitHub job identity support and the exact central main/commit selector; no fallback is allowed.')
-          PY
-
-      - name: Checkout coherent trusted source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ steps.source.outputs.repository }}
-          ref: ${{ steps.source.outputs.sha }}
-          path: baseline-source
-          persist-credentials: false
-
-      - name: Checkout exact consumer PR head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          path: consumer
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Setup locked Markdown tool runtime
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-
-      - name: Validate the complete enrolled profile
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
-        run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+    - name: Bind defining workflow identity
+      id: source
+      env:
+        JOB_CONTEXT: ${{ toJSON(job) }}
+      run: |
+        python3 -I -B - <<'PY'
+        import json, os, re, sys
+        try:
+            raw = os.environ['JOB_CONTEXT']
+            assert len(raw) <= 262144
+            def unique(pairs):
+                value = {}
+                for key, item in pairs:
+                    assert key not in value
+                    value[key] = item
+                return value
+            context = json.loads(raw, object_pairs_hook=unique)
+            repo, sha, ref = (context[key] for key in ('workflow_repository', 'workflow_sha', 'workflow_ref'))
+            assert repo == 'ForgingAlpha/.github'
+            assert isinstance(sha, str) and re.fullmatch('[a-f0-9]{40}', sha)
+            prefix = repo + '/.github/workflows/org-baseline.yml@'
+            assert isinstance(ref, str) and ref.startswith(prefix)
+            assert ref[len(prefix):] in ('refs/heads/main', sha)
+            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+                out.write(f'repository={repo}\nsha={sha}\n')
+        except (AssertionError, KeyError, TypeError, ValueError, OSError):
+            sys.exit('WHAT: Defining workflow identity unavailable or invalid.\nWHY: Trusted source must match this job definition.\nHOW: Qualify GitHub job identity support and the exact central main/commit selector; no fallback is allowed.')
+        PY
+    - name: Checkout coherent trusted source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ steps.source.outputs.repository }}
+        ref: ${{ steps.source.outputs.sha }}
+        path: baseline-source
+        persist-credentials: 'false'
+        fetch-depth: '0'
+    - name: Checkout exact consumer PR head
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        path: consumer
+        fetch-depth: '0'
+        persist-credentials: 'false'
+    - name: Reconcile exact current subject and all required results
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        BASELINE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        BASELINE_NEEDS: ${{ toJSON(needs) }}
+      run: python3 -I -B baseline-source/actions/ci-org-baseline/scripts/baseline.py --consumer-root "$GITHUB_WORKSPACE/consumer"
+        --stage finalize
