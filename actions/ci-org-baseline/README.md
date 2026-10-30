@@ -284,14 +284,18 @@ configured Renovate ownership does not establish automation for those numeric to
 literals. The pre-existing coverage gap stays explicit; this change adds no manager,
 policy exception, downloaded tool or version and does not claim to repair that gap.
 
-## Declared release-route projection
+## Existing release-route projection and migration
 
-The product owner owns its Current declared route. Current control-plane ASR-AUTH-005
-and Architecture §5.9 require staging where declared and prohibit inferring a route
-from branch existence. The attributable original human decision is
-`msg_01a17993-0ab8-7230-a762-0d1068725c7d` (2026-10-26), retained in the task evidence;
-it requires staging where configured. `.github` source admission projects an existing
-product decision; it does not choose or redefine that decision.
+Control-plane ASR-AUTH-005 and [REQ-027](../../docs/requirements.md#req-027---uniform-proposal-admission)
+now require application task branches to target dev, followed by dev-to-main
+promotion, without staging. The two named control repositories use task-to-main;
+other classes retain their Current declared routes. The schema and helper below
+describe the existing implementation, including its legacy staged mode. They do
+not override that governing route or qualify a conflicting enrollment. The earlier
+2026-10-26 staging decision is superseded for these named and application routes.
+Retire obsolete representations only after reconciling their source provenance
+and preserving complete product, security, event and required-result coverage.
+No implementation, enrollment or hosted settings change follows from this text.
 
 An application `release_route` has exactly `declarations`, `transition` and
 `reconciliation_sha256`. The digest identifies the retained attributable product-owner

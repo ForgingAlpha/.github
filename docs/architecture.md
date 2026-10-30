@@ -10,10 +10,10 @@ tags:
 
 `.github` and `control-plane` are main-only control planes. Every change lands
 through a pull request with required `CI` and authorized-human
-approval of the exact current revision. Every repository supports feature/worktree
-PRs directly to protected `main`. Applications may also use protected `dev` for
-integration and a separate human-approved `dev` to `main` promotion. Dev presence
-does not make that route mandatory, and staging is not required. Active shared
+approval of the exact current revision. Authoring uses nonpersistent branches in
+assigned task worktrees. Application task branches target protected `dev`, then a
+separate human-approved `dev` to `main` promotion delivers to main. Staging is not
+required. Other repository classes retain their Current declared routes. Active shared
 source, actual product deployment and runtime qualification remain distinct facts.
 
 The shared policy action uses the runner-provisioned Python 3/PyYAML parser for
@@ -61,17 +61,22 @@ credentials are verified separately from this source contract.
 
 ### Uniform proposal targets
 
-Under REQ-027, ordinary caller and central admission use the same supported targets:
-protected main and optional protected dev. Branch existence does not select a
-mandatory route, and an ordinary non-dev main proposal is not interpreted as a
-security projection. A same-repository dev-to-main promotion binds its complete
+Under REQ-027, ordinary caller and central admission enforce the same route:
+task-to-main for ForgingAlpha/.github and ForgingAlpha/control-plane;
+task-to-dev followed by dev-to-main for applications. Ordinary application
+task-to-main is refused even when dev is missing. Class and route resolve from
+the Current owning definition, with PROJECT context where available; unknown or
+conflicting evidence stops admission. Other classes retain their Current declared
+route without reclassification or a new exception. Branch existence does not
+select a route or authorize branch creation. A same-repository dev-to-main promotion binds its complete
 candidate and current source/target revisions; admission performs no branch write.
 The control-plane proposal procedure owns agent-openable proposal sources and
 the human approval/merge boundary.
 
 The existing central enrollment owner selects repository identity and protected
-targets. Main-only enrollment includes main without inventing dev; optional-dev
-enrollment declares the actual qualified targets. The enrollment schema, admission
+targets consistently with that governing route. Named main-only enrollment
+includes main without inventing dev; application enrollment covers dev and main.
+The enrollment schema, admission
 plan and all plan consumers change coherently. An integration-only qualification
 target is an incomplete migration, not proof of final main coverage. The transition
 preserves profile completeness, unique result ownership, review policy,
@@ -81,7 +86,8 @@ heuristic substitutes for this source-owned selection. Retired staged/direct rou
 representations are removed after their surviving provenance and product obligations
 are reconciled at the existing owners; a compatibility mode is not the final state.
 
-Security classification and projection remain separate claims under REQ-013/014.
+Security classification and projection remain separate claims under REQ-013/014;
+ordinary application delivery cannot claim them to bypass required dev integration.
 Their trusted metadata workflows retain the exact source, App, attestation, patch,
 current-base and human-merge evidence. Ordinary candidate build/test execution
 receives no privileged security credential. Before a route guard or local caller
@@ -526,13 +532,22 @@ digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
 after three, seven, and thirty days respectively. Renovate proposes a pull
-request into the repository's protected default branch, main or optional dev;
-a human merges it after exact-head
+request to the ordinary target required by REQ-027: main for .github and
+control-plane, dev for applications, or the Current declared target for another
+class. Applications subsequently promote dev to main through a separate PR.
+A human merges each PR after exact-head
 `CI` and applicable approval. Root bot and platform auto-merge are explicitly
 disabled. The central validator admits only the defined policy shapes, and
 consumer configurations cannot override them. Main-only control-plane updates target
 protected `main`; `.github` source becomes active at the human merge after its
 required coherent candidate and affected-consumer validation.
+
+The existing update-ownership validator couples the policy base branch and
+Renovate target to the hosted default branch. That observed coupling does not
+override REQ-027. Where it conflicts with the required ordinary route, the
+updater flow remains unqualified until its source/configuration and any authorized
+settings transition are reconciled. This amendment chooses no new default branch,
+changes no updater configuration and grants no settings authority.
 
 For enrolled repositories, repository-local Dependabot entries remain only to customize
 security updates; normal version-update capacity is zero. The updater-coverage
@@ -542,7 +557,7 @@ Dependabot configuration, annotated literals, and exactly one owner per
 detected surface.
 
 Security-only Dependabot updates use the repository's protected default branch,
-main or optional dev. The existing update-policy binding owns this target; CI
+main or dev. The existing update-policy binding owns this target; CI
 enrollment does not change it. A default change reconciles both normal and security
 updater targets, hosted settings and affected source before qualification. Every
 eligible security source uses the common exact classification and patch proof

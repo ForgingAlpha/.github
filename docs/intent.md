@@ -29,11 +29,13 @@ automation without copying workflow logic between repositories.
 - Protected, human-merged `.github/main` is the active shared automation source.
   Required checks and exact-revision human review precede the merge; no later tag
   promotion, source acceptance or recurring ruleset repin makes it active.
-- Every repository supports human-reviewed task pull requests directly to protected
-  `main`. A protected `dev` integration branch is optional; its presence does not
-  require dev-first delivery. Neither ordinary proposals nor `dev` to `main`
-  promotion require staging. Complete product checks and human merge authority
-  apply on every supported path.
+- Authored changes use nonpersistent branches in assigned task worktrees.
+  `.github` and `control-plane` use task pull requests to protected `main`.
+  Applications use task pull requests to protected `dev`, followed by a separate
+  `dev` to `main` promotion pull request. Neither route requires staging.
+  Other repository classes retain their Current declared route under their owning
+  governing definitions. Complete product checks and human approval and merge
+  apply on every supported path; missing branches do not create route exceptions.
 - Every shared execution retains its exact resolved source revision and consumer
   revision. Recovery uses the protected human-reviewed source-change path and
   preserves earlier execution evidence.
@@ -45,9 +47,9 @@ automation without copying workflow logic between repositories.
   required CI.
 - Renovate owns normal external updates across supported manifests, locks, and
   annotated literals. Internal `ForgingAlpha/.github@main` references follow
-  the protected human-merge path. Cooled normal updates enter the repository's
-  protected default branch, `main` or optional `dev`, through human-merged pull
-  requests with exact-head CI.
+  the protected human-merge path. Cooled normal updates follow the repository's
+  ordinary integration route through human-merged pull requests with exact-head
+  CI; an updater's configured target does not create a route exception.
 - Dependabot owns security remediation only. Every eligible security proposal,
   whether its source targets `main` or `dev`, retains trusted classification of
   GitHub's official vulnerability-alert-to-pull-request association and the exact
