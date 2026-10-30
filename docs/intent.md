@@ -29,6 +29,11 @@ automation without copying workflow logic between repositories.
 - Protected, human-merged `.github/main` is the active shared automation source.
   Required checks and exact-revision human review precede the merge; no later tag
   promotion, source acceptance or recurring ruleset repin makes it active.
+- Every repository supports human-reviewed task pull requests directly to protected
+  `main`. A protected `dev` integration branch is optional; its presence does not
+  require dev-first delivery. Neither ordinary proposals nor `dev` to `main`
+  promotion require staging. Complete product checks and human merge authority
+  apply on every supported path.
 - Every shared execution retains its exact resolved source revision and consumer
   revision. Recovery uses the protected human-reviewed source-change path and
   preserves earlier execution evidence.
@@ -40,15 +45,22 @@ automation without copying workflow logic between repositories.
   required CI.
 - Renovate owns normal external updates across supported manifests, locks, and
   annotated literals. Internal `ForgingAlpha/.github@main` references follow
-  the protected human-merge path. Cooled normal updates enter
-  code-repository `dev` through human-merged pull requests with exact-head CI.
-- Dependabot owns security remediation only so trusted classification can prove
-  GitHub's official vulnerability-alert-to-pull-request association.
+  the protected human-merge path. Cooled normal updates enter the repository's
+  protected default branch, `main` or optional `dev`, through human-merged pull
+  requests with exact-head CI.
+- Dependabot owns security remediation only. Every eligible security proposal,
+  whether its source targets `main` or `dev`, retains trusted classification of
+  GitHub's official vulnerability-alert-to-pull-request association and the exact
+  approved dependency patch before a human merges it.
 - Runtime and tool upgrades follow the same normal patch, minor, and major
   automation path while preserving exact committed locks and integrity data.
-- Application security promotion projects only the exact independently
+- Where security remediation uses a separate `dev` source, production promotion
+  projects only the exact independently
   verified dependency patch from its merged `dev` security change onto the
   current production base. It never carries unrelated unreleased `dev` work.
+  Direct security proposals to `main` retain the same source-classification and
+  patch-proof obligations, required checks, human review and human merge without
+  inventing a second source merge or cross-branch projection.
 - Static and cross-cutting checks run once; parallel test lanes remain lean.
 - Organization runtime profiles and compatible version tuples have one
   control-plane owner. Every consumer commits an exact, integrity-bearing mise
@@ -100,9 +112,10 @@ automation never executes untrusted pull-request code.
 - Normal and security automation have disjoint authority. Renovate does not
   remediate vulnerability alerts, and Dependabot does not create normal version
   updates.
-- Security urgency may bypass cooldown and release batching, never CI or
-  source provenance, exact-patch reconstruction, current-base verification,
-  CodeQL, or human merge authority.
+- Security urgency may bypass cooldown and release batching, never CI, source
+  provenance, exact-patch verification, current-base verification, CodeQL or
+  human merge authority. Cross-branch projection additionally reconstructs only
+  that proved patch on the current production base.
 - Inactive deployment tooling is removed instead of receiving new update
   automation.
 - Fail closed when identity, classification, branch state, checks, or deployed
