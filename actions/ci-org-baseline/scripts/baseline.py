@@ -861,6 +861,17 @@ def aggregate(plan, needs):
     require(set(needs) == {"baseline", "static", "tests"}, "missing/unknown job result")
     for job in required:
         require(isinstance(needs[job], dict) and needs[job].get("result") == "success", "required job did not succeed: " + job)
+        outputs = needs[job].get("outputs")
+        require(isinstance(outputs, dict) and outputs.get("source_sha") == plan["source_sha"],
+                "job source differs from defining workflow SHA: " + job)
+    # Admission is mandatory for every profile, including bootstrap, whose product
+    # lanes are deliberately skipped. Never accept a newly rederived final plan in
+    # place of the exact plan that passed admission under the resolved source.
+    raw = needs["baseline"]["outputs"].get("plan")
+    require(isinstance(raw, str) and len(raw.encode()) <= 65536, "missing/oversized admitted plan")
+    admitted = decode(raw.encode())
+    require(isinstance(admitted, dict) and plan_digest(admitted) == plan_digest(plan),
+            "admitted plan differs from rederived trusted source")
     if plan["profile"] == "documentation-bootstrap":
         require(all(needs[j].get("result") == "skipped" for j in ("static", "tests")), "unexpected bootstrap product execution")
         return

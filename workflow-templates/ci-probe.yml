@@ -40,7 +40,7 @@ permissions:
 
 jobs:
   probe:
-    uses: ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@v1
+    uses: ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main
     with:
       checkout_ref: ${{ inputs.checkout_ref }}
       probe_mode: ${{ inputs.probe_mode }}

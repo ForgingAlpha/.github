@@ -50,7 +50,7 @@
       "enabled": false
     },
     {
-      "description": "Keep first-party shared Actions on the governed v1 rollout channel",
+      "description": "Keep first-party shared Actions on the protected human-merged main source",
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["ForgingAlpha/.github"],
       "enabled": false

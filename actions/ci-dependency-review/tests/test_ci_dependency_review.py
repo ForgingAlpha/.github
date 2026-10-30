@@ -21,6 +21,7 @@ POLICY = ROOT / "actions" / "ci-dependency-review" / "scripts" / "license_policy
 OFFICIAL_ACTION = "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294"
 CHECKOUT_SHA = "d23441a48e516b6c34aea4fa41551a30e30af803"
 FIRST_PARTY_COMMIT = "a" * 40
+FIRST_PARTY_TREE = "d" * 40
 FIRST_PARTY_BLOB = "b" * 40
 
 sys.path.insert(0, str(SCRIPT.parent))
@@ -103,9 +104,9 @@ class CiDependencyReviewTest(unittest.TestCase):
             "change_type": "added",
             "ecosystem": "actions",
             "name": f"ForgingAlpha/.github/actions/{action}",
-            "version": "1.*.*",
+            "version": "main",
             "package_url": (
-                f"pkg:githubactions/ForgingAlpha/.github/actions/{action}@1.%2A.%2A"
+                f"pkg:githubactions/ForgingAlpha/.github/actions/{action}@main"
             ),
             "license": None,
         }
@@ -115,13 +116,14 @@ class CiDependencyReviewTest(unittest.TestCase):
 
     def first_party_api_responses(self, paths=("actions/ci-merge-flow/action.yml",)):
         ref = {
-            "ref": "refs/tags/v1",
+            "ref": "refs/heads/main",
             "object": {"type": "commit", "sha": FIRST_PARTY_COMMIT},
         }
         tree = {
+            "sha": FIRST_PARTY_TREE,
             "truncated": False,
             "tree": [
-                {"path": path, "type": "blob", "sha": FIRST_PARTY_BLOB, "size": 123}
+                {"path": path, "type": "blob", "mode": "100644", "sha": FIRST_PARTY_BLOB, "size": 123}
                 for path in paths
             ],
         }
@@ -519,7 +521,7 @@ class CiDependencyReviewTest(unittest.TestCase):
     def test_recognized_license_does_not_use_fallback_or_require_token(self):
         changes = [{"change_type": "added", "package_url": "pkg:npm/good@1", "license": "MIT"}]
         with mock.patch.object(validator, "fetch_github_license") as fetch, mock.patch.object(
-            validator, "fetch_first_party_release_tree"
+            validator, "fetch_first_party_main_tree"
         ) as first_party_fetch:
             code, _, stderr = self.run_main(changes, token="")
             self.assertEqual(code, 0, stderr)
@@ -636,7 +638,7 @@ class CiDependencyReviewTest(unittest.TestCase):
         self.assertEqual(identity.sha, CHECKOUT_SHA)
         self.assertEqual(token, "test-token")
 
-    def test_first_party_action_uses_fixed_v1_commit_and_tree(self):
+    def test_first_party_action_uses_fixed_main_commit_and_tree(self):
         changes = [
             self.first_party_change(source=None),
             self.first_party_change("ci-dependency-review"),
@@ -696,11 +698,14 @@ class CiDependencyReviewTest(unittest.TestCase):
             change[field] = value
             invalid.append(change)
         for package_url in (
-            "pkg:githubactions/ForgingAlpha/.github/actions/nested/path@1.%2A.%2A",
-            "pkg:githubactions/ForgingAlpha/.github/actions/ci_merge_flow@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/nested/path@main",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci_merge_flow@main",
             "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@2.%2A.%2A",
             "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@1.*.*",
-            "pkg:githubactions/forgingalpha/.github/actions/ci-merge-flow@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@v1",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@refs/heads/main",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@MAIN",
+            "pkg:githubactions/forgingalpha/.github/actions/ci-merge-flow@main",
         ):
             change = self.first_party_change()
             change["package_url"] = package_url
@@ -719,8 +724,8 @@ class CiDependencyReviewTest(unittest.TestCase):
         bad_ref_payloads = (
             {},
             {"ref": "refs/tags/v2", "object": {"type": "commit", "sha": FIRST_PARTY_COMMIT}},
-            {"ref": "refs/tags/v1", "object": {"type": "tag", "sha": FIRST_PARTY_COMMIT}},
-            {"ref": "refs/tags/v1", "object": {"type": "commit", "sha": "ABC"}},
+            {"ref": "refs/heads/main", "object": {"type": "tag", "sha": FIRST_PARTY_COMMIT}},
+            {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "ABC"}},
         )
         for payload in bad_ref_payloads:
             with self.subTest(payload=payload), mock.patch.object(
@@ -729,20 +734,18 @@ class CiDependencyReviewTest(unittest.TestCase):
                 return_value=io.BytesIO(json.dumps(payload).encode()),
             ):
                 with self.assertRaises(validator.EvidenceError):
-                    validator.fetch_first_party_release_tree("read-token")
+                    validator.fetch_first_party_main_tree("read-token")
 
-        valid_ref = self.first_party_api_responses()[0]
+        valid_ref, _ = self.first_party_api_responses()
         bad_tree_payloads = (
-            {},
-            {"truncated": True, "tree": []},
-            {"truncated": False, "tree": None},
-            {"truncated": False, "tree": [None]},
-            {
-                "truncated": False,
-                "tree": [{"path": "actions/x/action.yml", "type": "blob", "sha": "bad"}],
-            },
+            ({"sha": FIRST_PARTY_TREE, "truncated": True, "tree": []}, "invalid or truncated"),
+            ({"sha": FIRST_PARTY_TREE, "truncated": False, "tree": None}, "no entry list"),
+            ({"sha": FIRST_PARTY_TREE, "truncated": False, "tree": [None]}, "malformed entry"),
+            ({"sha": FIRST_PARTY_TREE, "truncated": False,
+              "tree": [{"path": "actions/x/action.yml", "type": "blob", "sha": "bad"}]},
+             "malformed entry"),
         )
-        for payload in bad_tree_payloads:
+        for payload, expected in bad_tree_payloads:
             with self.subTest(payload=payload), mock.patch.object(
                 validator.urllib.request,
                 "urlopen",
@@ -751,13 +754,52 @@ class CiDependencyReviewTest(unittest.TestCase):
                     io.BytesIO(json.dumps(payload).encode()),
                 ],
             ):
-                with self.assertRaises(validator.EvidenceError):
-                    validator.fetch_first_party_release_tree("read-token")
+                with self.assertRaisesRegex(validator.EvidenceError, expected):
+                    validator.fetch_first_party_main_tree("read-token")
+
+    def test_main_snapshot_is_resolved_once_and_keeps_exact_commit_tree(self):
+        # A later main value is deliberately queued. This decision must not read it.
+        responses = self.first_party_api_responses()
+        later = {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "e" * 40}}
+        responses.append(io.BytesIO(json.dumps(later).encode()))
+        with mock.patch.object(validator.urllib.request, "urlopen", side_effect=responses) as request:
+            code, output, error = self.run_main([self.first_party_change()])
+        self.assertEqual(code, 0, error)
+        self.assertEqual(request.call_count, 2)
+        self.assertIn(FIRST_PARTY_COMMIT, output)
+        self.assertIn(FIRST_PARTY_BLOB, output)
+        self.assertIn("not an execution receipt", output)
+        self.assertNotIn("e" * 40, output)
+
+    def test_main_tree_requires_immutable_tree_identity(self):
+        for sha in (None, "", "bad", "A" * 40, 42):
+            with self.subTest(sha=sha):
+                ref, tree = self.first_party_api_responses()
+                payload = json.loads(tree.getvalue())
+                payload["sha"] = sha
+                with mock.patch.object(validator.urllib.request, "urlopen", side_effect=[
+                    ref, io.BytesIO(json.dumps(payload).encode()),
+                ]) as request:
+                    code, _, error = self.run_main([self.first_party_change()])
+                self.assertNotEqual(code, 0)
+                self.assertIn("WHAT:", error)
+                self.assertEqual(request.call_count, 2)
+
+    def test_main_provenance_api_failure_has_no_tag_fallback(self):
+        for index in range(2):
+            with self.subTest(stage=index):
+                responses = self.first_party_api_responses()[:index] + [TimeoutError("unavailable")]
+                with mock.patch.object(validator.urllib.request, "urlopen", side_effect=responses) as request:
+                    code, _, error = self.run_main([self.first_party_change()])
+                self.assertNotEqual(code, 0)
+                self.assertIn("WHAT:", error)
+                self.assertEqual(request.call_count, index + 1)
+                self.assertTrue(all('/tags/' not in c.args[0].full_url for c in request.call_args_list))
 
     def test_first_party_action_path_must_be_one_exact_blob(self):
         identity = validator.FirstPartyActionIdentity(
             "ci-merge-flow",
-            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@main",
         )
         wrong_entries = (
             (),
@@ -780,13 +822,27 @@ class CiDependencyReviewTest(unittest.TestCase):
         for entries in wrong_entries:
             with self.subTest(entries=entries), mock.patch.object(
                 validator,
-                "fetch_first_party_release_tree",
+                "fetch_first_party_main_tree",
                 return_value=(FIRST_PARTY_COMMIT, entries),
             ):
                 with self.assertRaises(validator.EvidenceError):
                     validator.verify_first_party_actions(
                         {identity.action_directory: identity}, "read-token"
                     )
+
+    def test_main_action_blob_requires_regular_file_and_positive_size(self):
+        for changes in ({"mode": "120000"}, {"mode": "160000"}, {"mode": None},
+                        {"size": None}, {"size": 0}, {"size": True}):
+            with self.subTest(changes=changes):
+                ref, tree = self.first_party_api_responses()
+                payload = json.loads(tree.getvalue())
+                payload["tree"][0].update(changes)
+                with mock.patch.object(validator.urllib.request, "urlopen", side_effect=[
+                    ref, io.BytesIO(json.dumps(payload).encode()),
+                ]):
+                    code, _, error = self.run_main([self.first_party_change()])
+                self.assertNotEqual(code, 0)
+                self.assertIn("WHAT:", error)
 
     def test_first_party_tree_allows_unrelated_zero_byte_blob(self):
         ref, tree = self.first_party_api_responses()
@@ -799,7 +855,7 @@ class CiDependencyReviewTest(unittest.TestCase):
             "urlopen",
             side_effect=[ref, io.BytesIO(json.dumps(tree_payload).encode())],
         ):
-            commit_sha, entries = validator.fetch_first_party_release_tree("read-token")
+            commit_sha, entries = validator.fetch_first_party_main_tree("read-token")
 
         self.assertEqual(commit_sha, FIRST_PARTY_COMMIT)
         self.assertEqual(len(entries), 2)

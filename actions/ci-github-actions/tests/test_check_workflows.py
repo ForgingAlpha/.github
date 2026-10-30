@@ -422,75 +422,44 @@ class CheckWorkflowsTest(unittest.TestCase):
             f"WHY: agents need a concrete ref to pin. stderr={stderr.getvalue()!r}",
         )
 
-    def test_probe_guard_v1_ref_is_allowed(self):
-        errors = []
+    def test_fixed_first_party_main_actions_and_workflows_are_allowed(self):
+        for target in (
+            "ForgingAlpha/.github/actions/ci-remote-probe-guard",
+            "ForgingAlpha/.github/actions/ci-github-actions",
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml",
+        ):
+            with self.subTest(target=target):
+                errors = []
+                checker.validate_uses_ref(Path("workflow.yml"), target + "@main", errors)
+                self.assertEqual(errors, [])
 
-        checker.validate_uses_ref(
-            Path(".github/workflows/probe.yml"),
-            "ForgingAlpha/.github/actions/ci-remote-probe-guard@v1",
-            errors,
-            checker.Allowlists.empty(),
-        )
+    def test_first_party_main_exception_is_exact_and_not_allowlistable(self):
+        for ref in ("v1", "v2", "dev", "refs/heads/main", "MAIN", "latest", "a" * 40):
+            uses = "ForgingAlpha/.github/actions/ci-shell@" + ref
+            with self.subTest(ref=ref):
+                errors = []
+                allow = checker.Allowlists({uses: "cannot override source contract"}, {}, {})
+                checker.validate_uses_ref(Path("workflow.yml"), uses, errors, allow)
+                self.assertTrue(any("must use literal @main" in e for e in errors))
 
-        self.assertEqual(
-            errors,
-            [],
-            "validate_uses_ref must allow the ForgingAlpha probe guard on @v1. "
-            "WHY: diagnostics follow the latest-green internal platform model. "
-            f"HOW: inspect is_forgingalpha_probe_automation handling; errors={errors!r}",
-        )
-
-    def test_probe_reusable_workflow_v1_ref_is_allowed(self):
-        errors = []
-
-        checker.validate_uses_ref(
-            Path(".github/workflows/probe.yml"),
-            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@v1",
-            errors,
-            checker.Allowlists.empty(),
-        )
-
-        self.assertEqual(
-            errors,
-            [],
-            "validate_uses_ref must allow ForgingAlpha reusable probe workflows on @v1. "
-            "WHY: consumer repos should call the current centralized diagnostic workflow. "
-            f"HOW: inspect internal reusable workflow ref handling; errors={errors!r}",
-        )
-
-    def test_probe_automation_rejects_non_v1_ref(self):
-        errors = []
-
-        checker.validate_uses_ref(
-            Path(".github/workflows/probe.yml"),
-            "ForgingAlpha/.github/actions/ci-remote-probe-guard@latest",
-            errors,
-            checker.Allowlists.empty(),
-        )
-
-        self.assertTrue(
-            any("must use a vN major tag" in error for error in errors),
-            "validate_uses_ref must reject probe automation refs outside @v1. "
-            "WHY: diagnostics and required CI share one approved current channel. "
-            f"HOW: inspect internal shared automation ref validation; errors={errors!r}",
-        )
-
-    def test_non_probe_internal_shared_action_main_ref_is_rejected(self):
-        errors = []
-
-        checker.validate_uses_ref(
-            Path(".github/workflows/ci.yml"),
-            "ForgingAlpha/.github/actions/ci-github-actions@main",
-            errors,
-            checker.Allowlists.empty(),
-        )
-
-        self.assertTrue(
-            any("must use a vN major tag" in error for error in errors),
-            "validate_uses_ref must reject @main for non-probe shared CI actions. "
-            "WHY: all shared automation uses the latest-green v1 release channel. "
-            f"HOW: inspect ForgingAlpha shared automation ref validation; errors={errors!r}",
-        )
+    def test_main_exception_does_not_cover_other_owners_repos_or_paths(self):
+        for target in (
+            "forgingalpha/.github/actions/ci-shell",
+            "ForgingAlpha/other/actions/ci-shell",
+            "ForgingAlpha/.github-other/actions/ci-shell",
+            "other/.github/actions/ci-shell",
+            "ForgingAlpha/.github/actions/../ci-shell",
+            "ForgingAlpha/.github/actions/nested/ci-shell",
+            "ForgingAlpha/.github/.github/workflows/../ci.yml",
+            "actions/checkout",
+        ):
+            with self.subTest(target=target):
+                errors = []
+                checker.validate_uses_ref(Path("workflow.yml"), target + "@main", errors)
+                self.assertTrue(errors)
+                errors = []
+                checker.validate_uses_ref(Path("workflow.yml"), target + "@" + "a" * 40, errors)
+                self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":

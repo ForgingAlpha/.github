@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
       plan: ${{ steps.plan.outputs.plan }}
       profile: ${{ steps.plan.outputs.profile }}
       producer: ${{ steps.plan.outputs.producer }}
@@ -88,6 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
       receipt: ${{ steps.product.outputs.receipt }}
     steps:
     - name: Bind defining workflow identity
@@ -179,6 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
       receipt: ${{ steps.product.outputs.receipt }}
     steps:
     - name: Bind defining workflow identity

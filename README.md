@@ -16,7 +16,7 @@ on:
   push:
     branches: [dev]
   pull_request:
-    branches: [dev, staging, main]
+    branches: [dev, main]
 permissions:
   contents: read
   checks: read
@@ -29,13 +29,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: ForgingAlpha/.github/actions/ci-elixir@v1
+      - uses: ForgingAlpha/.github/actions/ci-elixir@main
 ```
 
 Main-only control-plane repositories use `push` and `pull_request` on `main`.
 Application repositories use feature/worktree pull requests into protected
-`dev`; routine production releases follow the product
-owner’s declared direct or staged route. The legacy merge-flow wrapper still has
+`dev`, then a release pull request into protected `main`. Every merge is performed
+by an authorized human. No current standard requires staging; an explicitly declared
+contrary route must be reconciled with its product owner before changing it. The legacy merge-flow wrapper still has
 its known dev-only promotion behavior; central schema-2 admission uses the explicit
 owner-declared route and does not infer it from branch existence. Security remediation uses the narrower exact-patch projection
 described below and never carries unrelated `dev` work. Its CI admission reads
@@ -59,9 +60,9 @@ This candidate changes the bootstrap check topology: `CI` moves from the `baseli
 job to the final `result` job, and `baseline` reports `Organization Baseline`.
 The retained live Q6 source B is still adopted source
 `97a8a94c884f43c039278d117d0d9313d1465ec9`, with the old topology. Its results do not
-qualify this candidate. After human merge, any new source activation must reconcile
-both check identities and the recovery binding, then qualify the exact target before
-reliance. No live selector or Q6 binding changes with this source proposal.
+qualify this candidate. Protected main is active at human merge. Any consumer
+transition must reconcile both check identities and recovery, then qualify its exact
+target before reliance. No live selector or Q6 binding changes with this source proposal.
 
 The job checks out the defining workflow commit separately from the exact consumer
 PR head. It admits tracked, non-executable Markdown, `.gitignore`, three enumerated
@@ -167,8 +168,9 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 
 External Actions are Renovate-owned and use immutable full SHAs with adjacent
 release comments. Internal `ForgingAlpha/.github` shared Actions are excluded
-from Renovate and use `@v1`, the current approved control-plane rollout
-channel.
+from Renovate and use literal `@main`, owned by protected human-reviewed source
+merges. Fixed canonical owner/repository/path spelling is required; other external
+Actions retain full SHA pins.
 
 Shared Python validators require Python 3 with PyYAML provisioned on the runner.
 The policy action fails when that parser is unavailable; it does not install a
@@ -253,24 +255,49 @@ separate verification. An unrestricted Renovate run window permits daily
 execution but does not prove it. Follow the
 [operator checklist](docs/operator-checklist.md) for enrollment and rollout.
 
-## `v1` Rollout
+## Active Shared Source And Recovery
 
-`v1` is a current channel, not a backward-compatibility promise. A successful
-merged-commit `CI` run on the current `.github/main` commit triggers a serialized
-rollout that:
+Protected, human-merged `.github/main` is the active shared source. Complete
+exact-head source CI, coherent candidate and affected-consumer validation, and
+authorized human review precede the human merge. There is no recurring tag
+promotion, source repin or post-merge acceptance gate. Push CI still reports
+post-merge failures visibly.
 
-1. verifies the approved workflow run and current `main` SHA;
-2. atomically advances mutable `v1` with an expected-old raw-ref lease and
-   creates an immutable `v1-rollout-<timestamp>-<sha>` tag;
-3. leaves both refs unchanged if either update cannot be accepted;
-4. records the transition in the workflow summary.
+The central workflow selects its defining workflow SHA once per job and uses
+that exact checking checkout and its catalogs throughout. Its admission, product
+and final plans must agree, including bootstrap. Later main movement does not
+replace an already resolved source. Consumer head/base movement still refuses.
 
-The version-coherent consumer-profile gate is required before step 2 wherever
-it is enrolled; no `v1` movement may bypass an active gate.
+Legacy composite callers use the same canonical repository spelling and literal
+`@main`. Reusable probes bind native defining-workflow identity and check out that
+exact shared source into `probe-source`; its canonical guard runs before the
+separate `consumer` checkout. A later main cannot supply a different probe helper. Retain each job's native Action acquisition SHA and outcome;
+`github.action_ref`, a live main lookup or the consumer SHA is not execution
+identity. Normal same-ref acquisition reuse is supported by inspected runner
+source, but deployed runner/cache configuration, including optional symlink cache
+behavior, remains to be qualified. A pinned/local candidate parent with nested
+live `@main` calls cannot prove a coherent candidate. Central self-CI uses local
+owner steps and direct shell checks; affected candidate wrappers require coherent
+consumer validation before merge.
 
-The protected manual rollback workflow accepts only an immutable rollout tag
-whose commit historically passed the approved `CI` workflow, restores `v1`
-with an expected-old lease, and creates an immutable rollback record.
+First-party dependency evidence resolves only the fixed protected-main ref, then
+its immutable commit, tree and named Action blob. It records that snapshot and
+does not label it an executed Action receipt. Unknown dependency-record shapes
+fail closed; actual hosted `main` records need native CI qualification. License,
+vulnerability and third-party immutable-reference rules remain mandatory.
+
+Recover with a checked corrective or revert pull request, exact-head human review
+and human merge into main. Record the new exact source and affected outcomes;
+retain prior execution evidence and historical tags. A whole-policy revert may
+restore earlier catalog approvals, including withdrawn entries: disclose those
+effects and use a forward fix when withdrawal must persist. No automated fallback,
+force-write or tag rollback selects an active source.
+
+Existing consumer callers need their own thin migration and target qualification.
+This source does not establish all-repository migration, hosted enforcement or
+product deployment. The initial required-workflow selector transition is one
+separately authorized human operation, with complete expected-old comparison and
+readback; future main merges require no recurring selector update.
 
 ## Security Boundary
 

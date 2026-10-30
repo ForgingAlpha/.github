@@ -30,6 +30,16 @@ ENTRY = {
 }
 
 
+def successful_needs(plan, **receipts):
+    """GitHub fan-in with admission and each executed job's defining source."""
+    return {
+        "baseline": {"result": "success", "outputs": {"plan": json.dumps(plan), "source_sha": plan["source_sha"]}},
+        **{phase: {"result": "success", "outputs": {"receipt": raw, "source_sha": plan["source_sha"]}}
+           if (raw := receipts.get(phase)) is not None else {"result": "skipped", "outputs": {}}
+           for phase in ("static", "tests")},
+    }
+
+
 class CatalogTests(unittest.TestCase):
     def test_actual_enrollment_validates_independently(self):
         entries = baseline.catalog(baseline.decode(
@@ -331,7 +341,7 @@ class AdmissionTests(unittest.TestCase):
             return FakeApi(self.fixture)
         env = {'GITHUB_REPOSITORY': ENTRY['repository'], 'GITHUB_REPOSITORY_ID': str(ENTRY['repository_id']),
                'GITHUB_TOKEN': 'fixture-credential', 'GITHUB_OUTPUT': str(output),
-               'BASELINE_NEEDS': json.dumps({'baseline': {'result': 'success'}, 'static': {'result': 'skipped'}, 'tests': {'result': 'skipped'}})}
+               'BASELINE_NEEDS': json.dumps(successful_needs(baseline.make_plan(self.fixture.root, event, ENTRY, source)))}
         with patch.dict(os.environ, env), patch.object(baseline, 'make_plan', side_effect=plan), \
                 patch.object(baseline, 'Api', side_effect=authenticate), patch.object(baseline, 'run', return_value={'credential': canary}):
             baseline.staged_main(SimpleNamespace(stage='admit'), self.fixture.root, event, [ENTRY], source)
@@ -340,6 +350,16 @@ class AdmissionTests(unittest.TestCase):
                 baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [ENTRY], source)
             self.assertEqual(json.loads(logged.getvalue()), frozen)
             self.assertNotIn(canary, logged.getvalue())
+            with patch.object(sys, 'stdout', io.StringIO()) as logged, self.assertRaises(ValueError):
+                baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [ENTRY], 'e' * 40)
+            self.assertEqual(logged.getvalue(), '')
+            admitted = baseline.make_plan(self.fixture.root, event, ENTRY, source)
+            for change in ({'source_sha': 'e' * 40}, {'head': 'e' * 40}, {'base': 'e' * 40}, {'components': [{'kind': 'astro'}]}):
+                bad = successful_needs({**admitted, **change})
+                os.environ['BASELINE_NEEDS'] = json.dumps(bad)
+                with self.subTest(change=change), patch.object(sys, 'stdout', io.StringIO()) as logged, self.assertRaises(ValueError):
+                    baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [ENTRY], source)
+                self.assertEqual(logged.getvalue(), '')
             output.unlink()
             def mutate(*args): event['pull_request']['base']['sha'] = 'e' * 40
             with patch.object(baseline, 'run', side_effect=mutate), self.assertRaises(ValueError):
@@ -455,20 +475,29 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("static", jobs["tests"]["needs"])
 
     def test_real_inline_identity_parser_refuses_fallback_and_injection(self):
-        script = self.workflow["jobs"]["baseline"]["steps"][0]["run"]
         valid = {"workflow_repository": "ForgingAlpha/.github", "workflow_sha": "b" * 40,
                  "workflow_ref": "ForgingAlpha/.github/.github/workflows/org-baseline.yml@refs/heads/main"}
-        for change, expected in [({}, 0), ({"workflow_repository": "outside/repo"}, 1),
-                                 ({"workflow_sha": "main"}, 1), ({"workflow_ref": "wrong/path@main"}, 1),
-                                 ({"workflow_sha": "b" * 40 + "\noutput=bad"}, 1)]:
-            with tempfile.TemporaryDirectory() as d:
-                output = Path(d) / "output"
-                value = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "JOB_CONTEXT": json.dumps({**valid, **change}), "GITHUB_OUTPUT": str(output)}, capture_output=True)
-                self.assertEqual(value.returncode, expected, value.stderr.decode())
-                if expected:
-                    self.assertFalse(output.exists())
-                else:
-                    self.assertEqual(output.read_text(), "repository=ForgingAlpha/.github\nsha=" + "b" * 40 + "\n")
+        cases = [(json.dumps({**valid, **change}), expected) for change, expected in
+                 [({}, 0), ({"workflow_repository": "outside/repo"}, 1), ({"workflow_sha": "main"}, 1),
+                  ({"workflow_ref": "wrong/path@main"}, 1), ({"workflow_sha": "b" * 40 + "\noutput=bad"}, 1),
+                  ({"workflow_ref": "ForgingAlpha/.github/.github/workflows/org-baseline.yml@v1"}, 1),
+                  ({"workflow_ref": "ForgingAlpha/.github/.github/workflows/org-baseline.yml@" + "b" * 40}, 0)]]
+        cases += [(json.dumps({k: v for k, v in valid.items() if k != field}), 1) for field in valid]
+        cases += [(json.dumps(valid)[:-1] + ',"workflow_sha":"' + 'e' * 40 + '"}', 1)]
+        for job, definition in self.workflow['jobs'].items():
+            script = definition['steps'][0]['run']
+            for raw, expected in cases:
+                with self.subTest(job=job, context=raw), tempfile.TemporaryDirectory() as d:
+                    output = Path(d) / "output"
+                    # Consumer/current-main context may advance; the resolved job
+                    # source remains b, with no live-main lookup or fallback.
+                    value = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "JOB_CONTEXT": raw,
+                        "GITHUB_SHA": "e" * 40, "GITHUB_REF": "refs/heads/main", "GITHUB_OUTPUT": str(output)}, capture_output=True)
+                    self.assertEqual(value.returncode, expected, value.stderr.decode())
+                    if expected:
+                        self.assertFalse(output.exists())
+                    else:
+                        self.assertEqual(output.read_text(), "repository=ForgingAlpha/.github\nsha=" + "b" * 40 + "\n")
 
     def test_read_only_coherent_source_no_language_optout(self):
         self.assertEqual(self.workflow["permissions"], {"contents": "read", "pull-requests": "read"})
@@ -489,6 +518,12 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn("@v1", str(job))
             self.assertNotIn("upload-artifact", str(job))
             self.assertNotIn("download-artifact", str(job))
+            if name in ('baseline', 'static', 'tests'):
+                self.assertEqual(job['outputs']['source_sha'], '${{ steps.source.outputs.sha }}')
+            if name == 'baseline':
+                self.assertEqual(job['outputs']['plan'], '${{ steps.plan.outputs.plan }}')
+            if name == 'result':
+                self.assertEqual(job['steps'][-1]['env']['BASELINE_NEEDS'], '${{ toJSON(needs) }}')
             if name in ("static", "tests"):
                 self.assertNotIn('checks', job.get('permissions', self.workflow['permissions']))
                 self.assertNotIn("github.token", str(job))
@@ -567,7 +602,7 @@ class ApplicationTests(unittest.TestCase):
         phases = [row[0][-1] for row in journal if 'central' in row[0]]
         for check in ('format', 'lint', 'types', 'build', 'extra'):
             self.assertEqual(phases.count(check), 1)
-        needs = {'baseline': {'result': 'success'}, 'static': {'result': 'success', 'outputs': {'receipt': json.dumps(static)}}, 'tests': {'result': 'success', 'outputs': {'receipt': json.dumps(tests)}}}
+        needs = successful_needs(plan, static=json.dumps(static), tests=json.dumps(tests))
         baseline.aggregate(plan, needs)
         needs['tests']['result'] = 'failure'
         with self.assertRaises(ValueError):
@@ -612,8 +647,7 @@ class ApplicationTests(unittest.TestCase):
         static = copy.deepcopy(receipt)
         static['phase'] = 'static'
         static['components'][0]['result'] = 'success'
-        needs = {'baseline': {'result': 'success'}, 'static': {'result': 'success', 'outputs': {'receipt': json.dumps(static)}},
-                 'tests': {'result': 'success', 'outputs': {'receipt': json.dumps(receipt)}}}
+        needs = successful_needs(plan, static=json.dumps(static), tests=json.dumps(receipt))
         baseline.aggregate(plan, needs)
         needs['static']['result'] = 'failure'
         with self.assertRaises(ValueError): baseline.aggregate(plan, needs)
@@ -718,7 +752,7 @@ class ApplicationTests(unittest.TestCase):
         plan = self.f.plan()
         def receipt(phase):
             return json.dumps({'schema_version': 1, 'phase': phase, 'plan_sha256': baseline.plan_digest(plan), 'components': [{'index': 0, 'kind': 'astro', 'root': '.', 'result': 'success'}]})
-        needs = {'baseline': {'result': 'success'}, **{phase: {'result': 'success', 'outputs': {'receipt': receipt(phase)}} for phase in ('static', 'tests')}}
+        needs = successful_needs(plan, **{phase: receipt(phase) for phase in ('static', 'tests')})
         baseline.aggregate(plan, needs)
         states = ('success', 'failure', 'cancelled', 'skipped', None, 'unknown', 'missing')
         for combination in itertools.product(states, repeat=3):
@@ -744,6 +778,46 @@ class ApplicationTests(unittest.TestCase):
         with self.assertRaises(ValueError): baseline.aggregate(plan, bad)
         bad = copy.deepcopy(needs); r = json.loads(receipt('tests'));r['components'] *= 2;bad['tests']['outputs']['receipt'] = json.dumps(r)
         with self.assertRaises(ValueError): baseline.aggregate(plan, bad)
+
+    def test_admission_and_every_executed_source_must_match_final_plan(self):
+        app = self.f.plan()
+        docs = Fixture(self.directory / 'documents')
+        bootstrap = baseline.make_plan(docs.root, docs.event(), ENTRY, 'd' * 40)
+        for plan in (bootstrap, app):
+            receipts = {phase: json.dumps({'schema_version': 1, 'phase': phase,
+                        'plan_sha256': baseline.plan_digest(plan), 'components': [
+                            {'index': i, 'kind': c['kind'], 'root': c['root'], 'result': 'success'}
+                            for i, c in enumerate(plan['components'])]}) for phase in ('static', 'tests')}
+            needs = successful_needs(plan, **(receipts if plan is app else {}))
+            baseline.aggregate(plan, needs)
+            for raw in (None, '', '{}', '[]', 'x' * 65537, '{"source_sha":"one","source_sha":"two"}'):
+                bad = copy.deepcopy(needs)
+                if raw is None:
+                    del bad['baseline']['outputs']['plan']
+                else:
+                    bad['baseline']['outputs']['plan'] = raw
+                with self.subTest(profile=plan['profile'], raw=raw and raw[:30]), self.assertRaises(ValueError):
+                    baseline.aggregate(plan, bad)
+            for field, value in (('source_sha', 'e' * 40), ('head', 'e' * 40), ('base', 'e' * 40),
+                                 ('components', [] if plan is app else [{'kind': 'astro'}]),
+                                 ('repository_id', True)):
+                bad = copy.deepcopy(needs)
+                bad['baseline']['outputs']['plan'] = json.dumps({**plan, field: value})
+                with self.subTest(profile=plan['profile'], field=field), self.assertRaises(ValueError):
+                    baseline.aggregate(plan, bad)
+            for job in plan['required_jobs']:
+                for source in (None, '', 'main', 'e' * 40):
+                    bad = copy.deepcopy(needs)
+                    if source is None:
+                        del bad[job]['outputs']['source_sha']
+                    else:
+                        bad[job]['outputs']['source_sha'] = source
+                    with self.subTest(profile=plan['profile'], job=job, source=source), self.assertRaises(ValueError):
+                        baseline.aggregate(plan, bad)
+            for outputs in (None, [], 'invalid'):
+                bad = copy.deepcopy(needs); bad['baseline']['outputs'] = outputs
+                with self.subTest(outputs=outputs), self.assertRaises(ValueError):
+                    baseline.aggregate(plan, bad)
 
     def test_mixed_complete_workspace_and_second_component_failure(self):
         f = ApplicationFixture(self.directory / 'mixed', kinds=(('astro', 'a'), ('rust', 'z')))
@@ -915,6 +989,11 @@ class ApplicationTests(unittest.TestCase):
             admitted = read_outputs()
             self.assertEqual(admitted['result_name'], 'CI')
             os.environ['BASELINE_PLAN'] = admitted['plan']
+            for stage in ('preflight', 'install', 'static', 'tests'):
+                before = len(calls)
+                with self.subTest(stage=stage), self.assertRaisesRegex(ValueError, 'job plan differs'):
+                    baseline.staged_main(SimpleNamespace(stage=stage), self.f.root, event, [self.f.entry], 'e' * 40)
+                self.assertEqual(len(calls), before)
             baseline.staged_main(SimpleNamespace(stage='preflight'), self.f.root, event, [self.f.entry], 'd' * 40)
             baseline.staged_main(SimpleNamespace(stage='install'), self.f.root, event, [self.f.entry], 'd' * 40)
             baseline.staged_main(SimpleNamespace(stage='static'), self.f.root, event, [self.f.entry], 'd' * 40)
@@ -924,14 +1003,20 @@ class ApplicationTests(unittest.TestCase):
             failing[0] = False
             baseline.staged_main(SimpleNamespace(stage='tests'), self.f.root, event, [self.f.entry], 'd' * 40)
             tests = read_outputs()['receipt']
-            needs = {'baseline': {'result': 'success'}, 'static': {'result': 'success', 'outputs': {'receipt': static}},
-                     'tests': {'result': 'success', 'outputs': {'receipt': tests}}}
+            needs = successful_needs(json.loads(admitted['plan']), static=static, tests=tests)
             os.environ['BASELINE_NEEDS'] = json.dumps(needs)
+            with patch.object(sys, 'stdout', io.StringIO()) as logged, self.assertRaises(ValueError):
+                baseline.staged_main(SimpleNamespace(stage='finalize'), self.f.root, event, [self.f.entry], 'e' * 40)
+            self.assertEqual(logged.getvalue(), '')
             with patch.object(sys, 'stdout', io.StringIO()) as logged:
                 baseline.staged_main(SimpleNamespace(stage='finalize'), self.f.root, event, [self.f.entry], 'd' * 40)
             self.assertEqual(json.loads(logged.getvalue())['head'], self.f.head)
             self.assertEqual(json.loads(logged.getvalue())['required_results'], {'baseline': 'success', 'static': 'success', 'tests': 'success'})
             self.assertNotIn('fixture-api-only', logged.getvalue())
+            api.live['head']['sha'] = 'e' * 40
+            with self.assertRaisesRegex(ValueError, 'head.*moved'):
+                baseline.staged_main(SimpleNamespace(stage='finalize'), self.f.root, event, [self.f.entry], 'd' * 40)
+            api.live['head']['sha'] = self.f.head
             api.base = 'e' * 40
             with self.assertRaisesRegex(ValueError, 'base branch moved'):
                 baseline.staged_main(SimpleNamespace(stage='finalize'), self.f.root, event, [self.f.entry], 'd' * 40)

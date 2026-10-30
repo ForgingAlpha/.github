@@ -1,13 +1,12 @@
 # Organization baseline Fact Contract
 
-Status: PROPOSED derived contract, authored for applicable-profiles-completion-20261029.
-This text is not an independently validated Fact Gate, governing amendment, runtime
-assignment, consumer enrollment or activation. Its governing source is `.github`
-commit `97a8a94c884f43c039278d117d0d9313d1465ec9`: REQ-001–004, REQ-008–011,
-REQ-024–026 and Architecture's Organization-required baseline pilot, Full application
-profiles and producer transitions, language profiles, and Selected Container
-Foundation Source sections. Conflicts return to those owners; this contract cannot
-change their scope. No PROJECT.md exists at that baseline; no local override is inferred.
+This derived implementation contract follows the current owning
+[Intent](../../docs/intent.md), [Requirements](../../docs/requirements.md) and
+[Architecture](../../docs/architecture.md), including protected-main source
+adoption, exact execution evidence and human-reviewed recovery. It does not grant
+runtime assignments, consumer enrollment or hosted settings authority. Source
+on protected human-merged main is active; task-branch changes remain candidates.
+No PROJECT.md exists in this repository; no local override is inferred.
 
 ## Ownership and source precedence
 
@@ -165,8 +164,9 @@ present. Absence of files, an Astro label or static-site output alone establishe
 neither exemption nor container obligation. The broad application wording in Selected
 Container Foundation Source must be reconciled against the actual consumer's scope;
 unresolved applicability blocks that consumer, not independent source preparation.
-No new foundation exemption is adopted by this proposed contract. Existing catalog
-admission/release and pinned-source withdrawal/rollback obligations remain unchanged.
+No new foundation exemption is adopted by this contract. Catalog eligibility follows
+its human-reviewed merge into main; the exact checking checkout supplies the catalog.
+Human-reviewed recovery discloses any restored or withdrawn approvals.
 
 ## Fixed checking composition
 
@@ -179,8 +179,11 @@ semantics. This preserves observed legacy behavior for unknown/unmigrated caller
 not a claim that its existing merge-route defect satisfies governing policy. The
 legacy guard permits dev-to-main for staged products and rejects staging-to-main;
 that drift remains explicitly unresolved until authoritative affected route bindings
-exist. Central schema-2 admission must not inherit that wrong behavior. Wrappers keep their existing changed/all Actions-safety choice and `@v1`
-common calls. There is no omit-common input, new `$/` syntax, nested-local-action
+exist. Central schema-2 admission must not inherit that wrong behavior. Wrappers keep their existing changed/all Actions-safety choice and canonical literal
+`@main` common calls. Retain each job’s native resolved Action commit. Same-ref reuse
+is inferred for the normal inspected runner acquisition path; deployed cache modes
+remain unqualified, and local/SHA candidate parents with nested live main do not
+establish a coherent candidate. There is no omit-common input, new `$/` syntax, nested-local-action
 workaround, YAML execution engine or new parser dependency.
 
 Central composition is fixed source code with explicit consumer root/cwd. Reuse
@@ -190,7 +193,7 @@ block to its existing owner's shell helper and preserve wrapper invocation seman
 any such extra file scope must be bound in the implementation Brief before Build.
 Do not copy a second policy implementation into baseline.py. External Actions retain
 full SHA pins and reviewed comments. Central transitive local helpers must never
-resolve a moving sibling @v1, including hidden nested `uses` or script downloads.
+resolve a moving remote sibling, including @main, including hidden nested `uses` or script downloads.
 
 The common job runs the following once, before product jobs, with exact head/base:
 
