@@ -10,8 +10,11 @@ tags:
 
 `.github` and `control-plane` are main-only control planes. Every change lands
 through a pull request with required `CI` and authorized-human
-approval of the exact current revision. Application repositories use
-feature/worktree branches into protected `dev`; `main` is the deployed branch.
+approval of the exact current revision. Every repository supports feature/worktree
+PRs directly to protected `main`. Applications may also use protected `dev` for
+integration and a separate human-approved `dev` to `main` promotion. Dev presence
+does not make that route mandatory, and staging is not required. Active shared
+source, actual product deployment and runtime qualification remain distinct facts.
 
 The shared policy action uses the runner-provisioned Python 3/PyYAML parser for
 bounded YAML frontmatter, rejecting malformed syntax and duplicate keys. It
@@ -55,6 +58,37 @@ merge queues; automation receives no persistent-branch update bypass.
 Approval does not schedule a merge. A human executes it under the owning
 repository's protected procedure. Hosted settings, caller enrollment and
 credentials are verified separately from this source contract.
+
+### Uniform proposal targets
+
+Under REQ-027, ordinary caller and central admission use the same supported targets:
+protected main and optional protected dev. Branch existence does not select a
+mandatory route, and an ordinary non-dev main proposal is not interpreted as a
+security projection. A same-repository dev-to-main promotion binds its complete
+candidate and current source/target revisions; admission performs no branch write.
+The control-plane proposal procedure owns agent-openable proposal sources and
+the human approval/merge boundary.
+
+The existing central enrollment owner selects repository identity and protected
+targets. Main-only enrollment includes main without inventing dev; optional-dev
+enrollment declares the actual qualified targets. The enrollment schema, admission
+plan and all plan consumers change coherently. An integration-only qualification
+target is an incomplete migration, not proof of final main coverage. The transition
+preserves profile completeness, unique result ownership, review policy,
+runtime/foundation integrity and the exact
+resolved checking source. No consumer-side route registry or branch-presence
+heuristic substitutes for this source-owned selection. Retired staged/direct route
+representations are removed after their surviving provenance and product obligations
+are reconciled at the existing owners; a compatibility mode is not the final state.
+
+Security classification and projection remain separate claims under REQ-013/014.
+Their trusted metadata workflows retain the exact source, App, attestation, patch,
+current-base and human-merge evidence. Ordinary candidate build/test execution
+receives no privileged security credential. Before a route guard or local caller
+is removed, its owner proves that every required security verifier, workflow-run
+wake, push observer and result/protection consumer remains enforced. The central
+pull-request workflow alone does not prove those event contracts. Source adoption
+does not change existing enrollment, settings, branches or deployment infrastructure.
 
 ### Organization-required baseline pilot
 
@@ -492,7 +526,8 @@ digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
 after three, seven, and thirty days respectively. Renovate proposes a pull
-request into protected code-repository `dev`; a human merges it after exact-head
+request into the repository's protected default branch, main or optional dev;
+a human merges it after exact-head
 `CI` and applicable approval. Root bot and platform auto-merge are explicitly
 disabled. The central validator admits only the defined policy shapes, and
 consumer configurations cannot override them. Main-only control-plane updates target
@@ -506,8 +541,32 @@ repository. It also validates the applicable central preset and local coverage,
 Dependabot configuration, annotated literals, and exactly one owner per
 detected surface.
 
-Security classification never depends on a Dependabot-triggered workflow having
-access to an Actions secret. The unprivileged pull-request CI run is only a wake
+Security-only Dependabot updates use the repository's protected default branch,
+main or optional dev. The existing update-policy binding owns this target; CI
+enrollment does not change it. A default change reconciles both normal and security
+updater targets, hosted settings and affected source before qualification. Every
+eligible security source uses the common exact classification and patch proof
+below. A direct-main proposal does not manufacture a dev merge or projection;
+a separate-dev source additionally uses the cross-branch projection path. Both
+retain current-base CI, scanning, exact-head human approval and human execution
+of the merge. Existing enrolled proof consumers remain required until their
+qualified replacements preserve the applicable evidence and event paths.
+
+The trusted caller binds the source branch from that owned configuration and
+passes it consistently to preflight, classification and source observation.
+Only protected main or dev is eligible; a candidate branch name, label or workflow
+input cannot select an unqualified source or weaker proof. At the recorded
+implementation baseline `21a0b865`, Python source-proof operations accept a
+source-branch parameter, but the
+classification wrapper defaults to dev and there is no direct-source observation
+wrapper. Those are implementation and qualification obligations, not evidence that
+main-only security delivery already works. Existing authorized security credentials
+and environment restrictions remain in force. This route adds no grant or credential
+exposure; unavailable rights or trusted execution stop that security flow rather
+than moving its secret into ordinary CI.
+
+Security classification never depends on a Dependabot-triggered
+workflow having access to an Actions secret. The unprivileged pull-request CI run is only a wake
 for a default-branch `workflow_run` job. Before entering an environment or
 minting an App token, that job validates the exact CI workflow path, run,
 repository, same-repository Dependabot pull request, current base and head, and
@@ -541,8 +600,8 @@ agent launcher. A human performs the normal two-parent source merge after
 classification, required checks and applicable approval. The unprivileged
 preflight does not read vulnerability alerts and is not full classification.
 
-Production remediation is a separate exact-patch projection, not a `dev` branch
-promotion. A trusted projector re-proves the merged Dependabot source PR,
+For a separate-dev source, production remediation uses an exact-patch projection
+instead of a dev branch promotion. A trusted projector re-proves the merged Dependabot source PR,
 classification App, recorded source merger and merge time, exact source base and head, and complete
 OPEN or FIXED GHSA set. It accepts only the enrolled repository profile's
 dependency manifest and lock paths. The authoritative source base is the first
@@ -623,11 +682,23 @@ checks the merge and current ref. The ordinary push-triggered deployment binds
 itself to and reports that exact revision; it may begin concurrently and is not
 represented as gated by this observation.
 
+For a direct-main security merge, the corresponding read-only observer binds the
+actual main push, merged source pull request and current main ref, then re-proves
+the source classification and recorded human merge through the common source-proof
+implementation. It verifies the classified base and head, classification time,
+ordered merge parents, source-head tree, approved manifest-and-lock patch and
+official advisory association. It does not use the projection-only attestation or
+create missing classification after the fact. Where the product requires deployment,
+the ordinary deployment records that exact main merge revision and tree; it may
+begin concurrently with observation. A shared-source main merge establishes active
+source, not a product deployment or an additional post-merge activation gate.
+
 Quality, CodeQL, current-base, deletion, non-fast-forward, and merge-shape rules
 remain in no-bypass rulesets. Security and updater identities have no branch
 merge or direct-push authority. Consumer enrollment must prove the exact
-classification, projection, checks, caller serialization, credential boundary,
-human merge and deployment chain. Source publication does not establish that
+source classification, checks, caller serialization, credential boundary and human
+merge; separate-dev production additionally proves projection. Each product retains
+its applicable deployment evidence. Source publication does not establish that
 enrollment or change existing hosted settings and queued work.
 
 Privileged jobs process trusted GitHub metadata only. They never check out,
@@ -652,7 +723,8 @@ proven inactive are deleted rather than enrolled in Renovate. The
 updater-coverage gate rejects new unmanaged version literals and stale
 exceptions.
 
-Advisory audits run daily against application `dev` and deployed `main`.
+Advisory audits run daily against the applicable integration and deployed refs;
+main-only repositories need no invented dev ref or duplicate audit of the same revision.
 Turnkey retains one weekly Ubuntu sentinel for independent runner and timing
 diversity; it is diagnostic and never a merge requirement.
 

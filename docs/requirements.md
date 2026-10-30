@@ -148,8 +148,9 @@ derived projections rather than independent owners.
 Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
 of three days for patches, seven days for minors, and thirty days for majors.
 
-**Fit:** Eligible patch, minor, and major proposals target a code repository's
-protected `dev`; an authorized human merges them after exact-head `CI` and
+**Fit:** Eligible patch, minor, and major proposals target the repository's
+protected default branch, `main` or optional `dev`; an authorized human merges them
+after exact-head `CI` and
 applicable approval. Renovate and platform auto-merge are disabled, including
 policy overrides. Runtime and tool changes use the same path after their exact generated
 locks and integrity data pass CI. Main-only control-plane updates merge through
@@ -157,13 +158,38 @@ protected `main` only after their complete control-plane gates pass.
 
 ### REQ-013 - Immediate Security Updates
 
+Security-only Dependabot proposals MAY target the repository's protected default
+`main` directly, including when an optional `dev` exists. Every eligible security
+source proposal, targeting protected `main` or `dev`, SHALL satisfy the common
+classification, exact-patch, current-base, CI, CodeQL and human-merge obligations
+below. Direct-to-main delivery SHALL NOT require a second source merge or a
+cross-branch production projection. Ordinary admission SHALL NOT represent any
+proposal as classified or projected security evidence.
+
+The target branch SHALL be bound to the repository's protected default branch by
+the existing update-ownership contract. CI enrollment does not change that default
+or updater target. Changing that default SHALL reconcile both normal and security
+updater targets, source and hosted settings, and qualify the resulting flow before
+reliance. The trusted caller and proof SHALL bind the actual source
+branch, repository, pull request, base and head; branch existence or an untrusted
+proposal field SHALL NOT select a weaker proof. Existing enrolled security consumers
+SHALL retain their proof obligations until their successor flow is reconciled and
+qualified. Missing classification capability or evidence leaves security eligibility
+unproved; changing ordinary PR admission SHALL NOT bypass that failure.
+
+The direct route grants no security-App credential, new credential exposure,
+bypass or merge authority. It SHALL use only the already authorized security
+boundary and required least-privilege capabilities; unavailable prerequisites stop
+the affected security flow. A separate-dev source additionally requires the
+cross-branch projection obligations below before production delivery.
+
 Only a Dependabot pull request with a re-provable official GitHub
 vulnerability-alert association and a trusted automation-App classification
 check bound to its exact source base, exact current head, complete associated
 OPEN or FIXED GHSA set, and approved manifest-and-lock change SHALL be treated
-as eligible for security-patch projection. Eligible security updates
+as eligible security remediation. Eligible security updates
 SHALL bypass normal cooldown. An authorized human SHALL perform the source
-merge into protected `dev` only after that exact head passes its classification,
+merge into the bound protected source branch only after that exact head passes its classification,
 required `CI`, CodeQL, and applicable approval. Trusted
 exact-head CI SHALL succeed. Trusted aggregate CodeQL SHALL succeed except that
 its terminal neutral result MAY be accepted only after exact source
@@ -239,6 +265,19 @@ compare the pre-fix blobs and modes for both `package.json` and
 `package-lock.json` against current `main`, even when a transitive-only fix
 changes only the lock.
 
+A direct-main security merge SHALL preserve the same immutable classified source
+chain and supported merge shape, with `main` as its source and production branch.
+Read-only source observation SHALL re-prove that exact merged pull request, its
+pre-merge classification, observed human merger, ordered parents, source-head tree
+and official advisory association. It SHALL NOT manufacture a projection
+attestation or retroactively create missing classification. Its exact merged
+revision remains subject to the applicable deployment evidence in REQ-014.
+
+Concurrent ordinary changes to the production manifest or lock SHALL NOT relax
+the separate-dev projection's exact-preimage requirement. A mismatch stops that
+projection until the source and current production base can be reconciled through
+their human-reviewed change paths and the required proof is re-established.
+
 **Fit:** Stale native auto-merge state and retired security routing labels are
 ineligible and fail closed.
 A changed source head, untrusted merge identity, incomplete or changed GHSA set,
@@ -256,9 +295,9 @@ repository, target branch, and lock path. Enrollment SHALL fail until that
 caller-side serialization is installed. Lock ownership proof SHALL reject an
 incomplete, capped, mismatched, or duplicate pull-request file enumeration.
 
-### REQ-014 - Verified Projection And Exact-SHA Deployment
+### REQ-014 - Verified Security Delivery And Exact-SHA Deployment
 
-A security production pull request SHALL receive fresh strict `main`-target CI
+A projected security production pull request SHALL receive fresh strict `main`-target CI
 and CodeQL on its exact current head and base. Read-only verification SHALL
 independently reconstruct the expected patch, re-prove source and alert
 provenance, verify the exact trusted check runs, and reject armed native
@@ -267,18 +306,24 @@ merge under the owning repository's protected procedure. Quality and scanning
 requirements SHALL have no automation bypass. Creating the draft projection
 SHALL NOT require approval or checks that can exist only after its creation.
 
-The deployed revision SHALL be the exact resulting `main` merge revision and
-tree. The source Dependabot head, its `dev` merge, the production preimage, the
-projected head, the resulting `main` merge, and the deployment SHALL remain one
-traceable immutable chain; they are not required to share one commit SHA.
+Where the product has a deployment obligation, its deployed revision SHALL be
+the exact resulting `main` merge revision and tree. A separate-dev security flow
+SHALL preserve the source Dependabot head, its `dev` merge, production preimage,
+projected head, resulting `main` merge and deployment as one traceable immutable
+chain; those revisions are not required to share one commit SHA. A direct-main
+flow SHALL preserve its classified base and head, actual human merge and applicable
+deployment without adding fictitious intermediate revisions. Shared-source
+activation under REQ-005 is not evidence of a product deployment.
 
 **Fit:** The recorded source head/base or current production head/base moving or
 mismatching before merge fails closed; later unrelated `dev` movement does
-not. Post-merge observation binds the actual push revision and merged pull
+not. For a projection, post-merge observation binds the actual push revision and merged pull
 request to its trusted projection attestation, verifies current `main`, ordered
 parents and expected tree, and performs no mutation. The independently triggered
 deployment binds itself to and reports that exact `main` push revision and may
-begin concurrently; post-merge observation is not its admission gate.
+begin concurrently; post-merge observation is not its admission gate. Direct-main
+security observation uses the source proof in REQ-013. Ordinary non-security
+merges make neither security claim and need no security attestation.
 A deployment failure remains visible for
 governed retry or roll-forward; automation does not silently roll back to a
 vulnerable revision.
@@ -287,8 +332,9 @@ vulnerable revision.
 
 ### REQ-015 - Protected Branches And Refs
 
-Application `dev` SHALL require pull requests and `CI`. Application `main`,
-deployment refs, and control-plane release tags SHALL reject untrusted direct
+Every repository's protected `main` and optional protected `dev` SHALL require
+pull requests and applicable complete `CI`. Those branches, deployment refs,
+and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
 
 **Fit:** Independent no-bypass rules enforce required CI, CodeQL, current-base
@@ -582,3 +628,34 @@ actionable remediation. Bootstrap reuses existing checking implementations only
 where their behavior satisfies this boundary. It does not execute consumer
 helpers or weaken normal product validation. Transition to an application
 profile requires explicit enrollment and its meaningful product checks.
+
+### REQ-027 - Uniform Proposal Admission
+
+Shared admission SHALL allow authored task-branch proposals to protected `main`
+whether or not `dev` exists, and to protected `dev` where it is used. It SHALL
+support same-repository existing `dev` to `main` promotion without requiring
+staging. Admission SHALL preserve complete applicable checks, current-base
+protection, exact-revision human approval and human execution of every merge;
+admitting a proposal to checks SHALL NOT confer merge or persistent-branch-write
+authority.
+
+Central enrollment SHALL support main-only and optional-dev repositories without
+requiring a staging declaration, branch or environment. Target selection SHALL
+remain explicit and centrally owned, preserving repository identity, complete
+profile, result-producer, review, runtime and foundation obligations. An absent
+application input SHALL NOT select a lighter profile. Ordinary proposals SHALL
+NOT need security-projection proof simply because their source is not `dev`.
+Actual security classifications and projections SHALL retain REQ-013/014's
+separate proof and credential boundaries.
+
+The obsolete dev-first and staged route enforcement SHALL be retired through a
+qualified replacement preserving REQ-022 and REQ-025. Existing enforcement that
+contradicts this admission contract remains an unresolved implementation
+obligation until replaced; adoption of this source alone does not resolve it.
+
+**Fit:** A task PR to `main` runs the complete required profile in both a main-only
+repository and a repository with `dev`. Optional task-to-dev and dev-to-main paths
+run their applicable complete checks. Missing staging is not an admission failure.
+An invalid security claim does not acquire a verified classification or projection
+through ordinary admission. Retiring legacy route modes or callers preserves every
+still-applicable security, event, result and product-check obligation under REQ-025.
