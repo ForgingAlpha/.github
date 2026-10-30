@@ -11,7 +11,7 @@
 #       timeout-minutes: 10
 #       steps:
 #         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-#         - uses: ForgingAlpha/.github/actions/ci-github-actions@v1
+#         - uses: ForgingAlpha/.github/actions/ci-github-actions@main
 
 name: CI GitHub Actions
 description: "GitHub Actions CI: actionlint + shared workflow safety policy"

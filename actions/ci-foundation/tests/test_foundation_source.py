@@ -358,11 +358,11 @@ class FoundationAdmissionTest(unittest.TestCase):
     def test_policy_withdrawal_and_explicit_old_policy_restoration(self):
         self.assertEqual(self.run_gate().returncode, 0)
         self.write_catalog([])
-        result = self.run_gate(env_extra={"FOUNDATION_ACTION_REF": "v1"})
+        result = self.run_gate(env_extra={"FOUNDATION_ACTION_REF": "main"})
         self.refused(result)
         receipt = json.loads(result.stdout)
         self.assertEqual(receipt["result"], "refused")
-        self.assertEqual(receipt["action_ref"], "v1")
+        self.assertEqual(receipt["action_ref"], "main")
         self.assertEqual(receipt["lock_sha256"], hashlib.sha256(self.raw).hexdigest())
         self.assertEqual(receipt["policy_catalog_sha256"],
                          hashlib.sha256((self.trusted / "approved.json").read_bytes()).hexdigest())
@@ -412,14 +412,14 @@ class FoundationAdmissionTest(unittest.TestCase):
         (startup / "sitecustomize.py").write_text(
             "from pathlib import Path\nPath(" + repr(str(self.sentinel)) + ").touch()\n")
         env = dict(os.environ, GITHUB_ACTION_PATH=str(trusted_owner), UPDATE_POLICY_DEFAULT_BRANCH="main",
-                   FOUNDATION_ACTION_REF="v1", PYTHONPATH=str(startup))
+                   FOUNDATION_ACTION_REF="main", PYTHONPATH=str(startup))
         def run():
             return subprocess.run(["bash", "-c", command], cwd=self.consumer,
                                   env=env, capture_output=True, text=True, timeout=15)
         result = run()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.sentinel.exists(), "checkout Python startup executed before admission")
-        self.assertEqual(json.loads(result.stdout.splitlines()[-1])["action_ref"], "v1")
+        self.assertEqual(json.loads(result.stdout.splitlines()[-1])["action_ref"], "main")
         saved_payload = self.area / "saved-payload"
         self.payload.rename(saved_payload)
         lock = self.consumer / "foundation.lock"

@@ -1,8 +1,9 @@
 # Automation Operator Checklist
 
 Source publication does not configure GitHub. Verify the exact repository,
-released action revision, callers, permissions and hosted state before enabling
-an effect. Keep deployment and tag-rollout authority separate from PR merges.
+resolved action revision, callers, permissions and hosted state before enabling
+an effect. Source on protected human-merged main is active; product deployment and hosted
+settings retain their own authority.
 
 ## Human Merge Boundary
 
@@ -12,7 +13,7 @@ an effect. Keep deployment and tag-rollout authority separate from PR merges.
 - An applicable authorized human executes every PR merge. Disable repository
   auto-merge and merge queues; cancel previously queued merges. No bot, App or
   workflow receives a persistent-branch update or merge bypass.
-- Inventory consumer workflows before releasing changed action interfaces.
+- Inventory consumer workflows before merging changed action interfaces.
   Reconcile callers, queued runs and credentials of removed merge automation.
   Remove unused merge credentials only after verifying their consumers; retain
   separately authorized proposal, tag and deployment identities.
@@ -22,23 +23,37 @@ an effect. Keep deployment and tag-rollout authority separate from PR merges.
 - Keep private keys in their scoped secret source and protected environment.
   Agents receive no operator SSH key, personal token or human credential.
 
-## Shared Checks And Rollout
+## Shared Checks, Main Source And Recovery
 
+- Require complete exact-head CI, coherent candidate and affected-consumer checks,
+  and authorized human review before the human source merge. Main membership
+  makes the shared source active. Keep post-merge failures visible; there is no
+  tag promotion, recurring source repin or post-merge source acceptance.
+- Preserve all external Action SHA pins, license/vulnerability checks and exact
+  runtime/foundation catalogs and locks. Internal callers use canonical
+  `ForgingAlpha/.github` spelling with literal `@main`. Inventory and migrate thin
+  consumer references through their own reviewed PRs; local inventory does not
+  prove hosted organization coverage or completed migration.
+- Retain defining workflow SHA or native per-job Action acquisition SHA, consumer
+  revision, source fingerprints and outcome. A latest-main provenance lookup is
+  dependency-source evidence, not an executed-source receipt. Qualify actual
+  dependency-review main record shape and deployed runner/cache behavior before
+  claiming universal composite coherence. Do not validate a local/SHA candidate
+  parent against nested live-main helpers as if they were the same candidate.
 - Confirm dependency graph, dependency review and the required Code Security
-  entitlement in private consumers. Qualify the gate with actual PR dependency
-  output before requiring it.
-- Keep `V1_ROLLOUT_ENABLED` absent or false until the exact candidate and release
-  controls are qualified. Verify merged-commit `CI`, current `main`, and the
-  applicable version-coherent consumer gate before enabling `v1` movement.
-- Protect `v1`, `v1-rollout-*` and `v1-rollback-*` against unauthorized creation,
-  update and deletion. Grant tag writes only to the scoped rollout identity
-  and operator; this grants no persistent-branch update authority.
-- Create and verify the protected `v1-rollback` environment before use. GitHub
-  must not auto-create an unprotected environment on first execution.
-- Observe atomic leased `v1` movement with its immutable rollout record. Exercise
-  rollback only between eligible recorded rollouts; verify stale CI reruns
-  cannot re-advance a superseded commit. Retain the prior qualified deployment
-  until the candidate's consumer checks pass.
+  entitlement in private consumers. Qualify actual PR dependency output before
+  requiring the gate. Unknown records and API failures refuse without tag fallback.
+- Recover shared source with a checked corrective or revert PR, exact-head human
+  approval and human merge into main. Retain before/after commits, affected runs
+  and outcomes. A whole-policy revert can restore withdrawn catalog approvals;
+  disclose that effect and choose a forward fix when withdrawal must persist.
+- Retired v1 promotion/rollback workflows do not write tags or select fallback
+  source. Preserve historical refs and evidence; source retirement grants no tag
+  deletion/movement, credential change or protection write authority.
+- Main-only repositories use feature/worktree -> PR -> main. Applications use
+  feature/worktree -> PR -> dev -> release PR -> main. Every merge is human.
+  No current standard requires staging; reconcile any explicit contrary route
+  with its owner before changing that source or its hosted branches.
 
 ## Security Classification And Projection
 
@@ -101,7 +116,7 @@ an effect. Keep deployment and tag-rollout authority separate from PR merges.
   temporary exceptions with scope, owner, approval revision and expiry.
 
 Agents prepare reviewable source and commands. Humans perform PR merges,
-credential and ruleset changes, rollout enablement and protected rollback.
+credential and ruleset changes, consumer settings transitions and source recovery.
 
 ## Organization-Required Documentation Pilot
 
@@ -110,17 +125,21 @@ operator path; an agent must not borrow a human browser session or credential to
 perform reserved protection writes. Preserve the existing status, scanning, review,
 update, deletion and non-fast-forward requirements throughout.
 
-1. After the human source merge, verify the exact current `.github/main` commit and
-   successful approved push `CI`. Bind the workflow selector to that eligible source
-   and `.github/workflows/org-baseline.yml`; do not select an unmerged candidate or
-   move `v1` to activate this pilot. Capture existing rules and expected-old state.
+1. Verify the exact current human-merged `.github/main` source and pre-merge check/
+   review evidence. For the one authorized selector transition, capture and compare
+   the complete current rule against expected-old state. Replace only its shared
+   workflow source selector with `main`, preserving workflow path, repository and
+   branch selectors, CI App binding, strictness, bypasses, creation flags and all
+   inherited controls. Stop on stale or unknown state; read back an outcome-unknown
+   save before any retry. Verify the full saved rule and effective dev/main rules.
+   Future human main merges do not require selector repins or source activation.
 2. Select only repository and branch identities explicitly enrolled by the qualified
    central source and the task's authorized target scope recorded under this
    procedure. The source catalog
    selects repository ID `1420939261` (`ForgingAlpha/layas-learning-lab-site`) and
    branches `dev` and `main`. Preserve the existing qualified `dev` selector while
    completing the profile's required pilot cases. Select the additional `main`
-   target only from a human-merged, green source, and qualify its actual target
+   target only from a human-merged, checked source, and qualify its actual target
    context before reliance. Other repositories or branches need separately approved
    source enrollment and qualification. Exclude the
    defining `.github` repository. Its skipped non-consumer
@@ -146,17 +165,15 @@ update, deletion and non-fast-forward requirements throughout.
    `CI` and satisfies the selected required workflow. The skipped source run does
    not establish target job-name evaluation. Exercise valid pass, deliberate invalid block and repair
    pass, including attempted consumer skip, executable config and application input.
-6. Qualify controlled source A to human-reviewed/human-merged B and restoration to
-   the previously qualified A. On restoration observe both valid pass and known
-   invalid block. Failed, cancelled, skipped or unexecuted runs are not recovery.
-   Serialize selector saves against captured expected-old settings and read back
-   an outcome-unknown save before retrying. Preserve all preexisting protections.
-   If the initial new rule cannot execute and no source A has qualified yet,
-   restore the exact captured pre-pilot rule configuration through the authorized
-   protected operator path. Verify that readback and every original protection;
-   do not remove or waive an existing requirement to manufacture a pass. Reconcile
-   an outcome-unknown restoration before retrying. This initial-failure recovery
-   is separate from restoration between already qualified sources.
+6. Qualify source recovery through a checked human-reviewed corrective or revert
+   PR and human merge into main, recording the new exact commit and affected valid
+   pass and known-invalid block outcomes. Failed, cancelled, skipped or unexecuted
+   runs are not recovery. Keep main as the active selector; do not repin a historical
+   source or move a tag. If the initial consumer settings transition fails, restore
+   its exact captured pre-transition configuration through the separately authorized
+   human path. Compare expected-old state, reconcile an outcome-unknown save before
+   retrying, and read back every original protection. Settings restoration is separate
+   from shared source recovery and cannot waive existing required checks.
 7. Retain exact saved configurations, source/consumer SHAs, API/check identities,
    findings and recovery records. Bind qualification to the profile and shared
    behavior exercised. Before additional enrollment, verify that profile's
@@ -226,12 +243,12 @@ The current source catalogs are unchanged. Actual Rust backend/lock/tool selecti
 consumer route/foundation/review scope and hosted results still need their own evidence.
 The existing legacy guard drift and numeric-tool update-coverage gap remain explicit.
 
-The retained Q6 source B is adopted `97a8a94c884f43c039278d117d0d9313d1465ec9`:
+The historical retained Q6 source B was adopted `97a8a94c884f43c039278d117d0d9313d1465ec9`:
 its baseline job produces bootstrap `CI`. This candidate moves `CI` to the final
-result job and names the common job `Organization Baseline`. Keep the current live
-binding unchanged. A future human-merged source and new source activation must
-explicitly reconcile that topology with required checks and restoration expectations,
-then qualify both check identities on the exact target. Existing Q6 results cannot
+result job and names the common job `Organization Baseline`. The one authorized consumer selector transition must reconcile
+that topology with required checks and restoration expectations, then qualify both
+check identities on the exact target. Source on main is already active after human
+merge; consumer settings qualification is a separate obligation. Existing Q6 results cannot
 prove the candidate topology.
 
 Before any application enrollment, execute the actual pinned mise setup, owned locked

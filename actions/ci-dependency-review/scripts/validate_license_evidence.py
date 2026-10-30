@@ -30,12 +30,12 @@ GITHUB_ACTION_PURL = re.compile(
 )
 FIRST_PARTY_ACTION_PURL = re.compile(
     r"^pkg:githubactions/ForgingAlpha/\.github/actions/"
-    r"([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)@1\.%2A\.%2A$"
+    r"([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)@main$"
 )
 FIRST_PARTY_REPOSITORY = "ForgingAlpha/.github"
 FIRST_PARTY_SOURCE_URL = "https://github.com/ForgingAlpha/.github"
-FIRST_PARTY_VERSION = "1.*.*"
-FIRST_PARTY_REF_ENDPOINT = "https://api.github.com/repos/ForgingAlpha/.github/git/ref/tags/v1"
+FIRST_PARTY_VERSION = "main"
+FIRST_PARTY_REF_ENDPOINT = "https://api.github.com/repos/ForgingAlpha/.github/git/ref/heads/main"
 GITHUB_API_VERSION = "2026-03-10"
 LICENSE_LOOKUP_LIMIT = 20
 LICENSE_LOOKUP_TIMEOUT_SECONDS = 10
@@ -170,7 +170,7 @@ def parse_first_party_action_identity(
     match = FIRST_PARTY_ACTION_PURL.fullmatch(package_url)
     if not match:
         raise EvidenceError(
-            f"First-party GitHub Action package URL is outside the governed v1 family: {package_url!r}."
+            f"First-party GitHub Action package URL is outside the governed main family: {package_url!r}."
         )
 
     action_directory = match.group(1)
@@ -547,31 +547,33 @@ def fetch_github_json(endpoint: str, token: str, subject: str) -> Any:
         ) from error
 
 
-def fetch_first_party_release_tree(token: str) -> tuple[str, tuple[dict[str, Any], ...]]:
-    ref_payload = fetch_github_json(FIRST_PARTY_REF_ENDPOINT, token, "the first-party v1 channel")
-    if not isinstance(ref_payload, dict) or ref_payload.get("ref") != "refs/tags/v1":
-        raise EvidenceError("First-party v1 lookup returned an invalid reference.")
+def fetch_first_party_main_tree(token: str) -> tuple[str, tuple[dict[str, Any], ...]]:
+    ref_payload = fetch_github_json(FIRST_PARTY_REF_ENDPOINT, token, "the first-party main channel")
+    if not isinstance(ref_payload, dict) or ref_payload.get("ref") != "refs/heads/main":
+        raise EvidenceError("First-party main lookup returned an invalid reference.")
     ref_object = ref_payload.get("object")
     if not isinstance(ref_object, dict) or ref_object.get("type") != "commit":
-        raise EvidenceError("First-party v1 must be a lightweight tag pointing directly to a commit.")
+        raise EvidenceError("First-party main must point directly to a commit.")
     commit_sha = ref_object.get("sha")
     if not isinstance(commit_sha, str) or not GITHUB_SHA.fullmatch(commit_sha):
-        raise EvidenceError("First-party v1 returned an invalid commit SHA.")
+        raise EvidenceError("First-party main returned an invalid commit SHA.")
 
-    tree_endpoint = (
-        f"https://api.github.com/repos/ForgingAlpha/.github/git/trees/{commit_sha}?recursive=1"
-    )
-    tree_payload = fetch_github_json(tree_endpoint, token, f"first-party v1 commit {commit_sha}")
-    if not isinstance(tree_payload, dict) or tree_payload.get("truncated") is not False:
-        raise EvidenceError("First-party v1 tree is invalid or truncated.")
+    # Snapshot main once; the provider resolves this exact immutable commitish.
+    # All first-party actions in this validation share these two fixed requests.
+    tree_endpoint = f"https://api.github.com/repos/ForgingAlpha/.github/git/trees/{commit_sha}?recursive=1"
+    tree_payload = fetch_github_json(tree_endpoint, token, f"first-party main commit {commit_sha}")
+    tree_sha = tree_payload.get("sha") if isinstance(tree_payload, dict) else None
+    if (not isinstance(tree_sha, str) or not GITHUB_SHA.fullmatch(tree_sha)
+            or tree_payload.get("truncated") is not False):
+        raise EvidenceError("First-party main tree is invalid or truncated.")
     raw_entries = tree_payload.get("tree")
     if not isinstance(raw_entries, list):
-        raise EvidenceError("First-party v1 tree returned no entry list.")
+        raise EvidenceError("First-party main tree returned no entry list.")
 
     entries: list[dict[str, Any]] = []
     for entry in raw_entries:
         if not isinstance(entry, dict):
-            raise EvidenceError("First-party v1 tree contains a malformed entry.")
+            raise EvidenceError("First-party main tree contains a malformed entry.")
         path = entry.get("path")
         entry_type = entry.get("type")
         entry_sha = entry.get("sha")
@@ -584,7 +586,7 @@ def fetch_first_party_release_tree(token: str) -> tuple[str, tuple[dict[str, Any
             or not GITHUB_SHA.fullmatch(entry_sha)
             or (size is not None and (isinstance(size, bool) or not isinstance(size, int) or size < 0))
         ):
-            raise EvidenceError("First-party v1 tree contains a malformed entry.")
+            raise EvidenceError("First-party main tree contains a malformed entry.")
         entries.append(entry)
 
     return commit_sha, tuple(entries)
@@ -593,19 +595,23 @@ def fetch_first_party_release_tree(token: str) -> tuple[str, tuple[dict[str, Any
 def verify_first_party_actions(
     identities: dict[str, FirstPartyActionIdentity], token: str
 ) -> str:
-    commit_sha, entries = fetch_first_party_release_tree(token)
+    commit_sha, entries = fetch_first_party_main_tree(token)
     for identity in identities.values():
         matches = [entry for entry in entries if entry["path"] == identity.action_path]
         if (
             len(matches) != 1
             or matches[0]["type"] != "blob"
-            or matches[0].get("size") == 0
+            or matches[0].get("mode") not in {"100644", "100755"}
+            or not isinstance(matches[0].get("size"), int)
+            or isinstance(matches[0].get("size"), bool)
+            or matches[0]["size"] <= 0
         ):
             raise EvidenceError(
-                f"First-party v1 commit does not contain exactly one released {identity.action_path} blob."
+                f"First-party main commit does not contain exactly one main-source {identity.action_path} blob."
             )
         print(
-            f"✓ Verified first-party provenance for {identity.package_url} at v1 commit {commit_sha}."
+            f"✓ Verified first-party provenance for {identity.package_url} at main snapshot commit {commit_sha}; "
+            f"action blob {matches[0]['sha']}. This is dependency-source evidence, not an execution receipt."
         )
     return commit_sha
 
@@ -829,9 +835,9 @@ def main() -> int:
         return fail(
             str(error),
             "Dependencies require approved third-party license evidence or governed "
-            "first-party release provenance.",
+            "first-party main-source provenance.",
             "Choose a dependency with approved SPDX evidence or correct its governed "
-            "first-party release evidence.",
+            "first-party main-source evidence.",
         )
 
     print("✓ Every introduced or updated dependency has approved dependency evidence.")
