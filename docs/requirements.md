@@ -148,18 +148,23 @@ derived projections rather than independent owners.
 Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
 of three days for patches, seven days for minors, and thirty days for majors.
 
-**Fit:** Eligible patch, minor, and major proposals target the repository's
-protected default branch, `main` or optional `dev`; an authorized human merges them
+**Fit:** Eligible patch, minor, and major proposals follow REQ-027's ordinary
+route: `main` for `.github` and `control-plane`, and `dev` for applications,
+followed by a separate human-merged promotion to `main`. Other classes retain
+their Current declared route. An authorized human merges each proposal
 after exact-head `CI` and
 applicable approval. Renovate and platform auto-merge are disabled, including
 policy overrides. Runtime and tool changes use the same path after their exact generated
 locks and integrity data pass CI. Main-only control-plane updates merge through
-protected `main` only after their complete control-plane gates pass.
+protected `main` only after their complete control-plane gates pass. The existing
+updater/default-branch coupling SHALL be reconciled and qualified wherever its
+configured target conflicts with that route; no default-branch or settings change
+is authorized by this requirement alone.
 
 ### REQ-013 - Immediate Security Updates
 
 Security-only Dependabot proposals MAY target the repository's protected default
-`main` directly, including when an optional `dev` exists. Every eligible security
+`main` directly, including when a separate `dev` exists. Every eligible security
 source proposal, targeting protected `main` or `dev`, SHALL satisfy the common
 classification, exact-patch, current-base, CI, CodeQL and human-merge obligations
 below. Direct-to-main delivery SHALL NOT require a second source merge or a
@@ -332,7 +337,7 @@ vulnerable revision.
 
 ### REQ-015 - Protected Branches And Refs
 
-Every repository's protected `main` and optional protected `dev` SHALL require
+Every repository's protected `main` and any protected `dev` SHALL require
 pull requests and applicable complete `CI`. Those branches, deployment refs,
 and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
@@ -631,31 +636,44 @@ profile requires explicit enrollment and its meaningful product checks.
 
 ### REQ-027 - Uniform Proposal Admission
 
-Shared admission SHALL allow authored task-branch proposals to protected `main`
-whether or not `dev` exists, and to protected `dev` where it is used. It SHALL
-support same-repository existing `dev` to `main` promotion without requiring
-staging. Admission SHALL preserve complete applicable checks, current-base
+Shared admission SHALL follow control-plane ASR-AUTH-005. Authored changes use
+nonpersistent branches in assigned Task Worktrees. `ForgingAlpha/.github` and
+`ForgingAlpha/control-plane` use task-branch proposals to protected `main`.
+Application task branches SHALL target protected `dev`, followed by a separate
+same-repository `dev` to `main` promotion PR. Ordinary application task-to-main
+proposals SHALL be refused, including when `dev` is missing. A missing branch
+SHALL NOT authorize its creation. Neither route SHALL require staging.
+
+Repository class and route SHALL resolve from the Current owning governing
+definition, using PROJECT context where available, not from branch existence.
+Other classes retain their Current declared routes; missing or conflicting
+evidence stops the affected proposal. This contract creates no classification
+registry or new route exception. Admission SHALL preserve complete applicable checks, current-base
 protection, exact-revision human approval and human execution of every merge;
 admitting a proposal to checks SHALL NOT confer merge or persistent-branch-write
 authority.
 
-Central enrollment SHALL support main-only and optional-dev repositories without
+Central enrollment SHALL support the named main-only route and required
+application `dev` integration without
 requiring a staging declaration, branch or environment. Target selection SHALL
 remain explicit and centrally owned, preserving repository identity, complete
 profile, result-producer, review, runtime and foundation obligations. An absent
-application input SHALL NOT select a lighter profile. Ordinary proposals SHALL
-NOT need security-projection proof simply because their source is not `dev`.
-Actual security classifications and projections SHALL retain REQ-013/014's
-separate proof and credential boundaries.
+application input SHALL NOT select a lighter profile. An ordinary proposal on
+its permitted route does not require security-projection proof. A disallowed
+ordinary application task-to-main proposal SHALL NOT use security admission to
+bypass `dev`. Actual security classifications and projections retain
+REQ-013/014's separate eligibility, proof and credential boundaries.
 
-The obsolete dev-first and staged route enforcement SHALL be retired through a
-qualified replacement preserving REQ-022 and REQ-025. Existing enforcement that
+Obsolete staging requirements and legacy route representations SHALL be retired
+through a qualified replacement preserving required application `dev` integration,
+REQ-022 and REQ-025. Existing enforcement that
 contradicts this admission contract remains an unresolved implementation
 obligation until replaced; adoption of this source alone does not resolve it.
 
-**Fit:** A task PR to `main` runs the complete required profile in both a main-only
-repository and a repository with `dev`. Optional task-to-dev and dev-to-main paths
-run their applicable complete checks. Missing staging is not an admission failure.
+**Fit:** A task PR to `main` in either named control repository, an application
+task PR to `dev`, and its `dev` to `main` promotion run their complete applicable
+checks. An ordinary application task PR to `main` fails with or without `dev`.
+Unknown or conflicting class/route evidence fails; missing staging does not.
 An invalid security claim does not acquire a verified classification or projection
 through ordinary admission. Retiring legacy route modes or callers preserves every
 still-applicable security, event, result and product-check obligation under REQ-025.

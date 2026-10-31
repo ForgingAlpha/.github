@@ -32,14 +32,21 @@ jobs:
       - uses: ForgingAlpha/.github/actions/ci-elixir@main
 ```
 
-Main-only control-plane repositories use `push` and `pull_request` on `main`.
-Application repositories use feature/worktree pull requests into protected
+`ForgingAlpha/.github` and `ForgingAlpha/control-plane` use task-worktree branches
+and pull requests to `main`, with `push` and `pull_request` checks on `main`.
+Application repositories use task-worktree branch pull requests into protected
 `dev`, then a release pull request into protected `main`. Every merge is performed
-by an authorized human. No current standard requires staging; an explicitly declared
-contrary route must be reconciled with its product owner before changing it. The legacy merge-flow wrapper still has
+by an authorized human. These routes require no staging. Other repository classes
+retain their Current declared route; resolve class and route from the owning
+governing definition, with PROJECT context where available. Missing or conflicting
+evidence stops the affected proposal. Missing `dev` grants no application
+task-to-main fallback. See [REQ-027](docs/requirements.md#req-027---uniform-proposal-admission).
+The legacy merge-flow wrapper still has
 its known dev-only promotion behavior; central schema-2 admission uses the explicit
-owner-declared route and does not infer it from branch existence. Security remediation uses the narrower exact-patch projection
-described below and never carries unrelated `dev` work. Its CI admission reads
+owner-declared route and does not infer it from branch existence. Security remediation
+retains its separately governed classification and exact-patch proof; a separate-dev
+source additionally requires production projection and never carries unrelated `dev`
+work. Its CI admission reads
 Git objects, pull requests and trusted checks, so callers retain all three
 read-only token scopes shown above.
 
@@ -234,21 +241,27 @@ auto-merge are disabled; classification or a green check does not authorize a me
 
 | Update | Minimum age | Target and merge |
 | --- | ---: | --- |
-| Patch | 3 days | Human-merged PR into protected `dev` |
-| Minor | 7 days | Human-merged PR into protected `dev` |
-| Major | 30 days | Human-merged PR into protected `dev` |
-| Security | No cooldown | Classified source PR, then exact production projection; both human-merged |
+| Patch | 3 days | Human-merged PR to the ordinary target under REQ-027 |
+| Minor | 7 days | Human-merged PR to the ordinary target under REQ-027 |
+| Major | 30 days | Human-merged PR to the ordinary target under REQ-027 |
+| Security | No cooldown | Human-merged classified source PR; separate-dev sources additionally require an exact, human-merged production projection |
 
 Main-only control-plane proposals target protected `main`. Runtime projections
 remain governed by their central assignments and exact locks; the current
 preset disables direct mise, Node-engine and generic lock-maintenance writes.
 Runtime update automation requires a qualified constrained writer.
 
-The security lane classifies an exact Dependabot source, then reconstructs only
-its verified manifest-and-lock patch on current `main` after the human source
-merge. It creates a draft proposal; read-only verification checks that proposal
-before human production approval and merge. It never promotes unrelated `dev`
-work. Post-merge observation and deployment report the exact resulting revision.
+Every eligible security source retains trusted classification, exact dependency-patch
+proof, required CI/CodeQL and human approval and merge under REQ-013/014. For a
+separate-dev source, the projector reconstructs only its verified manifest-and-lock
+patch on current `main` after the human source merge. It creates a draft proposal;
+read-only verification precedes human production approval and merge. An eligible
+direct-main source instead has one human merge and read-only source observation;
+it does not create a second PR or use a projection-only attestation. Applicable
+deployment evidence binds the exact resulting revision; shared-source activation
+does not prove product deployment. The direct-source caller and observer remain
+implementation/qualification obligations described in Architecture; this contract
+does not establish that either security path is operational in a consumer.
 
 Installations, hosted settings, caller enrollment and daily execution need
 separate verification. An unrestricted Renovate run window permits daily

@@ -50,13 +50,21 @@ settings retain their own authority.
 - Retired v1 promotion/rollback workflows do not write tags or select fallback
   source. Preserve historical refs and evidence; source retirement grants no tag
   deletion/movement, credential change or protection write authority.
-- Main-only repositories use feature/worktree -> PR -> main. Applications use
-  feature/worktree -> PR -> dev -> release PR -> main. Every merge is human.
-  No current standard requires staging; reconcile any explicit contrary route
-  with its owner before changing that source or its hosted branches.
+- Follow [REQ-027](requirements.md#req-027---uniform-proposal-admission): `.github`
+  and `control-plane` use task-worktree branch -> PR -> main; applications use
+  task-worktree branch -> PR -> dev -> promotion PR -> main. Every merge is human.
+  These routes require no staging. Resolve other classes from their Current owning
+  definitions; unknown or conflicting route evidence stops the affected proposal.
+  Missing dev grants neither a direct-main fallback nor branch-creation authority.
+  Qualify actual admission and updater targets before relying on the corrected
+  contract; source adoption alone does not change branches or saved settings.
 
 ## Security Classification And Projection
 
+- Resolve the protected security source target under REQ-013 and qualify its
+  actual caller, proof and observation path before enrollment. The governing
+  direct-main path does not establish an implemented or qualified direct-source
+  wrapper/observer; unavailable prerequisites stop the affected security flow.
 - Install the security App whose public ID is pinned by the released policy.
   Consumers cannot select a different trust identity. Give it no branch merge
   bypass. Keep its key out of general agent launchers and unrelated workflows.
@@ -72,7 +80,14 @@ settings retain their own authority.
   preserves its completion time and cannot manufacture pre-merge evidence.
 - The human source merge must have ordered parents `[classified base, head]`
   and the classified head tree. Record its observed actor and time; those fields
-  alone do not prove authorization. Later unrelated `dev` movement is allowed.
+  alone do not prove authorization. Classification and required exact-head
+  CI/CodeQL precede that merge. Later unrelated `dev` movement is allowed for a
+  separate-dev source.
+
+### Separate-dev source and production projection
+
+These additional steps apply only when the classified source merges into dev.
+
 - Enroll `security-patch-projection` with only the nonpersistent-branch, check and
   draft-PR writes it needs. Serialize by repository, target and lock path.
   Verify exact source preimages, approved manifest/lock paths, complete file
@@ -89,8 +104,27 @@ settings retain their own authority.
 - An applicable authorized human approves and merges the exact production
   proposal. A read-only push observer calls `verify-post-merge` with its PR and
   actual merge SHA, deriving expected parents/tree from the trusted attestation.
-  Verify the independently triggered deployment reports that same revision;
+  Where the product requires deployment, verify that the independently triggered
+  deployment reports that same revision;
   post-merge observation is not a gate on a concurrently starting deployment.
+
+### Direct-main source observation
+
+- An eligible default-main security source is the production proposal; require
+  its source classification, exact-patch proof, strict current-base CI/CodeQL,
+  exact human approval and human merge. Do not create a second source merge,
+  projection PR or projection attestation.
+- Qualify a read-only observer that binds the actual main push, merged source PR
+  and current main ref, then re-proves the source classification and its time,
+  classified base/head, human merge, ordered parents, source-head tree and official
+  advisory association. Do not manufacture missing classification after merge or
+  call the projection-only observer with invented attestation evidence.
+- Where the product requires deployment, verify its exact main merge revision
+  and tree. Deployment may start concurrently with observation; observation adds
+  no shared-source activation gate.
+
+### Failure handling for both paths
+
 - On conflicting preimages, incomplete evidence, failed checks or deployment
   failure, stop the affected operation visibly. Do not promote unrelated `dev`
   work, regenerate locks in a privileged job, or silently roll back to a
@@ -98,7 +132,10 @@ settings retain their own authority.
 
 ## Dependency Proposal Enrollment
 
-- Confirm the intended default/update branch and required human merge gates.
+- Confirm the ordinary updater target against REQ-027, the current default/update
+  coupling and the separate security target. Reconcile conflicts through the
+  owning qualified transition; this checklist chooses no new default branch.
+  Confirm required human merge gates.
   Install the hosted Renovate App only in explicitly enrolled repositories.
 - Inspect onboarding for App access and manager discovery. Use the reviewed
   canonical consumer config, extending only the central preset with its exact
