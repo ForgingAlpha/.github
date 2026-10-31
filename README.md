@@ -263,6 +263,14 @@ preflight's `source-branch`, PR, base and head outputs so both steps bind the
 same source. Missing branch input fails before a classification write; reconcile
 existing callers before releasing this contract.
 
+New classifications use `alphaapps-security-source-v2`, binding the canonical
+`main` or `dev` source branch into the immutable payload and external identity.
+Every source-proof consumer, including projection post-merge verification,
+requires that branch to match. Historical source-v1 checks cannot establish this
+proof and are never upgraded or rewritten. Reconcile outstanding v1 flows and
+all mixed script/Action references before release; an old reader rejects v2.
+Projection attestation format and separate-dev delivery meaning stay unchanged.
+
 Every eligible security source retains trusted classification, exact dependency-patch
 proof, required CI/CodeQL and human approval and merge under REQ-013/014. For a
 separate-dev source, the projector reconstructs only its verified manifest-and-lock

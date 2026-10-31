@@ -15,6 +15,11 @@ ordered parents `[classified base, source head]`, the source-head tree, the
 approved manifest/lock delta and the complete official advisory proof. The
 observer rechecks canonical default and current main after proof reconciliation.
 
+The immutable classification must use source-v2 and attest `source_branch: main`.
+Retargeting a dev source at unchanged SHAs cannot satisfy this proof. Source-v1
+records lack the required historical branch and are refused without backfill;
+resolve affected legacy flows and mixed readers before release.
+
 Required CI and CodeQL belong to the existing pre-merge classification path.
 Observation does not rerun post-merge CI, create classification, mint a token,
 write a check, approve or merge a PR, or gate an independently starting deployment.

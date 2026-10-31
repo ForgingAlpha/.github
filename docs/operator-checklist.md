@@ -81,6 +81,12 @@ settings retain their own authority.
   writing. Serialize by repository and source head without cancellation.
   Require classification before the human source merge; an identical retry
   preserves its completion time and cannot manufacture pre-merge evidence.
+- Require immutable source-v2 branch proof throughout classifiers, projectors and
+  verifiers, including projection post-merge observation. Inventory outstanding
+  source-v1 classifications/projections and mixed Action/script references before
+  release. Retain historical records; do not rewrite them, infer a historical
+  branch from current metadata, or classify an already merged head. Resolve each
+  affected flow with its owner before relying on the new reader.
 - The human source merge must have ordered parents `[classified base, head]`
   and the classified head tree. Record its observed actor and time; those fields
   alone do not prove authorization. Classification and required exact-head

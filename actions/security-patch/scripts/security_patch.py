@@ -22,7 +22,7 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 APP_ID_RE = re.compile(r"^[1-9][0-9]*$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ROOT_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-SOURCE_SCHEMA = "alphaapps-security-source-v1"
+SOURCE_SCHEMA = "alphaapps-security-source-v2"
 PROJECTION_SCHEMA = "alphaapps-security-projection-v2"
 SOURCE_CHECK = "AlphaApps Security Classification"
 PROJECTION_CHECK = "AlphaApps Security Projection"
@@ -280,6 +280,7 @@ class SourceCandidate:
             "schema": SOURCE_SCHEMA,
             "repository": self.repository,
             "pull_request": self.pull_request,
+            "source_branch": self.source_branch,
             "source_base_sha": self.source_base,
             "source_head_sha": self.source_head,
             "ghsa_set": list(self.ghsa_set),
@@ -879,7 +880,8 @@ def wait_for_source_candidate(
 
 def ensure_source_classification(api: GhApi, candidate: SourceCandidate) -> str:
     require(bool(candidate.ghsa_set), "source classification requires an official vulnerability-alert association")
-    external_id = f"{SOURCE_SCHEMA}:{candidate.pull_request}:{candidate.source_head}"
+    require(candidate.source_branch in {"main", "dev"}, "source classification branch is invalid")
+    external_id = f"{SOURCE_SCHEMA}:{candidate.source_branch}:{candidate.pull_request}:{candidate.source_head}"
     summary = canonical_json(candidate.attestation())
     create_payload = {
         "name": SOURCE_CHECK,
@@ -1116,12 +1118,14 @@ def build_source_evidence_from_pull(
         TRUSTED_SECURITY_AUTOMATION_APP_ID,
         SOURCE_SCHEMA,
     )
+    require(source_branch in {"main", "dev"}, "expected source branch is invalid")
+    require(attestation.get("source_branch") == source_branch, "source attestation branch mismatch")
     require(attestation.get("repository") == repository, "source attestation repository mismatch")
     require(attestation.get("pull_request") == pull_number, "source attestation PR mismatch")
     require(attestation.get("source_head_sha") == source_head, "source attestation head mismatch")
     require(attestation.get("profile") == PROFILE, "source attestation is not production-profile eligible")
     require(
-        classification.get("external_id") == f"{SOURCE_SCHEMA}:{pull_number}:{source_head}",
+        classification.get("external_id") == f"{SOURCE_SCHEMA}:{source_branch}:{pull_number}:{source_head}",
         "source classification external identity mismatch",
     )
     classification_completed = github_timestamp(
@@ -1955,6 +1959,29 @@ def verify_projection_admission(
     return evidence
 
 
+def verify_projection_source(
+    api: GhApi, evidence: ProjectionEvidence, source_branch: str,
+) -> SourceEvidence:
+    """Re-prove the immutable classified source behind a projection."""
+    source = build_source_evidence(
+        api,
+        evidence.repository,
+        evidence.source_merge,
+        source_branch,
+        evidence.manifest_path,
+        evidence.lock_path,
+    )
+    require(source.pull_request == evidence.source_pull_request, "projection source PR mismatch")
+    require(source.source_base == evidence.source_base, "projection source base mismatch")
+    require(source.source_head == evidence.source_head, "projection source head mismatch")
+    require(source.source_merged_by == evidence.source_merged_by, "projection source merge actor mismatch")
+    require(source.source_merged_at == evidence.source_merged_at, "projection source merge time mismatch")
+    require(source.ghsa_set == evidence.ghsa_set, "projection GHSA set changed")
+    require(source.changed_paths == evidence.changed_paths, "projection changed path set changed")
+
+    return source
+
+
 def verify_projection(
     api: GhApi,
     repository: str,
@@ -1990,21 +2017,7 @@ def verify_projection(
     require(pr.get("user", {}).get("login") == f"{projection_slug}[bot]", "projection PR was not opened by the projection App")
     assert_only_lock_proposal(api, repository, target_branch, evidence.lock_path, pull_request)
 
-    source = build_source_evidence(
-        api,
-        repository,
-        evidence.source_merge,
-        source_branch,
-        evidence.manifest_path,
-        evidence.lock_path,
-    )
-    require(source.pull_request == evidence.source_pull_request, "projection source PR mismatch")
-    require(source.source_base == evidence.source_base, "projection source base mismatch")
-    require(source.source_head == evidence.source_head, "projection source head mismatch")
-    require(source.source_merged_by == evidence.source_merged_by, "projection source merge actor mismatch")
-    require(source.source_merged_at == evidence.source_merged_at, "projection source merge time mismatch")
-    require(source.ghsa_set == evidence.ghsa_set, "projection GHSA set changed")
-    require(source.changed_paths == evidence.changed_paths, "projection changed path set changed")
+    source = verify_projection_source(api, evidence, source_branch)
 
     current_production = ref_sha(api, repository, target_branch)
     require(current_production == evidence.production_base, "production base moved after projection")
@@ -2175,6 +2188,9 @@ def verify_post_merge(
     evidence = parse_projection_attestation(raw)
     require(evidence.repository == repository and evidence.projection_head == head, "merged projection attestation identity mismatch")
     validate_projection_check(check, evidence)
+    # Projection delivery retains its historical dev-to-main meaning. Current
+    # metadata cannot substitute for the source classification's branch proof.
+    verify_projection_source(api, evidence, "dev")
     require(pr.get("base", {}).get("sha") == evidence.production_base, "merged projection PR base mismatch")
     require(pr.get("user", {}).get("login") == f"{app_slug}[bot]", "projection PR was not opened by the projection App")
     observed_merge_actor(pr, app_slug)

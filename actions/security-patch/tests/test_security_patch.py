@@ -281,6 +281,7 @@ def source_fixture() -> FakeApi:
     }
     attestation = {
         "schema": security_patch.SOURCE_SCHEMA,
+        "source_branch": "dev",
         "repository": repository,
         "pull_request": pr_number,
         "source_base_sha": source_base,
@@ -294,7 +295,7 @@ def source_fixture() -> FakeApi:
             "head_sha": source_head,
             "status": "completed",
             "conclusion": "success",
-            "external_id": f"{security_patch.SOURCE_SCHEMA}:{pr_number}:{source_head}",
+            "external_id": f"{security_patch.SOURCE_SCHEMA}:dev:{pr_number}:{source_head}",
             "completed_at": "2026-08-16T11:59:59Z",
             "app": {"id": app_id, "slug": "forgingalpha-security-automation"},
             "output": {"summary": json.dumps(attestation)},
@@ -2915,6 +2916,12 @@ class DefaultSourceAcceptanceTest(unittest.TestCase):
         }
         if not merged:
             api.page_values[f"repos/{repository}/commits/{sha('b')}/pulls?per_page=100"][0][0]["base"]["ref"] = branch
+        else:
+            check = api.page_values[f"repos/{repository}/commits/{sha('b')}/check-runs?filter=all&per_page=100"][0]["check_runs"][0]
+            payload = json.loads(check["output"]["summary"])
+            payload["source_branch"] = branch
+            check["output"]["summary"] = json.dumps(payload)
+            check["external_id"] = f"{security_patch.SOURCE_SCHEMA}:{branch}:17:{sha('b')}"
         return api
 
     def test_actual_default_main_source_bootstraps_ci_without_checks_or_alerts(self):
@@ -3262,6 +3269,176 @@ class DefaultSourceAcceptanceTest(unittest.TestCase):
                 self.assertIn("requires the preflight source branch", output)
                 self.assertFalse(requests)
                 self.assert_no_writes(api)
+
+
+class SourceBranchProofTest(unittest.TestCase):
+    repository = "ForgingAlpha/alphaapps-site"
+    execute = CliEffectsTest.execute
+
+    def check(self, api):
+        return api.page_values[f"repos/{self.repository}/commits/{sha('b')}/check-runs?filter=all&per_page=100"][0]["check_runs"][0]
+
+    def classify(self, api, branch):
+        return security_patch.classify_source_candidate(
+            api, self.repository, 901, branch, "package.json", "package-lock.json", 17, sha("b"), sha("a"),
+        )
+
+    def test_actual_issued_branch_specific_neutral_proof_survives_only_same_branch(self):
+        import copy
+        for classified in ("dev", "main"):
+            for observed in ("dev", "main"):
+                with self.subTest(classified=classified, observed=observed):
+                    api = DefaultSourceAcceptanceTest().source_api(classified)
+                    set_codeql_neutral(api, live_codeql_neutral_output(source_branch=classified), [live_codeql_pointer(source_branch=classified)])
+                    candidate = self.classify(api, classified)
+                    issued = copy.deepcopy(self.check(api))
+                    payload = json.loads(issued["output"]["summary"])
+                    self.assertEqual(payload, candidate.attestation())
+                    self.assertEqual(payload["schema"], "alphaapps-security-source-v2")
+                    self.assertEqual(payload["source_branch"], classified)
+                    self.assertEqual(issued["external_id"], f"alphaapps-security-source-v2:{classified}:17:{sha('b')}")
+                    api.gets[f"repos/{self.repository}"]["default_branch"] = observed
+                    pr = api.gets[f"repos/{self.repository}/pulls/17"]
+                    pr["base"]["ref"] = observed
+                    pr.update(state="closed", merged_at="2026-08-16T12:00:00Z", merged_by={"login": "authorized-maintainer", "type": "User"})
+                    api.gets[f"repos/{self.repository}/git/ref/heads/{observed}"] = {"object": {"sha": sha("c")}}
+                    api.gets.pop(f"repos/{self.repository}/actions/runs/901")
+
+                    def consume():
+                        if observed == "main":
+                            event = {"repository": {"full_name": self.repository}, "ref": "refs/heads/main", "before": sha("a"), "after": sha("c"), "deleted": False, "forced": False}
+                            return security_patch.verify_source_post_merge(api, self.repository, event, "push", "refs/heads/main", sha("c"))
+                        return security_patch.build_source_evidence(api, self.repository, sha("c"), "dev", "package.json", "package-lock.json")
+
+                    if observed == classified:
+                        self.assertEqual(consume().source_head, sha("b"))
+                    else:
+                        with self.assertRaisesRegex(security_patch.PolicyError, "source attestation branch mismatch"):
+                            consume()
+                    self.assertEqual(len(api.posts), 1)
+                    self.assertEqual(self.check(api), issued)
+                    self.assertFalse(api.puts or api.patches)
+
+    def test_every_source_consumer_rejects_only_branch_mutation_or_legacy_proof_before_writes(self):
+        cases = (
+            ("verify-source", source_fixture, ["--source-merge-sha", sha("c")]),
+            ("project", full_project_create_fixture, ["--source-merge-sha", sha("c")]),
+            ("verify-projection", ready_projection_fixture, ["--pull-request", "44"]),
+            ("verify-post-merge", post_merge_fixture, ["--pull-request", "44", "--merge-sha", sha("7")]),
+        )
+        for command, factory, args in cases:
+            for branch in ("main", None, "release", ["dev"], "legacy-v1"):
+                with self.subTest(command=command, branch=branch):
+                    api = factory()
+                    check = self.check(api)
+                    payload = json.loads(check["output"]["summary"])
+                    if branch == "legacy-v1":
+                        payload["schema"] = "alphaapps-security-source-v1"
+                        payload.pop("source_branch")
+                        expected = "schema is invalid"
+                    elif branch is None:
+                        payload.pop("source_branch")
+                        expected = "source attestation branch mismatch"
+                    else:
+                        payload["source_branch"] = branch
+                        expected = "source attestation branch mismatch"
+                    check["output"]["summary"] = json.dumps(payload)
+                    result, output, requests = self.execute(command, api, args)
+                    self.assertEqual(result, 1, output)
+                    self.assertIn(expected, output)
+                    self.assertFalse(any(args[0] == "--method" for args, _ in requests))
+                    self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_classify_same_head_branch_conflict_and_legacy_never_rewrite_or_duplicate(self):
+        import copy
+        for legacy in (False, True):
+            with self.subTest(legacy=legacy):
+                api = DefaultSourceAcceptanceTest().source_api("dev")
+                self.classify(api, "dev")
+                check = self.check(api)
+                if legacy:
+                    payload = json.loads(check["output"]["summary"])
+                    payload["schema"] = "alphaapps-security-source-v1"
+                    payload.pop("source_branch")
+                    check["output"]["summary"] = json.dumps(payload)
+                    check["external_id"] = f"alphaapps-security-source-v1:17:{sha('b')}"
+                    branch = "dev"
+                else:
+                    branch = "main"
+                    api.gets[f"repos/{self.repository}"]["default_branch"] = branch
+                    api.gets[f"repos/{self.repository}/pulls/17"]["base"]["ref"] = branch
+                    api.page_values[f"repos/{self.repository}/commits/{sha('b')}/pulls?per_page=100"][0][0]["base"]["ref"] = branch
+                    api.gets[f"repos/{self.repository}/git/ref/heads/main"] = {"object": {"sha": sha("a")}}
+                original = copy.deepcopy(check)
+                with self.assertRaisesRegex(security_patch.PolicyError, "existing classification external identity conflicts"):
+                    self.classify(api, branch)
+                self.assertEqual(self.check(api), original)
+                self.assertEqual(len(api.posts), 1)
+                self.assertFalse(api.puts or api.patches)
+
+    def test_actual_dev_classification_composes_with_projection_creation_and_post_merge(self):
+        import copy
+        classified = DefaultSourceAcceptanceTest().source_api("dev")
+        set_codeql_neutral(classified, live_codeql_neutral_output(source_branch="dev"), [live_codeql_pointer(source_branch="dev")])
+        self.classify(classified, "dev")
+        for command, factory, args, writes in (
+            ("project", full_project_create_fixture, ["--source-merge-sha", sha("c")], 5),
+            ("verify-projection", ready_projection_fixture, ["--pull-request", "44"], 0),
+            ("verify-post-merge", post_merge_fixture, ["--pull-request", "44", "--merge-sha", sha("7")], 0),
+        ):
+            with self.subTest(command=command):
+                api = factory()
+                self.check(api).clear()
+                self.check(api).update(copy.deepcopy(self.check(classified)))
+                result, output, requests = self.execute(command, api, args)
+                self.assertEqual(result, 0, output)
+                self.assertEqual(sum(args[0] == "--method" for args, _ in requests), writes)
+                self.assertEqual(self.check(api), self.check(classified))
+
+    def test_post_merge_preserves_full_source_correspondence(self):
+        for field, value in (("source_pull_request", 99), ("source_base_sha", sha("9")),
+                             ("source_head_sha", sha("9")), ("source_merged_by", "other-maintainer"),
+                             ("source_merged_at", "2026-08-16T12:00:01Z")):
+            with self.subTest(field=field):
+                api = post_merge_fixture()
+                check = api.page_values[f"repos/{self.repository}/commits/{sha('6')}/check-runs?filter=all&per_page=100"][0]["check_runs"][0]
+                payload = json.loads(check["output"]["summary"])
+                payload[field] = value
+                evidence = security_patch.parse_projection_attestation(payload)
+                check.update(security_patch.projection_check_payload(evidence))
+                result, output, requests = self.execute("verify-post-merge", api, ["--pull-request", "44", "--merge-sha", sha("7")])
+                self.assertEqual(result, 1, output)
+                self.assertIn("projection source", output)
+                self.assertFalse(any(args[0] == "--method" for args, _ in requests))
+
+    def test_actual_classify_drift_after_advisory_read_refuses_before_write(self):
+        for branch in ("main", "dev"):
+            for drift in ("default", "base-ref", "base-sha", "head-sha", "current-ref", "closed"):
+                with self.subTest(branch=branch, drift=drift):
+                    api = DefaultSourceAcceptanceTest().source_api(branch)
+                    read = api.security_ghsas
+                    reads = []
+
+                    def moving_alerts(repository, pull_request):
+                        result = read(repository, pull_request)
+                        reads.append(pull_request)
+                        pr = api.gets[f"repos/{repository}/pulls/17"]
+                        if drift == "default":
+                            api.gets[f"repos/{repository}"]["default_branch"] = "dev" if branch == "main" else "main"
+                        elif drift == "base-ref": pr["base"]["ref"] = "release"
+                        elif drift == "base-sha": pr["base"]["sha"] = sha("9")
+                        elif drift == "head-sha": pr["head"]["sha"] = sha("9")
+                        elif drift == "current-ref":
+                            api.gets[f"repos/{repository}/git/ref/heads/{branch}"]["object"]["sha"] = sha("9")
+                            api.advance_at_ref_read = api.source_ref_reads + 1
+                        else: pr["state"] = "closed"
+                        return result
+
+                    api.security_ghsas = moving_alerts
+                    with self.assertRaises(security_patch.PolicyError):
+                        self.classify(api, branch)
+                    self.assertEqual(reads, [17])
+                    self.assertFalse(api.posts or api.puts or api.patches)
 
 
 class SourceWrapperExecutionTest(unittest.TestCase):
