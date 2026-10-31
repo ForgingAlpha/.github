@@ -1,0 +1,61 @@
+name: Exact Security Source Observation
+description: Read-only observation of a current main push using existing pre-merge Dependabot classification and human merge proof.
+
+inputs:
+  github-token:
+    description: Read-only contents, pull requests, checks and official vulnerability-alert proof token; no write capability is required.
+    required: true
+
+outputs:
+  observed:
+    description: True only when the actual push and current main match the classified source merge; not a deployment gate.
+    value: ${{ steps.observe.outputs.observed }}
+  observation-kind:
+    description: Dependabot source observation, distinct from projection or deployment evidence.
+    value: ${{ steps.observe.outputs.observation_kind }}
+  repository:
+    description: Canonical repository bound to the push and source proof.
+    value: ${{ steps.observe.outputs.repository }}
+  source-branch:
+    description: Actual canonical default branch, main.
+    value: ${{ steps.observe.outputs.source_branch }}
+  push-ref:
+    description: Actual observed push ref, refs/heads/main.
+    value: ${{ steps.observe.outputs.push_ref }}
+  pull-request-number:
+    description: Unique merged Dependabot source pull request.
+    value: ${{ steps.observe.outputs.pull_request_number }}
+  source-merge-sha:
+    description: Exact observed push and current main SHA.
+    value: ${{ steps.observe.outputs.source_merge_sha }}
+  source-base-sha:
+    description: Classified source base and first merge parent.
+    value: ${{ steps.observe.outputs.source_base_sha }}
+  source-head-sha:
+    description: Classified source head and second merge parent.
+    value: ${{ steps.observe.outputs.source_head_sha }}
+  source-tree-sha:
+    description: Exact classified source and observed merge tree.
+    value: ${{ steps.observe.outputs.source_tree_sha }}
+  source-merged-by:
+    description: Observed human merger attribution; not proof of authorization.
+    value: ${{ steps.observe.outputs.source_merged_by }}
+  source-merged-at:
+    description: Observed merge time strictly after classification completion.
+    value: ${{ steps.observe.outputs.source_merged_at }}
+  ghsa-set:
+    description: Reconciled official advisories from existing pre-merge classification.
+    value: ${{ steps.observe.outputs.ghsa_set }}
+
+runs:
+  using: composite
+  steps:
+    - name: Observe exact current-main source push
+      id: observe
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-source-post-merge \
+          --repository "${GITHUB_REPOSITORY}"
