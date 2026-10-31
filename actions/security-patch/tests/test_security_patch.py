@@ -2392,9 +2392,10 @@ class HumanMergeEvidenceTest(unittest.TestCase):
 
 class CliEffectsTest(unittest.TestCase):
     """Exercise real command dispatch and GhApi serialization with recorded calls."""
-    def execute(self, command, fixture, arguments):
+    def execute(self, command, fixture, arguments, *, output_path=None):
         import contextlib
         import io
+        import os
         requests = []
 
         def record(adapter, args, payload=None):
@@ -2411,7 +2412,9 @@ class CliEffectsTest(unittest.TestCase):
             return fixture.get(args[0], fresh=True)
 
         output = io.StringIO()
-        with patch.object(security_patch.GhApi, "_run", record), contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+        # The fixture owns its transport. An outer Actions job's output file is
+        # not this CLI invocation's output; restore that environment afterwards.
+        with patch.dict(os.environ, {"GITHUB_OUTPUT": str(output_path) if output_path else ""}), patch.object(security_patch.GhApi, "_run", record), contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
             result = security_patch.cli([
                 command, "--repository", "ForgingAlpha/alphaapps-site", *arguments,
             ])
@@ -2431,6 +2434,66 @@ class CliEffectsTest(unittest.TestCase):
             self.assertFalse(any(value.endswith("/merge") or value.endswith("/reviews") for value in args))
         self.assertFalse(fixture.puts or fixture.patches)
         return result, output.getvalue(), requests
+
+    def test_cli_stdout_and_owned_output_file_have_identical_complete_fields(self):
+        import os
+        import tempfile
+        cases = (
+            ("preflight-source", source_candidate_fixture, ["--workflow-run-id", "901", "--wait-seconds", "0"],
+             {"verified", "pull_request_number", "source_base_sha", "source_head_sha", "source_tree_sha", "source_branch"}),
+            ("classify-source", source_candidate_fixture, ["--source-branch", "dev", "--workflow-run-id", "901", "--pull-request", "17", "--expected-head-sha", sha("b"), "--expected-base-sha", sha("a")],
+             {"classified", "pull_request_number", "source_base_sha", "source_head_sha", "source_branch"}),
+            ("verify-source", source_fixture, ["--source-merge-sha", sha("c")],
+             {"eligible", "pull_request_number", "source_head_sha", "ghsa_set", "source_merged_by", "source_merged_at"}),
+            ("project", full_project_create_fixture, ["--source-merge-sha", sha("c")],
+             {"eligible", "pull_request_number", "projection_head_sha", "production_base_sha"}),
+            ("verify-ci-admission", admission_fixture, ["--pull-request", "44"],
+             {"verified", "projection_head_sha"}),
+            ("verify-ci-admission", lambda: DefaultSourceAcceptanceTest().source_api(), ["--pull-request", "17"],
+             {"verified", "admission_kind", "repository", "pull_request_number", "source_branch", "source_base_sha", "source_head_sha", "source_tree_sha"}),
+            ("verify-projection", ready_projection_fixture, ["--pull-request", "44", "--verify-checks", "true", "--ci-app-id", "15368", "--codeql-app-id", "57789"],
+             {"verified", "projection_head_sha", "production_base_sha", "projection_tree_sha"}),
+            ("verify-post-merge", post_merge_fixture, ["--pull-request", "44", "--merge-sha", sha("7")], {"verified"}),
+            ("verify-source-post-merge", lambda: DefaultSourceAcceptanceTest().source_api(merged=True), [],
+             {"observed", "observation_kind", "repository", "source_branch", "push_ref", "source_merge_sha", "pull_request_number", "source_base_sha", "source_head_sha", "source_tree_sha", "source_merged_by", "source_merged_at", "ghsa_set"}),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            outer = tmp / "outer-job-output"
+            outer.write_text("outer=untouched\n")
+            event = tmp / "event.json"
+            event.write_text(json.dumps(DefaultSourceAcceptanceTest().push()))
+            environment = {"GITHUB_OUTPUT": str(outer), "GITHUB_EVENT_PATH": str(event),
+                           "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": sha("c")}
+            with patch.dict(os.environ, environment):
+                for index, (command, factory, arguments, expected_fields) in enumerate(cases):
+                    with self.subTest(command=command, index=index):
+                        status, stdout, _ = self.execute(command, factory(), arguments)
+                        self.assertEqual(status, 0, stdout)
+                        fields = dict(line.split("=", 1) for line in stdout.splitlines())
+                        self.assertEqual(set(fields), expected_fields)
+                        self.assertEqual(len(stdout.splitlines()), len(expected_fields))
+                        output = tmp / f"invocation-{index}"
+                        output.touch()
+                        status, diagnostics, _ = self.execute(command, factory(), arguments, output_path=output)
+                        self.assertEqual(status, 0, diagnostics)
+                        self.assertEqual(diagnostics, "")
+                        self.assertEqual(output.read_text(), stdout)
+                        self.assertEqual(os.environ["GITHUB_OUTPUT"], str(outer))
+                        self.assertEqual(outer.read_text(), "outer=untouched\n")
+
+                # A policy refusal still surfaces diagnostics, emits no success
+                # fields and leaves both the owned and outer output files intact.
+                output = tmp / "refused"
+                output.touch()
+                api = source_candidate_fixture()
+                api.gets["repos/ForgingAlpha/alphaapps-site/actions/runs/901"]["path"] = ".github/workflows/wrong.yml"
+                status, diagnostics, requests = self.execute("preflight-source", api, ["--workflow-run-id", "901", "--wait-seconds", "0"], output_path=output)
+                self.assertEqual(status, 1)
+                self.assertIn("workflow", diagnostics)
+                self.assertEqual(output.read_text(), "")
+                self.assertEqual(outer.read_text(), "outer=untouched\n")
+                self.assertFalse(any(args[0] == "--method" for args, _ in requests))
 
     def test_all_retained_commands_succeed_with_only_their_permitted_effects(self):
         cases = (
@@ -3456,7 +3519,7 @@ class SourceWrapperExecutionTest(unittest.TestCase):
             executable.write_text(f"#!{sys.executable}\nimport json, os, sys\nfrom pathlib import Path\nPath(os.environ['ARGV_LOG']).write_text(json.dumps(sys.argv[1:]))\n")
             executable.chmod(0o755)
             env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}", "ARGV_LOG": str(log),
-                   "GITHUB_ACTION_PATH": str(action.parent), "GITHUB_REPOSITORY": "ForgingAlpha/alphaapps-site", **environment}
+                   "GITHUB_ACTION_PATH": str(action.parent), "GITHUB_REPOSITORY": "ForgingAlpha/alphaapps-site", "GITHUB_OUTPUT": "", **environment}
             result = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             return json.loads(log.read_text())
@@ -3520,12 +3583,20 @@ class SourceWrapperExecutionTest(unittest.TestCase):
                         env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}",
                                "GITHUB_ACTION_PATH": str(helper.parents[1]), "GITHUB_REPOSITORY": "ForgingAlpha/alphaapps-site",
                                "HEAD_REPOSITORY": "ForgingAlpha/alphaapps-site", "HEAD_REF": "dependabot/npm_and_yarn/security-test",
-                               "BASE_REF": "main", "PR_NUMBER": "17", "DECLARED_ROUTE": "direct", "BAD_SOURCE": str(bad).lower()}
+                               "BASE_REF": "main", "PR_NUMBER": "17", "DECLARED_ROUTE": "direct", "BAD_SOURCE": str(bad).lower(), "GITHUB_OUTPUT": ""}
                         result = subprocess.run(["bash", str(helper), mode], env=env, text=True, capture_output=True)
                         self.assertEqual(result.returncode, 1 if bad else 0, result.stdout + result.stderr)
                         if not bad:
                             self.assertIn("admission_kind=dependabot-source", result.stdout)
                             self.assertNotIn("eligible=", result.stdout)
+                        output = tmp / f"{mode}-{bad}-output"
+                        output.touch()
+                        file_result = subprocess.run(["bash", str(helper), mode], env={**env, "GITHUB_OUTPUT": str(output)}, text=True, capture_output=True)
+                        self.assertEqual(file_result.returncode, result.returncode, file_result.stdout + file_result.stderr)
+                        self.assertNotIn("admission_kind=", file_result.stdout)
+                        expected = "".join(line + "\n" for line in result.stdout.splitlines() if "=" in line)
+                        self.assertEqual(output.read_text(), expected)
+                        self.assertEqual(file_result.stderr, result.stderr)
 
 
     def test_observer_wrapper_executes_cli_and_preserves_every_declared_output(self):
@@ -3572,6 +3643,10 @@ class SourceWrapperExecutionTest(unittest.TestCase):
             self.assertEqual(fields["source_branch"], "main")
             self.assertEqual(fields["observation_kind"], "dependabot-source")
             self.assertEqual(fields["push_ref"], env["GITHUB_REF"])
+            self.assertEqual(result.stdout, "")
+            stdout_result = subprocess.run(["bash", "-c", action["runs"]["steps"][0]["run"]], env={**env, "GITHUB_OUTPUT": ""}, capture_output=True, text=True)
+            self.assertEqual(stdout_result.returncode, 0, stdout_result.stderr)
+            self.assertEqual(stdout_result.stdout, output.read_text())
 
 
     def test_classifier_wrapper_validates_branch_before_invocation(self):
@@ -3625,6 +3700,10 @@ class SourceWrapperExecutionTest(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     fields = dict(line.split("=", 1) for line in preflight_output.read_text().splitlines())
                     self.assertEqual(fields["source_branch"], branch)
+                    self.assertEqual(result.stdout, "")
+                    stdout_result = subprocess.run(["bash", "-c", steps[0]["run"] + "\n" + steps[1]["run"]], env={**env, "GITHUB_OUTPUT": ""}, capture_output=True, text=True)
+                    self.assertEqual(stdout_result.returncode, 0, stdout_result.stderr)
+                    self.assertEqual(stdout_result.stdout, preflight_output.read_text())
                     classified_output = tmp / (branch + "-classified")
                     env.update(OPERATION="classify", SOURCE_BRANCH=fields["source_branch"], EXPECTED_PR=fields["pull_request_number"],
                                EXPECTED_HEAD=fields["source_head_sha"], EXPECTED_BASE=fields["source_base_sha"], GITHUB_OUTPUT=str(classified_output))
@@ -3634,6 +3713,10 @@ class SourceWrapperExecutionTest(unittest.TestCase):
                     self.assertEqual(classified["classified"], "true")
                     self.assertEqual(classified["source_branch"], fields["source_branch"])
                     self.assertEqual(classified["source_head_sha"], fields["source_head_sha"])
+                    self.assertEqual(result.stdout, "")
+                    stdout_result = subprocess.run(["bash", "-c", steps[0]["run"] + "\n" + steps[2]["run"]], env={**env, "GITHUB_OUTPUT": ""}, capture_output=True, text=True)
+                    self.assertEqual(stdout_result.returncode, 0, stdout_result.stderr)
+                    self.assertEqual(stdout_result.stdout, classified_output.read_text())
 
 
 if __name__ == "__main__":
