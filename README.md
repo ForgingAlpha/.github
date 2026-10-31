@@ -170,6 +170,7 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-typescript` | Format, lint, type checking, and tests |
 | `ci-shell` | ShellCheck at style severity and Bash syntax |
 | `security-patch-classification` | Dependabot-safe preflight and trusted exact-source classification |
+| `security-patch-source-observation` | Read-only current-main push observation of an already classified human source merge |
 | `security-patch-projection` | Exact manifest/lock patch reconstruction on current `main` |
 | `security-patch-verification` | Read-only production re-proof before a human merge |
 
@@ -251,6 +252,17 @@ remain governed by their central assignments and exact locks; the current
 preset disables direct mise, Node-engine and generic lock-maintenance writes.
 Runtime update automation requires a qualified constrained writer.
 
+Unprivileged CI admission accepts a canonical Dependabot source targeting its
+actual main or dev default after structural identity, current-base, verified-commit
+and exact manifest/lock checks. It emits `admission_kind=dependabot-source` with
+repository, PR, branch, base, head and tree; this is not security eligibility and
+reads no official advisories. The existing projection admission keeps its fixed-App
+attestation and output contract. Classification resolves the canonical default;
+an explicit preflight `source-branch` must agree. Classification requires
+preflight's `source-branch`, PR, base and head outputs so both steps bind the
+same source. Missing branch input fails before a classification write; reconcile
+existing callers before releasing this contract.
+
 Every eligible security source retains trusted classification, exact dependency-patch
 proof, required CI/CodeQL and human approval and merge under REQ-013/014. For a
 separate-dev source, the projector reconstructs only its verified manifest-and-lock
@@ -259,8 +271,10 @@ read-only verification precedes human production approval and merge. An eligible
 direct-main source instead has one human merge and read-only source observation;
 it does not create a second PR or use a projection-only attestation. Applicable
 deployment evidence binds the exact resulting revision; shared-source activation
-does not prove product deployment. The direct-source caller and observer remain
-implementation/qualification obligations described in Architecture; this contract
+does not prove product deployment. The
+[direct-source observer](actions/security-patch-source-observation/README.md)
+binds the actual main push and current ref to prior classification. Caller
+installation and consumer qualification remain required; source availability
 does not establish that either security path is operational in a consumer.
 
 Installations, hosted settings, caller enrollment and daily execution need

@@ -251,8 +251,22 @@ class SourceEvidence:
 
 
 @dataclass(frozen=True)
+class SourceAdmission:
+    """Structural CI admission only; no advisory or classification assertion."""
+
+    repository: str
+    pull_request: int
+    source_branch: str
+    source_base: str
+    source_head: str
+    source_tree: str
+    changed_paths: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SourceCandidate:
     repository: str
+    source_branch: str
     workflow_run: int
     pull_request: int
     source_base: str
@@ -508,6 +522,51 @@ def require_dependabot_commit(commit: dict[str, Any]) -> None:
     )
 
 
+def canonical_source_branch(api: GhApi, repository: str, expected: str | None = None) -> str:
+    repository = require_repository(repository)
+    metadata = api.get(f"repos/{repository}", fresh=True)
+    require(isinstance(metadata, dict), "canonical repository metadata must be an object")
+    require(metadata.get("full_name") == repository, "canonical repository identity mismatch")
+    branch = metadata.get("default_branch")
+    require(isinstance(branch, str) and branch in {"main", "dev"}, "canonical default branch must be main or dev")
+    require(expected is None or expected == branch, "source branch disagrees with canonical default")
+    return branch
+
+
+def open_source_pull(
+    api: GhApi,
+    repository: str,
+    pull_request: int,
+    source_branch: str,
+    expected_head: str | None = None,
+    expected_base: str | None = None,
+) -> tuple[dict[str, Any], str, str]:
+    pr = api.get(f"repos/{repository}/pulls/{pull_request}", fresh=True)
+    require(isinstance(pr, dict), "source pull-request response must be an object")
+    require(pr.get("number") == pull_request, "source pull-request number mismatch")
+    require(pr.get("state") == "open", "source pull request is not open")
+    require(pr.get("draft") is False, "source pull request is draft")
+    require(pr.get("user", {}).get("login") == "dependabot[bot]", "source pull request is not Dependabot-authored")
+    require(pr.get("base", {}).get("ref") == source_branch, "source pull-request base branch mismatch")
+    require(pr.get("base", {}).get("repo", {}).get("full_name") == repository, "source pull-request base repository mismatch")
+    require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "source pull-request head is not same-repository")
+    require(pr.get("auto_merge") is None, "source pull request retains stale native auto-merge state")
+    labels = pr.get("labels")
+    require(isinstance(labels, list), "source pull-request labels must be a list")
+    require(
+        not any(isinstance(label, dict) and label.get("name") == "security-autopromote" for label in labels),
+        "source pull request retains the retired security-autopromote label",
+    )
+    source_head = require_sha(str(pr.get("head", {}).get("sha")), "source head")
+    source_base = require_sha(str(pr.get("base", {}).get("sha")), "source base")
+    if expected_head is not None:
+        require(source_head == expected_head, "source pull-request head moved after preflight")
+    if expected_base is not None:
+        require(source_base == expected_base, "source pull-request base moved after preflight")
+    require(ref_sha(api, repository, source_branch, fresh=True) == source_base, "source branch moved after CI")
+    return pr, source_head, source_base
+
+
 def resolve_source_pointer(
     api: GhApi,
     repository: str,
@@ -518,6 +577,7 @@ def resolve_source_pointer(
     expected_base: str | None = None,
 ) -> tuple[dict[str, Any], int, str, str]:
     repository = require_repository(repository)
+    source_branch = canonical_source_branch(api, repository, source_branch)
     workflow_run = require_pr_number(workflow_run, "workflow run")
     run = api.get(f"repos/{repository}/actions/runs/{workflow_run}", fresh=True)
     require(isinstance(run, dict), "CI workflow-run response must be an object")
@@ -557,27 +617,9 @@ def resolve_source_pointer(
 
     if expected_pull_request is not None:
         require(pull_request == expected_pull_request, "source pull-request number moved after preflight")
-    pr = api.get(f"repos/{repository}/pulls/{pull_request}", fresh=True)
-    require(isinstance(pr, dict), "source pull-request response must be an object")
-    require(pr.get("number") == pull_request, "source pull-request number mismatch")
-    require(pr.get("state") == "open", "source pull request is not open")
-    require(pr.get("draft") is False, "source pull request is draft")
-    require(pr.get("user", {}).get("login") == "dependabot[bot]", "source pull request is not Dependabot-authored")
-    require(pr.get("base", {}).get("ref") == source_branch, "source pull-request base branch mismatch")
-    require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "source pull-request head is not same-repository")
-    require(pr.get("auto_merge") is None, "source pull request retains stale native auto-merge state")
-    labels = pr.get("labels")
-    require(isinstance(labels, list), "source pull-request labels must be a list")
-    require(
-        not any(isinstance(label, dict) and label.get("name") == "security-autopromote" for label in labels),
-        "source pull request retains the retired security-autopromote label",
+    pr, source_head, source_base = open_source_pull(
+        api, repository, pull_request, source_branch, expected_head, expected_base,
     )
-    source_head = require_sha(str(pr.get("head", {}).get("sha")), "source head")
-    source_base = require_sha(str(pr.get("base", {}).get("sha")), "source base")
-    if expected_head is not None:
-        require(source_head == expected_head, "source pull-request head moved after preflight")
-    if expected_base is not None:
-        require(source_base == expected_base, "source pull-request base moved after preflight")
     if pointers:
         require_quality_pointer(run, pull_request, source_base, source_head, source_branch, "CI workflow-run")
     merge_candidate = pr.get("merge_commit_sha")
@@ -704,27 +746,10 @@ def latest_source_codeql_result(
     return "neutral", run
 
 
-def build_source_candidate(
-    api: GhApi,
-    repository: str,
-    workflow_run: int,
-    source_branch: str,
-    manifest_path: str,
-    lock_path: str,
-    expected_pull_request: int | None = None,
-    expected_head: str | None = None,
-    expected_base: str | None = None,
-    verify_alerts: bool = True,
-) -> SourceCandidate:
-    pr, pull_request, source_head, source_base = resolve_source_pointer(
-        api,
-        repository,
-        workflow_run,
-        source_branch,
-        expected_pull_request,
-        expected_head,
-        expected_base,
-    )
+def source_structure(
+    api: GhApi, repository: str, pull_request: int, pr: dict[str, Any],
+    source_base: str, source_head: str, manifest_path: str, lock_path: str,
+) -> tuple[str, tuple[str, ...]]:
     commits = flatten_pages(
         api.pages(f"repos/{repository}/pulls/{pull_request}/commits?per_page=100", fresh=True),
         "source commits",
@@ -746,17 +771,50 @@ def build_source_candidate(
     candidate = git_commit(api, repository, merge_candidate)
     require(
         [parent["sha"] for parent in candidate["parents"]] == [source_base, source_head],
-        "source test merge parents do not equal current dev and source head",
+        "source test merge parents do not equal current source base and source head",
     )
     require(candidate["tree"]["sha"] == source_tree, "source test merge tree does not equal source head tree")
+    return source_tree, changed_paths
+
+
+def build_source_candidate(
+    api: GhApi,
+    repository: str,
+    workflow_run: int,
+    source_branch: str,
+    manifest_path: str,
+    lock_path: str,
+    expected_pull_request: int | None = None,
+    expected_head: str | None = None,
+    expected_base: str | None = None,
+    verify_alerts: bool = True,
+) -> SourceCandidate:
+    pr, pull_request, source_head, source_base = resolve_source_pointer(
+        api,
+        repository,
+        workflow_run,
+        source_branch,
+        expected_pull_request,
+        expected_head,
+        expected_base,
+    )
+    source_tree, changed_paths = source_structure(
+        api, repository, pull_request, pr, source_base, source_head, manifest_path, lock_path,
+    )
+    ghsas = api.security_ghsas(repository, pull_request) if verify_alerts else ()
+    # Re-read mutable identity after structural/advisory reads, before any write.
+    canonical_source_branch(api, repository, source_branch)
+    final, _, _ = open_source_pull(api, repository, pull_request, source_branch, source_head, source_base)
+    require(final.get("merge_commit_sha") == pr.get("merge_commit_sha"), "source test merge moved during proof")
     return SourceCandidate(
         repository=repository,
+        source_branch=source_branch,
         workflow_run=workflow_run,
         pull_request=pull_request,
         source_base=source_base,
         source_head=source_head,
         source_tree=source_tree,
-        ghsa_set=api.security_ghsas(repository, pull_request) if verify_alerts else (),
+        ghsa_set=ghsas,
         changed_paths=changed_paths,
     )
 
@@ -765,7 +823,7 @@ def wait_for_source_candidate(
     api: GhApi,
     repository: str,
     workflow_run: int,
-    source_branch: str,
+    source_branch: str | None,
     manifest_path: str,
     lock_path: str,
     wait_seconds: int,
@@ -775,6 +833,7 @@ def wait_for_source_candidate(
     expected_base: str | None = None,
     verify_alerts: bool = True,
 ) -> SourceCandidate:
+    source_branch = canonical_source_branch(api, repository, source_branch)
     require(0 <= wait_seconds <= 300, "check wait must be between zero and 300 seconds")
     deadline = time.monotonic() + wait_seconds
     while True:
@@ -897,13 +956,15 @@ def classify_source_candidate(
     api: GhApi,
     repository: str,
     workflow_run: int,
-    source_branch: str,
+    source_branch: str | None,
     manifest_path: str,
     lock_path: str,
     expected_pull_request: int,
     expected_head: str,
     expected_base: str,
 ) -> SourceCandidate:
+    require(source_branch in {"main", "dev"}, "classification requires the preflight source branch (main or dev)")
+    source_branch = canonical_source_branch(api, repository, source_branch)
     candidate = wait_for_source_candidate(
         api, repository, workflow_run, source_branch, manifest_path, lock_path, 0,
         expected_pull_request=expected_pull_request,
@@ -1772,6 +1833,50 @@ def parse_projection_attestation(raw: dict[str, Any]) -> ProjectionEvidence:
     )
 
 
+def verify_ci_admission(
+    api: GhApi, repository: str, pull_request: int, target_branch: str,
+) -> SourceAdmission | ProjectionEvidence:
+    repository = require_repository(repository)
+    pull_request = require_pr_number(pull_request)
+    pr = api.get(f"repos/{repository}/pulls/{pull_request}", fresh=True)
+    require(isinstance(pr, dict), "admission pull request must be an object")
+    # Only canonical author metadata chooses the source proof. Projection proof
+    # remains mandatory for every other author, regardless of labels or arguments.
+    if pr.get("user", {}).get("login") != "dependabot[bot]":
+        return verify_projection_admission(api, repository, pull_request, target_branch)
+    branch = canonical_source_branch(api, repository, target_branch)
+    pr, head, base = open_source_pull(api, repository, pull_request, branch)
+    tree, changed = source_structure(api, repository, pull_request, pr, base, head, "package.json", "package-lock.json")
+    canonical_source_branch(api, repository, branch)
+    final, _, _ = open_source_pull(api, repository, pull_request, branch, head, base)
+    require(final.get("merge_commit_sha") == pr.get("merge_commit_sha"), "source test merge moved during admission")
+    return SourceAdmission(repository, pull_request, branch, base, head, tree, changed)
+
+
+def verify_source_post_merge(
+    api: GhApi, repository: str, event: Any, event_name: str, event_ref: str, event_sha: str,
+) -> SourceEvidence:
+    """Observe the actual current-main push using immutable pre-merge proof."""
+    repository = require_repository(repository)
+    require(event_name == "push", "source observation requires a push event")
+    require(isinstance(event, dict), "push event must be an object")
+    event_repository = event.get("repository")
+    require(isinstance(event_repository, dict) and event_repository.get("full_name") == repository, "push repository mismatch")
+    require(event.get("ref") == event_ref == "refs/heads/main", "push must identify refs/heads/main")
+    before_sha = require_sha(str(event.get("before")), "push before")
+    merge_sha = require_sha(str(event.get("after")), "push after")
+    require(merge_sha == require_sha(event_sha, "event SHA"), "push after disagrees with event SHA")
+    require(event.get("deleted") is False and event.get("forced") is False, "deleted or forced push is not source observation")
+    canonical_source_branch(api, repository, "main")
+    require(ref_sha(api, repository, "main", fresh=True) == merge_sha, "current main does not equal observed push")
+    evidence = build_source_evidence(api, repository, merge_sha, "main", "package.json", "package-lock.json")
+    require(evidence.source_base == before_sha, "push before does not equal classified source base")
+    # Alert association reconciliation can wait; currentness must survive it.
+    canonical_source_branch(api, repository, "main")
+    require(ref_sha(api, repository, "main", fresh=True) == merge_sha, "current main moved during source observation")
+    return evidence
+
+
 def verify_projection_admission(
     api: GhApi,
     repository: str,
@@ -2114,6 +2219,7 @@ def add_common_source_args(parser: argparse.ArgumentParser) -> None:
 
 def add_source_run_args(parser: argparse.ArgumentParser) -> None:
     add_common_source_args(parser)
+    parser.set_defaults(source_branch=None)
     parser.add_argument("--workflow-run-id", required=True)
 
 
@@ -2161,6 +2267,9 @@ def cli(argv: list[str] | None = None) -> int:
     post_parser.add_argument("--merge-sha", required=True)
     post_parser.add_argument("--pull-request", required=True)
 
+    observation_parser = subparsers.add_parser("verify-source-post-merge")
+    observation_parser.add_argument("--repository", required=True)
+
     args = parser.parse_args(argv)
     api = GhApi()
     try:
@@ -2191,6 +2300,7 @@ def cli(argv: list[str] | None = None) -> int:
             emit_output("source_base_sha", candidate.source_base)
             emit_output("source_head_sha", candidate.source_head)
             emit_output("source_tree_sha", candidate.source_tree)
+            emit_output("source_branch", candidate.source_branch)
         elif args.command == "classify-source":
             candidate = classify_source_candidate(
                 api,
@@ -2207,6 +2317,7 @@ def cli(argv: list[str] | None = None) -> int:
             emit_output("pull_request_number", candidate.pull_request)
             emit_output("source_base_sha", candidate.source_base)
             emit_output("source_head_sha", candidate.source_head)
+            emit_output("source_branch", candidate.source_branch)
         elif args.command == "verify-source":
             evidence = build_source_evidence(
                 api,
@@ -2270,14 +2381,46 @@ def cli(argv: list[str] | None = None) -> int:
             emit_output("production_base_sha", evidence.production_base)
             emit_output("projection_tree_sha", evidence.projection_tree)
         elif args.command == "verify-ci-admission":
-            evidence = verify_projection_admission(
+            evidence = verify_ci_admission(
                 api,
                 args.repository,
                 require_pr_number(args.pull_request),
                 args.target_branch,
             )
             emit_output("verified", True)
-            emit_output("projection_head_sha", evidence.projection_head)
+            if isinstance(evidence, SourceAdmission):
+                emit_output("admission_kind", "dependabot-source")
+                emit_output("repository", evidence.repository)
+                emit_output("pull_request_number", evidence.pull_request)
+                emit_output("source_branch", evidence.source_branch)
+                emit_output("source_base_sha", evidence.source_base)
+                emit_output("source_head_sha", evidence.source_head)
+                emit_output("source_tree_sha", evidence.source_tree)
+            else:
+                emit_output("projection_head_sha", evidence.projection_head)
+        elif args.command == "verify-source-post-merge":
+            try:
+                with open(os.environ.get("GITHUB_EVENT_PATH", ""), encoding="utf-8") as handle:
+                    event = json.load(handle)
+            except (OSError, ValueError) as error:
+                raise PolicyError("source observation requires a readable JSON push event") from error
+            evidence = verify_source_post_merge(
+                api, args.repository, event, os.environ.get("GITHUB_EVENT_NAME", ""),
+                os.environ.get("GITHUB_REF", ""), os.environ.get("GITHUB_SHA", ""),
+            )
+            emit_output("observed", True)
+            emit_output("observation_kind", "dependabot-source")
+            emit_output("repository", evidence.repository)
+            emit_output("source_branch", "main")
+            emit_output("push_ref", "refs/heads/main")
+            emit_output("source_merge_sha", evidence.source_merge)
+            emit_output("pull_request_number", evidence.pull_request)
+            emit_output("source_base_sha", evidence.source_base)
+            emit_output("source_head_sha", evidence.source_head)
+            emit_output("source_tree_sha", evidence.source_tree)
+            emit_output("source_merged_by", evidence.source_merged_by)
+            emit_output("source_merged_at", evidence.source_merged_at)
+            emit_output("ghsa_set", ",".join(evidence.ghsa_set))
         elif args.command == "verify-post-merge":
             evidence = verify_post_merge(
                 api,

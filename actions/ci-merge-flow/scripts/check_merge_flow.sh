@@ -53,10 +53,10 @@ if [[ "$BASE_REF" == "main" ]]; then
     --repository "${GITHUB_REPOSITORY}" \
     --pull-request "${PR_NUMBER}" \
     --target-branch "${BASE_REF}"; then
-    echo "✓ Trusted exact security projection admitted to required CI"
+    echo "✓ Exact source or projection admitted to required CI; security eligibility is separate"
     exit 0
   fi
-  echo "✗ Non-dev main proposal is not a valid exact security projection." >&2
+  echo "✗ Non-dev main proposal lacks exact source or projection admission." >&2
   exit 1
 fi
 
