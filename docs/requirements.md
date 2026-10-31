@@ -295,9 +295,15 @@ modes. Projection is serialized by repository and lockfile; more than one open
 production projection touching the same lock is ambiguous and fails closed. A
 rerun after an accepted ref, check, or pull-request write with a lost response
 adopts only the exact recorded state and performs no second mutable write.
-The consumer caller SHALL provide a non-cancelling concurrency group keyed by
-repository, target branch, and lock path. Enrollment SHALL fail until that
-caller-side serialization is installed. Lock ownership proof SHALL reject an
+Consumer callers SHALL provide non-cancelling concurrency groups scoped by
+repository and target branch. A group MAY additionally be scoped by lock path
+only when that preserves exclusion among every writer that can touch that lock.
+A projection affecting multiple locks SHALL share the repository-and-target
+group with every potentially overlapping writer. A key derived only from the
+selected lock set SHALL NOT substitute for that common group: unequal sets can
+overlap. Enrollment SHALL fail until caller-side serialization and transitions
+from existing, queued, or running writers are installed and qualified.
+Lock ownership proof SHALL reject an
 incomplete, capped, mismatched, or duplicate pull-request file enumeration.
 
 ### REQ-014 - Verified Security Delivery And Exact-SHA Deployment
