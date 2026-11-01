@@ -14,14 +14,31 @@ automation without copying workflow logic between repositories.
 
 ## Durable Outcomes
 
-- Every repository exposes one required merge status named `CI`.
+- Every repository retains a stable required result named `CI`. Enrolled
+  application repositories additionally require the distinct central baseline;
+  a document-only bootstrap may obtain its initial complete-profile `CI` from
+  the central workflow without inventing a product build result. An explicitly
+  enrolled application may also receive its complete product `CI` centrally,
+  while its product owner retains meaningful product checks and behavior.
 - Every control-plane and protected production-control change is approved by
-  an authorized human code owner on its exact current revision; an agent or
+  an authorized human reviewer on its exact current revision; an agent or
   authoring-bot identity cannot substitute for that approval.
-- A reviewed, green control-plane merge reaches consumers promptly through the
-  internal `@v1` current channel.
-- Every `v1` rollout is serialized, traceable, immutable-recorded, and
-  operator-reversible.
+- Shared baseline and complete applicable product checks can be required by an organization ruleset without
+  depending on each consumer to install a caller. Enrollment, actual execution
+  and preservation of product-specific checks are verified before reliance.
+- Protected, human-merged `.github/main` is the active shared automation source.
+  Required checks and exact-revision human review precede the merge; no later tag
+  promotion, source acceptance or recurring ruleset repin makes it active.
+- Authored changes use nonpersistent branches in assigned task worktrees.
+  `.github` and `control-plane` use task pull requests to protected `main`.
+  Applications use task pull requests to protected `dev`, followed by a separate
+  `dev` to `main` promotion pull request. Neither route requires staging.
+  Other repository classes retain their Current declared route under their owning
+  governing definitions. Complete product checks and human approval and merge
+  apply on every supported path; missing branches do not create route exceptions.
+- Every shared execution retains its exact resolved source revision and consumer
+  revision. Recovery uses the protected human-reviewed source-change path and
+  preserves earlier execution evidence.
 - Normal dependency proposals receive a deliberate cooldown; eligible security
   proposals receive immediate classification and exact-patch verification.
   An authorized human performs every pull-request merge after its required gates.
@@ -29,16 +46,23 @@ automation without copying workflow logic between repositories.
   has exactly one discoverable update owner; unmanaged version literals fail
   required CI.
 - Renovate owns normal external updates across supported manifests, locks, and
-  annotated literals. Internal `ForgingAlpha/.github@v1` movement remains
-  owned by the protected control-plane rollout. Cooled normal updates enter
-  code-repository `dev` through human-merged pull requests with exact-head CI.
-- Dependabot owns security remediation only so trusted classification can prove
-  GitHub's official vulnerability-alert-to-pull-request association.
+  annotated literals. Internal `ForgingAlpha/.github@main` references follow
+  the protected human-merge path. Cooled normal updates follow the repository's
+  ordinary integration route through human-merged pull requests with exact-head
+  CI; an updater's configured target does not create a route exception.
+- Dependabot owns security remediation only. Every eligible security proposal,
+  whether its source targets `main` or `dev`, retains trusted classification of
+  GitHub's official vulnerability-alert-to-pull-request association and the exact
+  approved dependency patch before a human merges it.
 - Runtime and tool upgrades follow the same normal patch, minor, and major
   automation path while preserving exact committed locks and integrity data.
-- Application security promotion projects only the exact independently
+- Where security remediation uses a separate `dev` source, production promotion
+  projects only the exact independently
   verified dependency patch from its merged `dev` security change onto the
   current production base. It never carries unrelated unreleased `dev` work.
+  Direct security proposals to `main` retain the same source-classification and
+  patch-proof obligations, required checks, human review and human merge without
+  inventing a second source merge or cross-branch projection.
 - Static and cross-cutting checks run once; parallel test lanes remain lean.
 - Organization runtime profiles and compatible version tuples have one
   control-plane owner. Every consumer commits an exact, integrity-bearing mise
@@ -48,9 +72,12 @@ automation without copying workflow logic between repositories.
 - External automation dependencies are immutable and integrity-verifiable.
 - Required CI supplies technical evidence; it does not grant merge authority.
 - Every introduced or updated third-party package has license evidence approved
-  by central policy: a permissive commercial-use SPDX allowlist or a reviewed
-  exception for one repository and immutable artifact. Fixed first-party actions
-  have governed ownership and release provenance; unknown evidence fails closed.
+  by central policy: an approved SPDX allowlist covering permissive licenses and
+  `LGPL-3.0-or-later`, or a reviewed exception for one repository and immutable
+  artifact. License eligibility and actual-use compliance are separate: product
+  release owners address applicable notice, source and distribution obligations.
+  Fixed first-party actions have governed ownership and release provenance;
+  unknown evidence fails closed.
 
 ## Boundaries
 
@@ -74,24 +101,28 @@ automation never executes untrusted pull-request code.
 
 ## Invariants And Tradeoffs
 
-- `@v1` is the current approved internal automation channel, not a SemVer
-  backward-compatibility promise.
+- `main` is the single active first-party automation source. Existing tags and
+  run records retain historical provenance; they are not another active channel.
 - The control plane publishes one strict current contract. Obsolete rollout
   exceptions, incremental Markdown enforcement, and compatibility entrypoints
   are removed rather than carried forward.
 - Every control-plane change lands through a reviewed pull request with green
   `CI`, authorized-human approval of the exact current revision, and human
-  execution of the merge; after
-  merge, the exact merged commit and version-coherent consumer profiles are
-  verified before rollout.
+  execution of the merge. Coherent candidate and affected-consumer validation
+  belongs before merge. Main membership makes the resulting source active;
+  execution observations do not add another activation decision.
 - Normal and security automation have disjoint authority. Renovate does not
   remediate vulnerability alerts, and Dependabot does not create normal version
   updates.
-- Security urgency may bypass cooldown and release batching, never CI or
-  source provenance, exact-patch reconstruction, current-base verification,
-  CodeQL, or human merge authority.
+- Security urgency may bypass cooldown and release batching, never CI, source
+  provenance, exact-patch verification, current-base verification, CodeQL or
+  human merge authority. Cross-branch projection additionally reconstructs only
+  that proved patch on the current production base.
 - Inactive deployment tooling is removed instead of receiving new update
   automation.
 - Fail closed when identity, classification, branch state, checks, or deployed
   SHA is ambiguous.
 - Centralize only genuinely cross-repository behavior.
+- Qualify centrally required CI on explicitly selected consumers before broader
+  enrollment. A document-only bootstrap profile is explicit and cannot be
+  selected merely because expected application inputs are missing.

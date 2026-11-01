@@ -1,4 +1,9 @@
 import importlib.util
+import json
+import os
+import shutil
+import subprocess
+import tempfile
 import sys
 import unittest
 from pathlib import Path
@@ -226,8 +231,8 @@ class RemoteProbeGuardTest(unittest.TestCase):
             )
         self.assertEqual(
             probe.get("uses"),
-            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@v1",
-            f"Probe template must call the centralized reusable probe workflow on @v1. "
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
+            f"Probe template must call the centralized reusable probe workflow on @main. "
             "WHY: manual probes intentionally use the latest green internal platform. "
             f"HOW: keep the template as a thin reusable-workflow caller; probe={probe!r}",
         )
@@ -244,7 +249,7 @@ class RemoteProbeGuardTest(unittest.TestCase):
         self.assertTrue(
             workflow_paths,
             "Remote probe platform must define reusable probe workflows. "
-            "WHY: consumers should call centralized @v1 workflows instead of copying command YAML. "
+            "WHY: consumers should call centralized @main workflows instead of copying command YAML. "
             "HOW: add .github/workflows/ci-probe-*.yml.",
         )
 
@@ -280,13 +285,14 @@ class RemoteProbeGuardTest(unittest.TestCase):
                     "WHY: invalid refs and selectors must fail before checkout-dependent execution. "
                     f"HOW: move the guard step before actions/checkout; step_names={step_names!r}",
                 )
-                self.assertIn(
-                    "ForgingAlpha/.github/actions/ci-remote-probe-guard@v1",
-                    [step.get("uses") for step in steps if isinstance(step, dict)],
-                    f"Reusable probe workflow must use the shared guard at @v1. "
-                    "WHY: manual probes follow the latest-green internal diagnostic platform. "
-                    "HOW: restore the guard uses ref.",
-                )
+                source = next(step for step in steps if step.get("name") == "Checkout coherent trusted source")
+                guard_step = next(step for step in steps if step.get("id") == "guard")
+                self.assertEqual(source["with"]["ref"], "${{ steps.source.outputs.sha }}")
+                self.assertEqual(source["with"]["path"], "probe-source")
+                self.assertEqual(source["with"]["persist-credentials"], "false")
+                self.assertNotIn("uses", guard_step)
+                self.assertIn('${PROBE_SOURCE}/actions/ci-remote-probe-guard/scripts/validate_probe_inputs.py',
+                              guard_step["run"])
                 self.assertIn(
                     "./bin/ci-probe",
                     run_blocks,
@@ -330,6 +336,134 @@ class RemoteProbeGuardTest(unittest.TestCase):
                     "WHY: failing probes carry the useful CI-only evidence. "
                     f"HOW: set if: ${{{{ always() }}}}; upload={upload!r}",
                 )
+
+
+class ProbeSourceBindingTest(unittest.TestCase):
+    def workflows(self):
+        for path in sorted((ROOT / ".github/workflows").glob("ci-probe-*.yml")):
+            yield path, yaml.safe_load(path.read_text())["jobs"]["probe"]
+
+    def context(self, path):
+        return {"workflow_repository": "ForgingAlpha/.github", "workflow_sha": "a" * 40,
+                "workflow_ref": "ForgingAlpha/.github/.github/workflows/" + path.name + "@refs/heads/main"}
+
+    def run_identity(self, step, raw, directory):
+        output = Path(directory) / "identity-output"
+        output.unlink(missing_ok=True)
+        environment = {**os.environ, "GITHUB_OUTPUT": str(output)}
+        if len(raw) > 65536:
+            # Linux rejects an individual environment string above its own limit.
+            # Feed the same parser in-process via stdin to exercise our higher bound.
+            parser = "\n".join(step["run"].splitlines()[1:-1])
+            code = "import os,sys; os.environ['JOB_CONTEXT']=sys.stdin.read(); exec(" + repr(parser) + ")"
+            result = subprocess.run([sys.executable, "-I", "-B", "-c", code], input=raw,
+                                    cwd=directory, env=environment, capture_output=True, text=True)
+        else:
+            result = subprocess.run(["bash", "-c", step["run"]], cwd=directory,
+                                    env={**environment, "JOB_CONTEXT": raw},
+                                    capture_output=True, text=True)
+        return result, output.read_text() if output.exists() else ""
+
+    def test_native_identity_is_exact_bounded_and_duplicate_free(self):
+        for path, job in self.workflows():
+            step = next(s for s in job["steps"] if s.get("id") == "source")
+            self.assertEqual(step["env"], {"JOB_CONTEXT": "${{ toJSON(job) }}"})
+            self.assertEqual(step["working-directory"], "${{ github.workspace }}")
+            context = self.context(path)
+            with tempfile.TemporaryDirectory() as directory:
+                for suffix in ("refs/heads/main", "a" * 40):
+                    value = {**context, "workflow_ref": context["workflow_ref"].rsplit("@", 1)[0] + "@" + suffix}
+                    result, output = self.run_identity(step, json.dumps(value), directory)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("sha=" + "a" * 40, output)
+                invalid = ["", "{", "[]", "null", " " * 262145,
+                           json.dumps(context)[:-1] + ', "workflow_sha": "' + 'b' * 40 + '"}']
+                for key, value in (("workflow_repository", "other/.github"),
+                                   ("workflow_sha", "main"), ("workflow_sha", "A" * 40),
+                                   ("workflow_ref", context["workflow_ref"].replace(path.name, "other.yml")),
+                                   ("workflow_ref", context["workflow_ref"].replace("refs/heads/main", "b" * 40))):
+                    invalid.append(json.dumps({**context, key: value}))
+                for key in context:
+                    invalid.append(json.dumps({k: v for k, v in context.items() if k != key}))
+                for raw in invalid:
+                    with self.subTest(path=path.name, raw=raw[:160]):
+                        result, output = self.run_identity(step, raw, directory)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("WHAT:", result.stderr)
+                        self.assertEqual(output, "")
+
+    def test_source_checkout_guard_arguments_and_consumer_paths_are_bound(self):
+        original = yaml.safe_load(ACTION.read_text())["runs"]["steps"][0]
+        for path, job in self.workflows():
+            steps = job["steps"]
+            source = next(s for s in steps if s.get("name") == "Checkout coherent trusted source")
+            consumer = next(s for s in steps if s.get("name") == "Checkout target ref")
+            step = next(s for s in steps if s.get("id") == "guard")
+            self.assertEqual(source["with"]["repository"], "${{ steps.source.outputs.repository }}")
+            self.assertEqual(source["with"]["ref"], "${{ steps.source.outputs.sha }}")
+            self.assertEqual(consumer["with"]["ref"], "${{ steps.guard.outputs.checkout_ref }}")
+            self.assertLess(steps.index(source), steps.index(step))
+            self.assertLess(steps.index(step), steps.index(consumer))
+            self.assertEqual(job["defaults"]["run"]["working-directory"], "consumer")
+            for key, value in original["env"].items():
+                self.assertEqual(step["env"][key], value.replace("-", "_"))
+            for argument in ("--probe-mode", "--lane", "--allowed-lanes", "--file", "--line",
+                             "--out-label", "--checkout-ref", "--file-root", "--file-suffixes"):
+                self.assertIn(argument, step["run"])
+            self.assertFalse(any(s.get("uses", "").startswith("ForgingAlpha/.github/") for s in steps))
+            upload = next(s for s in steps if s.get("name") == "Upload diagnostic packet")
+            self.assertEqual(upload["with"]["path"], "consumer/${{ steps.guard.outputs.artifact_path }}")
+            for checkout in (source, consumer):
+                self.assertEqual(checkout["with"]["persist-credentials"], "false")
+            self.assertNotIn("token", step["env"])
+            if path.name == "ci-probe-rust.yml":
+                cache = next(s for s in steps if s.get("name") == "Cache Rust")
+                self.assertEqual(cache["with"]["workspaces"], "consumer -> target")
+            if path.name == "ci-probe-elixir-postgres.yml":
+                setup = next(s for s in steps if s.get("name") == "Install exact locked runtime")
+                self.assertEqual(setup["with"]["working_directory"], "consumer")
+                self.assertEqual(setup["with"]["install_args"], "--locked")
+                cache = next(s for s in steps if s.get("name") == "Cache deps and build")
+                self.assertEqual(cache["with"]["path"].splitlines(), ["consumer/deps", "consumer/_build"])
+                self.assertIn("hashFiles('consumer/mise.lock', 'consumer/mix.lock')", cache["with"]["key"])
+
+
+    def test_workflow_a_never_executes_later_main_b_or_consumer_helper(self):
+        for path, job in self.workflows():
+            step = next(s for s in job["steps"] if s.get("id") == "guard")
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                helper = root / "probe-source/actions/ci-remote-probe-guard/scripts/validate_probe_inputs.py"
+                helper.parent.mkdir(parents=True)
+                shutil.copyfile(SCRIPT, helper)
+                decoy = root / "consumer/actions/ci-remote-probe-guard/scripts/validate_probe_inputs.py"
+                decoy.parent.mkdir(parents=True)
+                decoy.write_text("raise RuntimeError('consumer or later main B must not execute')")
+                fake_git = root / "git"
+                fake_git.write_text('#!/bin/sh\nprintf "%s\\n" "$OBSERVED_SOURCE_SHA"\n')
+                fake_git.chmod(0o755)
+                output = root / "guard-output"
+                environment = {**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                               "PROBE_SOURCE": str(root / "probe-source"), "PROBE_SOURCE_SHA": "a" * 40,
+                               "OBSERVED_SOURCE_SHA": "a" * 40, "GITHUB_OUTPUT": str(output),
+                               "PROBE_MODE": "exact", "PROBE_LANE": "unit", "PROBE_ALLOWED_LANES": "unit,integration",
+                               "PROBE_FILE": "test/example.exs", "PROBE_LINE": "42", "PROBE_OUT_LABEL": "safe",
+                               "PROBE_CHECKOUT_REF": "feature/target", "PROBE_FILE_ROOT": "test", "PROBE_FILE_SUFFIXES": ".exs"}
+                result = subprocess.run(["bash", "-c", step["run"]], cwd=root, env=environment,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("checkout_ref=feature/target", output.read_text())
+                output.unlink()
+                # Simulate workflow A's checkout incorrectly replaced by later main B.
+                marker = root / "ran-wrong-helper"
+                helper.write_text("from pathlib import Path; Path(" + repr(str(marker)) + ").touch()")
+                result = subprocess.run(["bash", "-c", step["run"]], cwd=root,
+                                        env={**environment, "OBSERVED_SOURCE_SHA": "b" * 40},
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("differs from defining workflow", result.stderr)
+                self.assertFalse(marker.exists())
+                self.assertFalse(output.exists())
 
 
 if __name__ == "__main__":

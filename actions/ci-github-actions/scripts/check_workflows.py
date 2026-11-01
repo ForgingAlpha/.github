@@ -73,9 +73,10 @@ def is_sha_ref(ref: str) -> bool:
 
 
 def is_forgingalpha_shared_automation(target: str) -> bool:
-    return target.startswith("ForgingAlpha/.github/actions/") or target.startswith(
-        "ForgingAlpha/.github/.github/workflows/"
-    )
+    return bool(re.fullmatch(
+        r"ForgingAlpha/\.github/(?:actions/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
+        r"|\.github/workflows/[a-z0-9][a-z0-9-]*\.yml)", target
+    ))
 
 
 def require_reason_map(
@@ -169,19 +170,18 @@ def validate_uses_ref(
             f"{path}: action reference '{uses}' has no explicit ref. "
             "WHAT: the uses reference omitted an @ref suffix. "
             "WHY: floating action references make CI non-reproducible. "
-            "HOW: use a released tag such as @v1 or a full commit SHA."
+            "HOW: use literal @main for fixed first-party automation or a full commit SHA."
         )
         return
 
     target, ref = uses.rsplit("@", 1)
     if is_forgingalpha_shared_automation(target):
-        if not re.fullmatch(r"v\d+", ref):
+        if ref != "main":
             errors.append(
-                f"{path}: internal shared automation '{uses}' must use a vN major tag. "
-                "WHAT: the internal shared automation ref is not a released major tag. "
-                "WHY: required shared CI rollout remains deliberate through released major tags; "
-                "required and diagnostic shared automation use the current approved channel. "
-                "HOW: replace the ref with @v1."
+                f"{path}: internal shared automation '{uses}' must use literal @main. "
+                "WHAT: the fixed first-party source ref is not main. "
+                "WHY: protected human-merged main is the active shared source. "
+                "HOW: use canonical ForgingAlpha/.github ownership and @main."
             )
         return
 
@@ -190,7 +190,7 @@ def validate_uses_ref(
             f"{path}: action reference '{uses}' uses branch ref '{ref}'. "
             "WHAT: the uses reference points at a mutable branch ref. "
             "WHY: branch refs can change without a reviewed release boundary. "
-            "HOW: use a released tag such as @v1 or a full commit SHA."
+            "HOW: use literal @main for fixed first-party automation or a full commit SHA."
         )
         return
 

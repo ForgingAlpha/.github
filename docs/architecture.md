@@ -9,9 +9,12 @@ tags:
 ## Control Plane
 
 `.github` and `control-plane` are main-only control planes. Every change lands
-through a pull request with required `CI` and authorized-human code-owner
-approval of the exact current revision. Application repositories use
-feature/worktree branches into protected `dev`; `main` is the deployed branch.
+through a pull request with required `CI` and authorized-human
+approval of the exact current revision. Authoring uses nonpersistent branches in
+assigned task worktrees. Application task branches target protected `dev`, then a
+separate human-approved `dev` to `main` promotion delivers to main. Staging is not
+required. Other repository classes retain their Current declared routes. Active shared
+source, actual product deployment and runtime qualification remain distinct facts.
 
 The shared policy action uses the runner-provisioned Python 3/PyYAML parser for
 bounded YAML frontmatter, rejecting malformed syntax and duplicate keys. It
@@ -20,23 +23,33 @@ checks baseline presence and repository-specific status metadata. Only the exact
 required status marker; its own CI validates canonical IDs and upstream digests.
 These structural checks cannot establish approval or Currentness.
 
-The shared policy action validates `.github/CODEOWNERS` before lower-level
-language checks. Control-plane repositories assign their complete tree to an
+The released shared policy action validates `.github/CODEOWNERS` before lower-level
+language checks. Unmigrated control-plane repositories assign their complete tree to an
 authorized human. Consumer repositories assign `.github/` and each detected
 production-control file or directory at any tracked depth to an authorized human
 in the final active CODEOWNERS block. A detected enclosing control directory
 covers its descendants; untracked files do not expand the candidate inventory. Unsupported literal target patterns leave ownership verification
 incomplete. The validator preserves GitHub's last-match semantics. Repository
-rules require code-owner review and invalidate stale approvals. Agents and the
+rules retain their applicable code-owner review until qualified migration and
+invalidate stale approvals. Agents and the
 general-purpose authoring identity may create and update pull requests, but
 their approval cannot satisfy this boundary. An applicable authorized human
 executes every PR merge, including dependency and security updates. Updater,
 security and release Apps retain only scoped proposal, check, tag rollout and
 deployment effects; they cannot merge or update persistent branches directly.
 
-Shared technical checks are composite actions so the caller preserves a
-single required job named `CI`. Consumers call internal actions at
-`ForgingAlpha/.github/actions/<action>@v1`. Self-CI uses local paths so a pull
+Shared technical checks remain composite actions for unmigrated consumers, whose
+repository workflow owns the stable required result named `CI`. An explicitly
+enrolled full application profile may instead assign that product result to the
+central workflow. In either case, an enrolled application additionally requires
+the distinct common baseline result; common-policy success cannot substitute for
+product checks. An explicitly enrolled document-only bootstrap can obtain its
+initial complete-profile `CI` centrally. These responsibilities implement REQ-001,
+REQ-003, REQ-004 and REQ-025. For a central-product profile, lane composition and
+aggregation move to the shared-CI owner; the product owner retains product behavior,
+command meaning and test completeness. Human merge authority does not move.
+Consumers of the existing composites use
+`ForgingAlpha/.github/actions/<action>@main`. Self-CI uses local paths so a pull
 request validates its proposed implementation.
 
 Protected branches require the applicable human review, current-revision CI,
@@ -46,41 +59,300 @@ Approval does not schedule a merge. A human executes it under the owning
 repository's protected procedure. Hosted settings, caller enrollment and
 credentials are verified separately from this source contract.
 
-## Current-Channel Rollout
+### Uniform proposal targets
 
-`v1` is a mutable current channel. A trusted release gate observes successful
-`CI` on a push to `.github/main`, verifies that the completed head is still the
-remote `main` SHA, and then performs the serialized rollout below.
+Under REQ-027, ordinary caller and central admission enforce the same route:
+task-to-main for ForgingAlpha/.github and ForgingAlpha/control-plane;
+task-to-dev followed by dev-to-main for applications. Ordinary application
+task-to-main is refused even when dev is missing. Class and route resolve from
+the Current owning definition, with PROJECT context where available; unknown or
+conflicting evidence stops admission. Other classes retain their Current declared
+route without reclassification or a new exception. Branch existence does not
+select a route or authorize branch creation. A same-repository dev-to-main promotion binds its complete
+candidate and current source/target revisions; admission performs no branch write.
+The control-plane proposal procedure owns agent-openable proposal sources and
+the human approval/merge boundary.
 
-The version-coherent consumer gate, once enrolled, is mandatory before every
-`v1` movement: every live consumer profile must resolve
-the proposed top-level and sibling shared Actions from the same revision, never
-mixing the candidate with the already-live `v1` implementation.
+The existing central enrollment owner selects repository identity and protected
+targets consistently with that governing route. Named main-only enrollment
+includes main without inventing dev; application enrollment covers dev and main.
+The enrollment schema, admission
+plan and all plan consumers change coherently. An integration-only qualification
+target is an incomplete migration, not proof of final main coverage. The transition
+preserves profile completeness, unique result ownership, review policy,
+runtime/foundation integrity and the exact
+resolved checking source. No consumer-side route registry or branch-presence
+heuristic substitutes for this source-owned selection. Retired staged/direct route
+representations are removed after their surviving provenance and product obligations
+are reconciled at the existing owners; a compatibility mode is not the final state.
 
-After those gates pass, the release enters a non-cancelling `v1-rollout`
-concurrency group. It advances `v1` with a raw-ref expected-old lease, then
-creates `v1-rollout-<UTC timestamp>-<short SHA>` and records the transition.
-Mutable movement and immutable record creation are one atomic Git push, so a
-failure changes neither ref; an existing completed record makes a retry a
-no-op.
+Security classification and projection remain separate claims under REQ-013/014;
+ordinary application delivery cannot claim them to bypass required dev integration.
+Their trusted metadata workflows retain the exact source, App, attestation, patch,
+current-base and human-merge evidence. Ordinary candidate build/test execution
+receives no privileged security credential. Before a route guard or local caller
+is removed, its owner proves that every required security verifier, workflow-run
+wake, push observer and result/protection consumer remains enforced. The central
+pull-request workflow alone does not prove those event contracts. Source adoption
+does not change existing enrollment, settings, branches or deployment infrastructure.
 
-The rollout job alone receives `contents: write`. Validation remains read-only.
-Tag rules permit only the release identity and operator.
+### Organization-required baseline pilot
 
-Rollback is a protected manual workflow. It accepts only an existing immutable
-`v1-rollout-*` tag, verifies historical successful `CI` and ancestry from
-current `main`, serializes with normal rollout, moves mutable `v1` with a
-raw-ref expected-old lease, and creates an immutable `v1-rollback-*` record in
-the same atomic push.
-Rollout stays disabled until the protected environment and release controls are
-configured; rollback is exercised only between immutable `v1-rollout-*` records
-created by this contract.
+The central entrypoint is `.github/workflows/org-baseline.yml` in this
+repository, selected by a ForgingAlpha organization ruleset tracking protected
+`refs/heads/main`, with explicit consumer repository/branch selectors. The
+one-time human settings transition replaces the old immutable workflow pin;
+later protected human merges need no recurring ruleset update or activation.
+Required source checks and exact-head human review precede those merges.
+Existing protections remain in force. The workflow checks out the consumer
+revision separately from its own trusted checking source and records both
+identities; actual workflow-context values and GitHub App events require live
+qualification. It uses read-only pull-request execution, not a privileged
+pull-request-target path, and does not contain CodeQL initialization/analysis.
+Its shared Actions and scripts resolve from that separate trusted checkout at
+the same workflow-source SHA, using local paths within that checkout. It does
+not combine its defining workflow revision with helpers fetched from a newer
+`main` or an older tag. It records the exact resolved defining-workflow SHA;
+movement of `main` after resolution does not replace that execution's source.
 
-The rollout is intentionally fail-closed: if current `main` is red or stale,
-`v1` stays at its last green SHA. Recovery is a newer reviewed green commit,
-not an out-of-order release.
+The central source owns explicit pilot profiles and their human-review team
+identity. A consumer cannot grant itself bootstrap or weaken its required
+reviewers. The team-review profile reads fresh effective branch rules and
+requires the enrolled team, complete-change coverage, required approval count
+and stale-approval invalidation. Missing or partial evidence is a failure.
+Team membership and eligibility remain an operator-qualified prerequisite, not
+an inference from a team ID. Bypass-actor and complete protection qualification
+also remain with the operator; effective-rule reads alone cannot prove them.
+This profile can replace CODEOWNERS validation
+only after its approved implementation and actual hosted protection are
+qualified; other callers keep their existing checks.
+
+Here CI enrollment means the centrally reviewed validation configuration for a
+consumer, not an unattended-authority Repository Enrollment or an Operational
+Profile. It grants no execution or merge authority and does not create a runtime
+profile assignment. Definition-only baseline repair and an enrolled document-only
+profile remain distinct; neither can substitute for the other's conditions.
+
+Bootstrap accepts only declared document/configuration inputs and refuses
+application content and executable lint configuration before invoking shared
+validators. Structural metadata does not prove human approval or Currentness.
+Product profiles retain their own builds, tests, manifests and exact runtime
+inputs. Foundation integrity stays before any copied helper or adapter;
+independent central execution alone cannot establish that ordering.
+The shared-CI owner accounts for common-check invocation and profile configuration.
+For an unmigrated caller, the product owner accounts for build/test composition;
+for a central-product profile the shared-CI owner composes the declared lanes while
+the product owner accounts for their command meaning and complete product coverage. Language-only
+composition is eligible only while independently verified central enforcement
+covers its common checks. Migrate by qualifying the central gate before removing
+consumer common calls; restore those calls before removing that gate. Until this
+joint invariant is verified, full composite defaults remain unchanged. A consumer
+opt-out input or configuration cannot establish the invariant.
+
+### Full application profiles and producer transitions
+
+The same centrally owned enrollment binds a complete application profile, its
+component roots and its selected product `CI` producer. Supported Rust, Astro and
+mixed profiles consume the existing language-check implementations; they do not
+create a second registry or a general test-selection engine. Discovery inspects
+tracked manifests in the exact complete consumer commit and verifies the declared
+components. An undeclared component, missing expected manifest, lock, runtime or
+required command fails rather than selecting a lighter profile or bootstrap.
+Changing only documentation does not narrow an application profile's coverage.
+Runtime tuples remain owned by the existing runtime catalog under REQ-010.
+
+For a central-product profile, the trusted central workflow owns the stable
+product `CI` result and records its checking source, consumer head/base and complete
+applicable profile. Its common baseline retains a distinct result identity. Shared
+checks run once; every required product lane must finish successfully before the
+product result passes. Failed, cancelled, missing or unexpectedly skipped required
+lanes cannot become an accepted aggregate success. Product owners retain the meaning
+and completeness of their tests and commands; central execution does not redefine
+those obligations. Required foundation/source integrity precedes consumer helpers.
+Consumer build/test code receives no production credentials or privileged executor.
+CodeQL analysis and configuration remain separate from this required workflow.
+
+The shared-CI owner coordinates each producer transition with the consumer owner
+and the protection operator. Bind the old and new workflow identities, exact
+consumer head/base, checking source, complete profile, result producer and preserved
+protections before activation. Source capability alone does not enroll a consumer,
+retire its caller or select a runtime. Unmigrated callers keep their full default
+checks and their selected product result. Missing or ambiguous producer ownership
+blocks acceptance; the system must not accept whichever result happens to pass. Qualification may
+coexist under a distinct provisional central result while the current caller
+continues to own required `CI`, on an explicitly enrolled qualification target.
+That target binds the complete candidate and preserved controls; its result is
+not an accepted production `CI`. After equivalent coverage is established, the
+operator and consumer owner perform a source-bound serialized handover with saved
+state readback. For an existing caller, select the central producer before merging
+the retirement head; that head removes the caller's `CI` and obtains `CI` solely
+from the central producer. The bounded handover explicitly admits pre-retirement
+heads that still carry the caller and therefore can emit dual `CI` results:
+the separately required common-baseline gate must refuse every such head, regardless
+of either `CI` result. Preserve strict current-base protection throughout. After
+retirement merges, those heads must update to the post-retirement base and pass
+the unique producer's complete checks before acceptance. Bind REQ-025's already-open
+pull-request qualification to this stale-head refusal and updated-head success.
+The transition record binds affected heads and start/terminal conditions; the window
+ends after the retirement merge and current-base new-producer qualification, or
+after recovery of the captured prior configuration. Remaining stale heads stay
+refused. Outside that controlled state, duplicate indistinguishable producers block
+activation. Required `CI` stays in force; a missing result remains an unsatisfied
+merge gate and is never waived. If the handover cannot enforce these refusals or
+preserve controls, retain the caller. There is no automatic retirement in this revision.
+Before caller retirement, recovery preserves the previous qualified producer and
+full protection configuration. After retirement, restoring that caller requires
+a separately reviewed human-merged consumer recovery change; a ruleset revert
+alone is insufficient. Retain the exact recovery source, checks and transition
+evidence before retirement. Reconcile an unknown outcome before another effect.
+This source responsibility does not authorize
+hosted rule changes, runtime assignments, release activation or a PR merge.
+
+Transition discovery inventories consumers of the CI result, not just its job
+name. This revision does not activate central-product profiles for consumers
+whose security classifier/verifier is bound to repository-local CI, or whose
+required CI relies on push events: they retain their existing producer and full
+composite. Organization-required pull-request workflows do not establish their
+`workflow_run` wake, exact CI-path binding or push-event coverage. A later migration
+must rebind and qualify those dependencies with the security/release owners before
+retirement; this source change does not alter that automation or its protections.
+
+Central workflows and fixed first-party composite callers select protected
+`.github/main`. Source becomes active through the human merge; this does not
+enroll a new target, alter selectors or establish actual target enforcement.
+All central helpers and cores resolve from the same defining-workflow checkout.
+Composite execution retains its resolved acquisition SHA and fingerprints for
+the code it executes. Premerge qualification uses a coherent candidate, including
+its sibling helpers, rather than mixing local candidate code with live main.
+Runner-dependent archive behavior is qualified for supported caller execution;
+a mutable branch label alone is not exact-source evidence.
+
+Central source includes closed Rust, Astro and mixed profile interfaces with fixed
+common, static, test and finalization stages. The trusted enrollment and runtime
+catalogs declare the exact accepted profiles; neither source fixtures nor a
+main merge alone establish hosted enrollment or producer handover. Rust and mixed additionally lack an approved
+real Rust runtime assignment. Existing consumer producers and all target-specific
+qualification obligations remain in place.
+
+The initial pilot includes the document-bootstrap consumer and an independently verified
+current Rust consumer. An unborn local repository or hosted documents-only branch cannot
+stand in for the Rust consumer. Each target establishes evidence only for the profile
+and shared behavior it actually exercises; neither supplies missing second-target
+evidence or completes the whole pilot by itself.
+
+Qualification and enrollment follow that affected scope. The shared-CI owner retains a
+reviewed impact assessment in the existing task or proposal record, identifying complete
+consumer candidate inputs and base state, dependencies and exact checking-source
+before/after revisions. Material judgments about affected scope or unrelatedness,
+including no-change and scope exclusions, require independent verification. Shared
+inputs include workflow loading, profile selection, permissions, runner assumptions,
+result aggregation and pre-execution integrity. Changes affecting these responsibilities
+receive coverage across the affected profiles. Unknown impact requires conservative
+additional validation or leaves the affected proposal blocked. A missing consumer
+manifest or changed file extension cannot select a less demanding profile.
+
+A profile with every required pilot case verified and qualified shared dependencies may
+progress independently of unrelated profiles. Cases include valid/invalid/repair,
+App-created and already-open triggers, consumer skip/configuration/application-input
+refusal and observed source restoration with valid-pass and invalid-block behavior.
+Adding a repository or branch still requires explicit central enrollment and live
+qualification of that target's identity, head/base, token access, check producers and
+required protections. Reusable content evidence does not replace current-target CI or
+review. The full declared profile runs against the complete proposed tree; this rule
+introduces no changed-file test selector.
+
+Every additional enrollment or migration identifies and qualifies its affected profiles
+and shared behavior. Common-call retirement requires complete coverage for that affected
+scope; whole-pilot completion requires all initial targets and cases. Product-specific
+checks remain mandatory, and consumer common calls remain until the central gate's
+coverage of those obligations is independently verified. Rust qualification remains
+required wherever Rust behavior or shared enforcement affecting it is in scope; it is
+not a blanket dependency of an otherwise independently qualified non-Rust profile.
+
+Ruleset administration retains the existing operator-owned path under REQ-016
+and the control-plane authority procedure. This amendment does not permit an
+agent to save protection changes through a human browser session or to borrow
+human credentials; browser consent alone does not establish that authority.
+Any protected executor requires separate qualification before a settings write.
+
+Initial enrollment and the one-time main-reference transition require the
+human-owned settings path and observable target runs. Compare the complete
+captured prior rule, change only the approved source reference, and read back
+the complete saved configuration and effective protection on both target
+branches. Preserve check identities, strictness, selectors, bypasses and
+creation exemptions. A stale or ambiguous state stops the operation; an unknown
+save requires readback before retry. This is not permission for an agent to
+administer rules or expand its credential scope.
+
+After that transition, a human merge into protected main activates source
+without another settings operation. Recovery is a human-reviewed corrective or
+revert PR into main, with its resulting immutable commit and observed outcomes
+recorded. Verify required valid-pass and invalid-block behavior; a failed,
+cancelled, skipped or unexecuted run is not enforcement evidence. Retain earlier
+pilot/source-restoration evidence without replaying completed cases merely
+because the old procedure named a pin cycle. A consumer's actual selector,
+producer or coverage change still retains its affected qualification duties.
+
+Implementation and enrollment remain pending until independently qualified.
+No workflow, profile, team membership, ruleset or operational capability is
+created merely by adopting this architecture. Normal dependency cooldowns,
+expedited security eligibility and human source merges remain. Product deployment
+schedules and settings transitions retain their own authority; shared source
+does not wait for a scheduled activation hour after its human merge.
+
+## Main-Based Shared Source
+
+Protected, human-merged `.github/main` is active. Required CI and review cover
+the exact candidate before the human merge, including coherent affected
+consumer-profile checks. Existing enrolled consumer gates belong to that
+premerge validation; they are not silently removed or moved behind a separate
+activation decision. Post-merge observations record the result and expose
+failures; they do not promote a tag or decide whether main is official.
+
+For a centrally required workflow, the ruleset tracks main and GitHub supplies
+the immutable defining-workflow identity. Every checking-source checkout uses
+that identity. Admission, static work, tests and finalization compare their
+source-bound plans/results and fail on disagreement. A later main merge does
+not rewrite an already resolved run or authorize falling back to another ref.
+
+First-party composite and probe references use the fixed main family. Their
+native acquisition evidence identifies each resolved Action revision; helper
+and catalog fingerprints identify the consumed code. Candidate validation
+must not mix a proposed parent with siblings independently selected from live
+main. The source inventory accounts for active callers, templates, provenance
+resolvers and ownership rules before retiring channel-dependent machinery.
+Unmigrated references remain explicit migration gaps, not a second current
+contract or evidence that those consumers already follow main.
+
+Retire the recurring v1 promotion and tag-rollback workflows and their active
+helpers after inventory and affected-source verification. Preserve existing
+tags, immutable commits and historical rollout/rollback records; this source
+change does not delete refs, cancel runs or alter grants. Reconcile any pending
+old writer before the human transition rather than retrying it blindly.
+Recovery uses the protected human-reviewed revert or forward-fix path on main.
 
 ## Shared CI Profiles
+
+The existing `actions/ci-rust/action.yml` and `actions/ci-astro/action.yml` are the
+language-check sources for extraction into coherent central checking cores.
+Their present existence is not evidence that central dispatch, complete runtime
+admission or producer migration is already implemented or qualified. The shared-CI
+owner preserves the full composite entrypoints for unmigrated callers while
+implementing the following full application profile contracts under REQ-003,
+REQ-004 and REQ-010:
+
+- Rust binds each declared Cargo workspace/root, its tracked manifests and lock,
+  and approved locked runtime/tools. Static work includes formatting, Clippy with
+  warnings denied, dead-code compilation and dependency audit. Product test lanes
+  run all declared targets/features and owner-required tests with locked inputs.
+- Astro binds each declared package root, tracked `package.json` and package lock,
+  and approved `mise.toml`/`mise.lock` runtime projection. Locked installation,
+  formatting, lint, Astro type checking and build checks form the static surface;
+  product test lanes run the owner-required test commands. Missing commands or
+  tools fail rather than silently omit promised coverage.
+- Mixed profiles compose all declared Rust and Astro components. Common checks
+  and each static surface run once; product test lanes do not repeat static work.
+  No Rust component or runtime is inferred for an Astro-only consumer.
 
 `ci-elixir` exposes `full`, `static`, and `test` profiles. `full` runs all
 cross-cutting/static work and the caller test command. `static` runs the same
@@ -96,8 +368,15 @@ Dialyzer. Missing required tools fail clearly.
 Markdown validation always enumerates all tracked `.md` and `.markdown` files;
 there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
-low-or-higher vulnerabilities and licenses outside a centrally owned permissive
-commercial-use SPDX allowlist, subject to the central artifact exception below.
+low-or-higher vulnerabilities and licenses outside a centrally owned approved
+SPDX allowlist, subject to the central artifact admission below. The shared-CI
+owner must implement the standard policy's existing permissive identifiers and
+`LGPL-3.0-or-later`. Released enforcement must evaluate compound SPDX expressions
+under REQ-023: all mandatory terms in an approved alternative must be eligible.
+The owner verifies that behavior through the actual pinned official action and
+mandatory evidence guard before release; this architecture specifies required
+behavior and does not attest to current execution. No broad LGPL package-family
+exclusion or consumer-selected license override is permitted.
 A following fail-closed check inspects the official dependency-change output.
 Recognized licenses need no additional
 network lookup. Null or empty third-party licenses still fail except for GitHub
@@ -123,14 +402,14 @@ No token, caller URL, alternate registry, package exception, or executable packa
 content enters this evidence path; unavailable or inconsistent evidence fails closed.
 
 The separate first-party evidence class is fixed in central code to
-`ForgingAlpha/.github/actions/<action>@v1`; callers cannot select an owner,
-repository, channel, or exception. The checker requires the dependency record
-to match that family exactly, resolves the protected lightweight `v1` tag
+`ForgingAlpha/.github/actions/<action>@main`; callers cannot select an owner,
+repository, reference, or exception. The checker requires the dependency record
+to match that family exactly, resolves protected `refs/heads/main`
 directly to a commit, fetches that exact commit's tree once, rejects truncated
 or malformed evidence, and requires exactly one blob at the named action path.
-The fixed repository, channel, commit, and path prove first-party ownership and
-released-source provenance. The API lookup does not independently re-prove the
-governed release ceremony; it composes with the protected `v1` rollout. All
+The fixed repository, reference, commit, and path prove first-party ownership and
+protected-main source provenance. The API lookup does not independently re-prove
+human approval; it composes with the protected human-merge path. All
 endpoints are constructed internally rather than taken from dependency data,
 both first-party requests are cached per validation, and every identity, API,
 schema, tree, or policy error fails closed.
@@ -161,6 +440,37 @@ noncanonical PURLs, missing evidence, and unsafe manifest files fail closed.
 Vulnerability checks remain independent and unchanged. Other repositories receive
 no exclusion; no caller input selects an exception. Any later artifact needs a new
 reviewed central policy change.
+
+The central license-policy implementation owns standard SPDX identifiers and
+license eligibility. The product release owner owns the actual delivered
+contents, the selected licensing alternative when a choice matters, and
+applicable compliance evidence in the existing release record. LGPL is a
+conditional license, not a permissive-license classification. The owner
+reconciles library modifications, combined/linked works, redistribution and
+covered content in generated output against the applicable terms, retaining
+required notices, license copies, source/relinking or replacement arrangements
+and installation information as applicable. Internal use of a build tool does
+not alone license its output under LGPL; actual content and distribution decide
+which obligations apply. A changed use/distribution basis requires renewed
+product assessment; routine dependency updates do not require a centrally fixed
+package/version or whole-manifest/build-file digest.
+
+The LGPL version-3 terms are available from the
+[SPDX license text](https://spdx.org/licenses/LGPL-3.0-or-later.html), including the
+incorporated GPL terms. `LGPL-3.0-or-later` permits selecting version 3 for this
+policy; it is not blanket adoption of future terms or other SPDX identifiers.
+The gate supplies dependency eligibility evidence, not a legal-compliance
+certificate. Unresolved applicable obligations stop product delivery under
+REQ-023. The shared-CI owner preserves existing vulnerability thresholds,
+first-party and missing-license evidence paths, and the separate Mapbox exception.
+Standalone GPL/AGPL, other LGPL identifiers and custom/unknown evidence require
+a separate central decision unless already covered by an applicable exception.
+
+The shared-CI owner verifies actual SPDX expression handling and vulnerability,
+unknown-license and Mapbox regressions before releasing changed enforcement.
+The consumed gate revision must implement the adopted policy before reliance;
+source adoption and a list-entry unit test alone do not prove provider behavior
+or fresh consumer CI success.
 
 Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.
@@ -212,9 +522,9 @@ The organization Renovate preset lives in `.github`;
 repository-local Renovate configuration extends it and selects the repository
 class. Native managers own ordinary package manifests and locks, external
 Actions, and active non-runtime image references. The preset excludes
-`ForgingAlpha/.github` Actions so their internal `@v1` references remain owned
-by the protected control-plane rollout instead of being pinned to one release
-commit or proposed for a new major. The central runtime-profile
+`ForgingAlpha/.github` Actions so their internal `@main` references remain owned
+by protected human merges instead of being pinned to one release commit or
+proposed for a new major. The central runtime-profile
 catalog owns governed runtime version declarations; constrained projection
 automation owns the derived consumer mise declaration and lock. Narrow
 annotated custom managers own irreducible version literals. Exact ranges and
@@ -222,12 +532,22 @@ digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
 after three, seven, and thirty days respectively. Renovate proposes a pull
-request into protected code-repository `dev`; a human merges it after exact-head
+request to the ordinary target required by REQ-027: main for .github and
+control-plane, dev for applications, or the Current declared target for another
+class. Applications subsequently promote dev to main through a separate PR.
+A human merges each PR after exact-head
 `CI` and applicable approval. Root bot and platform auto-merge are explicitly
 disabled. The central validator admits only the defined policy shapes, and
 consumer configurations cannot override them. Main-only control-plane updates target
-protected `main`; `.github` release remains independently gated by coherent
-consumer validation before `v1` moves.
+protected `main`; `.github` source becomes active at the human merge after its
+required coherent candidate and affected-consumer validation.
+
+The existing update-ownership validator couples the policy base branch and
+Renovate target to the hosted default branch. That observed coupling does not
+override REQ-027. Where it conflicts with the required ordinary route, the
+updater flow remains unqualified until its source/configuration and any authorized
+settings transition are reconciled. This amendment chooses no new default branch,
+changes no updater configuration and grants no settings authority.
 
 For enrolled repositories, repository-local Dependabot entries remain only to customize
 security updates; normal version-update capacity is zero. The updater-coverage
@@ -236,8 +556,32 @@ repository. It also validates the applicable central preset and local coverage,
 Dependabot configuration, annotated literals, and exactly one owner per
 detected surface.
 
-Security classification never depends on a Dependabot-triggered workflow having
-access to an Actions secret. The unprivileged pull-request CI run is only a wake
+Security-only Dependabot updates use the repository's protected default branch,
+main or dev. The existing update-policy binding owns this target; CI
+enrollment does not change it. A default change reconciles both normal and security
+updater targets, hosted settings and affected source before qualification. Every
+eligible security source uses the common exact classification and patch proof
+below. A direct-main proposal does not manufacture a dev merge or projection;
+a separate-dev source additionally uses the cross-branch projection path. Both
+retain current-base CI, scanning, exact-head human approval and human execution
+of the merge. Existing enrolled proof consumers remain required until their
+qualified replacements preserve the applicable evidence and event paths.
+
+The trusted caller binds the source branch from that owned configuration and
+passes it consistently to preflight, classification and source observation.
+Only protected main or dev is eligible; a candidate branch name, label or workflow
+input cannot select an unqualified source or weaker proof. At the recorded
+implementation baseline `21a0b865`, Python source-proof operations accept a
+source-branch parameter, but the
+classification wrapper defaults to dev and there is no direct-source observation
+wrapper. Those are implementation and qualification obligations, not evidence that
+main-only security delivery already works. Existing authorized security credentials
+and environment restrictions remain in force. This route adds no grant or credential
+exposure; unavailable rights or trusted execution stop that security flow rather
+than moving its secret into ordinary CI.
+
+Security classification never depends on a Dependabot-triggered
+workflow having access to an Actions secret. The unprivileged pull-request CI run is only a wake
 for a default-branch `workflow_run` job. Before entering an environment or
 minting an App token, that job validates the exact CI workflow path, run,
 repository, same-repository Dependabot pull request, current base and head, and
@@ -271,8 +615,8 @@ agent launcher. A human performs the normal two-parent source merge after
 classification, required checks and applicable approval. The unprivileged
 preflight does not read vulnerability alerts and is not full classification.
 
-Production remediation is a separate exact-patch projection, not a `dev` branch
-promotion. A trusted projector re-proves the merged Dependabot source PR,
+For a separate-dev source, production remediation uses an exact-patch projection
+instead of a dev branch promotion. A trusted projector re-proves the merged Dependabot source PR,
 classification App, recorded source merger and merge time, exact source base and head, and complete
 OPEN or FIXED GHSA set. It accepts only the enrolled repository profile's
 dependency manifest and lock paths. The authoritative source base is the first
@@ -322,14 +666,19 @@ exact check. It also searches all pull-request history for the deterministic
 same-repository head; a closed, merged, wrong-base, or duplicate record is a
 fail-closed tombstone rather than permission to create a replacement.
 
-Projection is serialized by repository and lockfile. There may be at most one
-open production projection touching the root npm lock; a second candidate or
-any other concurrent lock proposal fails closed rather than batching or
+Projection writes use non-cancelling caller concurrency scoped by repository
+and target branch. A qualified single-lock writer may additionally scope its
+group by lock path. Every writer that can overlap a multi-lock projection uses
+the common repository-and-target group; keys based only on the selected lock
+set do not exclude unequal overlapping sets. Caller transitions account for
+existing, queued, and running writers before the new scope is used. There may
+be at most one open production projection touching any affected lock; a second
+candidate or any other concurrent lock proposal fails closed rather than batching or
 choosing an order. GitHub caps pull-request file enumeration at 3,000 entries,
 so the proof compares the detailed pull request's changed-file count with the
 complete paginated result and rejects the cap, a mismatch, or duplicates. The
-composite action cannot supply workflow concurrency itself: enrollment must add
-a non-cancelling caller group keyed by repository, target branch, and lock path.
+composite action cannot supply workflow concurrency itself: enrollment must
+install and qualify the caller groups and their overlap coverage.
 
 Normal pull-request CI and CodeQL then execute for the exact projected head in
 the current `main` context with no privileged credential. GitHub also exposes a
@@ -353,11 +702,23 @@ checks the merge and current ref. The ordinary push-triggered deployment binds
 itself to and reports that exact revision; it may begin concurrently and is not
 represented as gated by this observation.
 
+For a direct-main security merge, the corresponding read-only observer binds the
+actual main push, merged source pull request and current main ref, then re-proves
+the source classification and recorded human merge through the common source-proof
+implementation. It verifies the classified base and head, classification time,
+ordered merge parents, source-head tree, approved manifest-and-lock patch and
+official advisory association. It does not use the projection-only attestation or
+create missing classification after the fact. Where the product requires deployment,
+the ordinary deployment records that exact main merge revision and tree; it may
+begin concurrently with observation. A shared-source main merge establishes active
+source, not a product deployment or an additional post-merge activation gate.
+
 Quality, CodeQL, current-base, deletion, non-fast-forward, and merge-shape rules
 remain in no-bypass rulesets. Security and updater identities have no branch
 merge or direct-push authority. Consumer enrollment must prove the exact
-classification, projection, checks, caller serialization, credential boundary,
-human merge and deployment chain. Source publication does not establish that
+source classification, checks, caller serialization, credential boundary and human
+merge; separate-dev production additionally proves projection. Each product retains
+its applicable deployment evidence. Source publication does not establish that
 enrollment or change existing hosted settings and queued work.
 
 Privileged jobs process trusted GitHub metadata only. They never check out,
@@ -382,7 +743,8 @@ proven inactive are deleted rather than enrolled in Renovate. The
 updater-coverage gate rejects new unmanaged version literals and stale
 exceptions.
 
-Advisory audits run daily against application `dev` and deployed `main`.
+Advisory audits run daily against the applicable integration and deployed refs;
+main-only repositories need no invented dev ref or duplicate audit of the same revision.
 Turnkey retains one weekly Ubuntu sentinel for independent runner and timing
 diversity; it is diagnostic and never a merge requirement.
 
@@ -390,20 +752,30 @@ diversity; it is diagnostic and never a merge requirement.
 
 Agents prepare scoped repository changes, verification, and `/tmp` scripts.
 The operator owns destructive pushes, organization rules, credential/App setup,
-exact-revision approval, every PR merge, rollout activation, and rollback
-execution. Updater, security and release automation retains only its separately
+exact-revision approval, every PR merge, consumer enrollment and settings
+transitions. Source recovery uses the protected human PR path. Updater, security
+and release automation retains only its separately
 defined non-merge effects. No SSH or personal credentials are available to agents.
 
 ## Selected Container Foundation Source
 
-Each consumer workflow runs the standalone `ci-foundation@v1` gate as a required
-step, followed by its adapter in a success-dependent step. The action never
-invokes the adapter. Enrollment qualification and human review of the protected
-workflow establish that order before any copied helper runs. The released
-action owns an approved fingerprint catalog and verifies the actual
-checkout without importing or executing its copied code. Applications keep
-`.foundation/` and the adjacent `foundation.lock`; the foundation owns their
-`foundation-source-v1` export format and local import/update behavior.
+An unmigrated consumer workflow runs the standalone `ci-foundation@main` gate as
+a required step, followed by its adapter in a success-dependent step. For a
+centrally produced application profile, the central workflow performs that same
+gate using the single verifier and catalog from its coherent trusted source
+checkout before its success-dependent adapter or any consumer helper. It does
+not resolve that central gate from a second moving ref, duplicate the validator, or retain
+an otherwise unnecessary consumer caller solely for foundation checking. The gate
+does not invoke the adapter. Enrollment qualification and human review of the
+selected producer establish this order before any copied helper runs. The source
+owns an approved fingerprint catalog and verifies the actual
+checkout without importing or executing its copied code. Applications select one
+payload at `tools/container-foundation/` (standard) or `.foundation/` (legacy
+transition), with `foundation.lock` at the checkout root. The foundation owns
+their `foundation-source-v1` export format and local import/update/migration
+behavior. The verifier resolves the sole existing fixed payload leaf, rejects
+dual or partial selections and linked targets or ancestors, and preserves
+unrelated `tools/` content.
 
 Each catalog record contains the fixed canonical foundation repository and
 numeric ID, full human-merged source commit, payload tree, export format and
@@ -413,11 +785,27 @@ verifies identity, human delivery and required checks; no personal or operator
 SSH credential is used. Independent derivation
 reads committed Git blobs and executable modes and reproduces the exact lock
 serialization; an exporter assertion or application-provided lock is insufficient.
-The source and derivation evidence remain in private retained custody. Only
-identity, commit/tree, format and opaque fingerprints enter this public catalog.
+The source and derivation evidence remain in private retained custody. Public
+records contain identity, commit/tree, format, opaque fingerprints and optional
+nonsecret supported-location metadata. The `payload_paths` field permits a nonempty,
+unique subset of the two fixed locations for a qualified helper revision.
+Records without this field permit only `.foundation`; schema version 1 accepts
+no other record fields. Placement is outside upstream identity and lock
+inventory. Consumer-provided metadata cannot grant source-layout eligibility.
 
-A record becomes usable after the existing human-reviewed `.github` merge and
-protected `v1` release. One record serves all consumers of that core revision.
+A record becomes usable through its human-reviewed merge into protected
+`.github/main`; no later tag promotion or source-pin activation admits it.
+One record serves all consumers of that core revision. Execution uses the
+catalog from its exact resolved checking source, not a second catalog fetched
+from a later main. A proposed task-branch record is not an approved runtime
+input merely because its SHA can be selected. Subsequent admission or withdrawal
+changes account for affected consumers and compatibility before their human
+merge; actual execution records which catalog it consumed. Existing caller
+migration gaps cannot be represented as completed policy delivery.
+The exact core source must first be human-merged and its canonical delivery
+verified before the shared admission merge; application source
+updates and layout migrations consume the admitted main source. A task-branch candidate
+record does not authorize runtime use.
 The catalog starts empty until an eligible core revision is available. Multiple
 compatible approved versions can coexist. Record preparation emits a candidate;
 it cannot grant source eligibility or modify the released catalog automatically.
@@ -446,17 +834,18 @@ profile mechanically; it is not a caller-selected general exception. Other
 dependencies and images retain their existing update owners.
 
 Each decision records the actual verifier and catalog content fingerprints and
-action reference. Hosted evidence also retains the runner's resolved action
-commit from its native action acquisition log; `v1` and the consumer workflow
+action reference. Composite hosted evidence also retains the runner's resolved action
+commit from its native action acquisition log; a central local invocation instead
+retains the exact checking checkout and verifier/catalog fingerprints. `main` and the consumer workflow
 SHA are not substitutes for that identity. Candidate self-CI establishes source
-qualification, not protected release or operational consumer admission. Public
+qualification, not human source adoption or operational consumer admission. Public
 self-CI uses synthetic source/lock fixtures only; real private locks, inventories
 and derivation receipts remain in qualified private custody.
 
 Removing a record withdraws admission under the newly released policy. An
-application cannot supply an older catalog as a fallback. Existing protected
-whole-policy rollback can restore older approvals, including a record withdrawn
-by a later policy; the authorized human reviews that exact rollback target.
+application cannot supply an older catalog as a fallback. A human-reviewed
+whole-policy revert on main can restore older approvals, including a record
+withdrawn by a later policy; the authorized human reviews that exact recovery.
 Preserving a withdrawal requires a compatible target or a reviewed forward fix.
 An application rollback still requires a complete approved pair and compatible
 integration; it does not reverse schemas or data.

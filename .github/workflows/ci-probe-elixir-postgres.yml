@@ -97,30 +97,98 @@ jobs:
       PGPASSWORD: postgres
       PGDATABASE: postgres
 
+    defaults:
+      run:
+        working-directory: consumer
+
     steps:
+      - name: Bind defining workflow identity
+        id: source
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          JOB_CONTEXT: ${{ toJSON(job) }}
+        run: |
+          python3 -I -B - <<'PYTHON'
+          import json, os, re, sys
+          try:
+              raw = os.environ['JOB_CONTEXT']
+              assert len(raw.encode('utf-8')) <= 262144
+              def unique(pairs):
+                  value = {}
+                  for key, item in pairs:
+                      assert key not in value
+                      value[key] = item
+                  return value
+              context = json.loads(raw, object_pairs_hook=unique)
+              repo, sha, ref = (context[key] for key in ('workflow_repository', 'workflow_sha', 'workflow_ref'))
+              assert repo == 'ForgingAlpha/.github'
+              assert isinstance(sha, str) and re.fullmatch('[a-f0-9]{40}', sha)
+              prefix = repo + '/.github/workflows/ci-probe-elixir-postgres.yml@'
+              assert isinstance(ref, str) and ref.startswith(prefix)
+              assert ref[len(prefix):] in ('refs/heads/main', sha)
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+                  out.write(f'repository={repo}\nsha={sha}\n')
+          except (AssertionError, KeyError, TypeError, ValueError, OSError):
+              sys.exit('WHAT: Defining workflow identity unavailable or invalid.\nWHY: Probe guard must match this workflow commit.\nHOW: Qualify native main/commit identity; no fallback is allowed.')
+          PYTHON
+
+      - name: Checkout coherent trusted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.source.outputs.repository }}
+          ref: ${{ steps.source.outputs.sha }}
+          path: probe-source
+          persist-credentials: 'false'
+          fetch-depth: 1
+
       - name: Validate probe selector
         id: guard
-        uses: ForgingAlpha/.github/actions/ci-remote-probe-guard@v1
-        with:
-          probe-mode: ${{ inputs.probe_mode }}
-          lane: ${{ inputs.lane }}
-          allowed-lanes: ${{ inputs.allowed_lanes }}
-          file: ${{ inputs.file }}
-          line: ${{ inputs.line }}
-          out-label: ${{ inputs.out_label }}
-          checkout-ref: ${{ inputs.checkout_ref }}
-          file-root: ${{ inputs.file_root }}
-          file-suffixes: ${{ inputs.file_suffixes }}
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          PROBE_MODE: ${{ inputs.probe_mode }}
+          PROBE_LANE: ${{ inputs.lane }}
+          PROBE_ALLOWED_LANES: ${{ inputs.allowed_lanes }}
+          PROBE_FILE: ${{ inputs.file }}
+          PROBE_LINE: ${{ inputs.line }}
+          PROBE_OUT_LABEL: ${{ inputs.out_label }}
+          PROBE_CHECKOUT_REF: ${{ inputs.checkout_ref }}
+          PROBE_FILE_ROOT: ${{ inputs.file_root }}
+          PROBE_FILE_SUFFIXES: ${{ inputs.file_suffixes }}
+          PROBE_SOURCE: ${{ github.workspace }}/probe-source
+          PROBE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$(git -C "${PROBE_SOURCE}" rev-parse HEAD)" != "${PROBE_SOURCE_SHA}" ]; then
+            echo 'WHAT: Probe checking source differs from defining workflow commit.' >&2
+            echo 'WHY: A later main must not replace this execution source.' >&2
+            echo 'HOW: Restore the exact source checkout; no fallback is allowed.' >&2
+            exit 1
+          fi
+          python3 -I -B "${PROBE_SOURCE}/actions/ci-remote-probe-guard/scripts/validate_probe_inputs.py" \
+            --probe-mode "${PROBE_MODE}" \
+            --lane "${PROBE_LANE}" \
+            --allowed-lanes "${PROBE_ALLOWED_LANES}" \
+            --file "${PROBE_FILE}" \
+            --line "${PROBE_LINE}" \
+            --out-label "${PROBE_OUT_LABEL}" \
+            --checkout-ref "${PROBE_CHECKOUT_REF}" \
+            --file-root "${PROBE_FILE_ROOT}" \
+            --file-suffixes "${PROBE_FILE_SUFFIXES}"
 
       - name: Checkout target ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.guard.outputs.checkout_ref }}
+          path: consumer
+          persist-credentials: 'false'
           fetch-depth: 1
 
       - name: Install exact locked runtime
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
+          working_directory: consumer
           version: 2026.8.3
           install: true
           install_args: --locked
@@ -140,9 +208,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            deps
-            _build
-          key: ${{ runner.os }}-${{ runner.arch }}-probe-mix-${{ steps.runtime.outputs.elixir }}-${{ steps.runtime.outputs.otp }}-${{ hashFiles('mise.lock', 'mix.lock') }}
+            consumer/deps
+            consumer/_build
+          key: ${{ runner.os }}-${{ runner.arch }}-probe-mix-${{ steps.runtime.outputs.elixir }}-${{ steps.runtime.outputs.otp }}-${{ hashFiles('consumer/mise.lock', 'consumer/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-probe-mix-${{ steps.runtime.outputs.elixir }}-${{ steps.runtime.outputs.otp }}-
 
@@ -199,6 +267,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ci-probe-${{ steps.guard.outputs.out_label }}
-          path: ${{ steps.guard.outputs.artifact_path }}
+          path: consumer/${{ steps.guard.outputs.artifact_path }}
           if-no-files-found: warn
           retention-days: ${{ inputs.artifact_retention_days }}

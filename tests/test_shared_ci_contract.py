@@ -31,11 +31,11 @@ CONSUMER_SPECIFIC_PROBE_MARKERS = (
     "LANE_TEST",
 )
 CROSS_CUTTING_ORDER = [
-    "ForgingAlpha/.github/actions/ci-merge-flow@v1",
-    "ForgingAlpha/.github/actions/ci-alphaapps-policy@v1",
-    "ForgingAlpha/.github/actions/ci-markdown@v1",
-    "ForgingAlpha/.github/actions/ci-github-actions@v1",
-    "ForgingAlpha/.github/actions/ci-dependabot-coverage@v1",
+    "ForgingAlpha/.github/actions/ci-merge-flow@main",
+    "ForgingAlpha/.github/actions/ci-alphaapps-policy@main",
+    "ForgingAlpha/.github/actions/ci-markdown@main",
+    "ForgingAlpha/.github/actions/ci-github-actions@main",
+    "ForgingAlpha/.github/actions/ci-dependabot-coverage@main",
 ]
 CROSS_CUTTING_HELPER_STEP_NAMES = {
     "Plan GitHub Actions safety gate",
@@ -110,7 +110,7 @@ class SharedCiContractTest(unittest.TestCase):
                 self.assertNotIn("markdown-mode", action.get("inputs", {}))
                 _, markdown_step = self.require_uses_step(
                     path,
-                    "ForgingAlpha/.github/actions/ci-markdown@v1",
+                    "ForgingAlpha/.github/actions/ci-markdown@main",
                 )
                 self.assertNotIn("with", markdown_step)
 
@@ -147,10 +147,10 @@ class SharedCiContractTest(unittest.TestCase):
 
     def test_remote_cross_cutting_steps_skip_central_repo_self_ci(self):
         direct_guarded_refs = set(CROSS_CUTTING_ORDER) - {
-            "ForgingAlpha/.github/actions/ci-github-actions@v1"
+            "ForgingAlpha/.github/actions/ci-github-actions@main"
         }
         direct_guarded_refs |= {
-            "ForgingAlpha/.github/actions/ci-dependency-review@v1"
+            "ForgingAlpha/.github/actions/ci-dependency-review@main"
         }
 
         for path in LANGUAGE_ACTIONS:
@@ -161,8 +161,8 @@ class SharedCiContractTest(unittest.TestCase):
                     self.assertIn(
                         "github.repository != 'ForgingAlpha/.github'",
                         step.get("if", ""),
-                        f"{path} must skip unreleased remote shared-action refs during central repo self-CI. "
-                        "WHY: this repo dogfoods in-branch actions through direct local workflow steps before v1 moves. "
+                        f"{path} must skip live remote shared-action refs during central repo self-CI. "
+                        "WHY: this repo dogfoods in-branch actions through direct local workflow steps before the candidate is human-merged. "
                         f"HOW: add the central-repo guard to the {step.get('uses')} step.",
                     )
 
@@ -171,7 +171,7 @@ class SharedCiContractTest(unittest.TestCase):
                     'REPOSITORY}" = "ForgingAlpha/.github"',
                     helper_step.get("run", ""),
                     f"{path} must skip ci-github-actions remote resolution during central repo self-CI. "
-                    "WHY: branch-local self validation must not depend on unreleased remote shared-action refs. "
+                    "WHY: branch-local self validation must not depend on live remote shared-action refs. "
                     "HOW: keep the central-repo short-circuit in the GitHub Actions safety planner.",
                 )
 
@@ -241,7 +241,7 @@ class SharedCiContractTest(unittest.TestCase):
 
                 _, safety_step = self.require_uses_step(
                     path,
-                    "ForgingAlpha/.github/actions/ci-github-actions@v1",
+                    "ForgingAlpha/.github/actions/ci-github-actions@main",
                 )
                 expected_safety_condition = "${{ steps.github_actions_safety.outputs.run == 'true' }}"
                 if path == ROOT / "actions" / "ci-elixir" / "action.yml":
@@ -260,15 +260,15 @@ class SharedCiContractTest(unittest.TestCase):
                 uses = self.uses_sequence(path)
 
                 self.assertIn(
-                    "ForgingAlpha/.github/actions/ci-dependency-review@v1",
+                    "ForgingAlpha/.github/actions/ci-dependency-review@main",
                     uses,
                     f"{path} must run ci-dependency-review for code/package repos. "
                     "WHY: PR dependency review is part of the shared code-repo safety baseline. "
                     "HOW: add ci-dependency-review before language-specific checks.",
                 )
                 self.assertGreater(
-                    uses.index("ForgingAlpha/.github/actions/ci-dependency-review@v1"),
-                    uses.index("ForgingAlpha/.github/actions/ci-dependabot-coverage@v1"),
+                    uses.index("ForgingAlpha/.github/actions/ci-dependency-review@main"),
+                    uses.index("ForgingAlpha/.github/actions/ci-dependabot-coverage@main"),
                     f"{path} must run dependency review after Dependabot coverage. "
                     "WHY: dependency-surface coverage should validate the repo update model before PR dependency diff review. "
                     f"HOW: reorder shared checks; uses={uses!r}",
@@ -276,7 +276,7 @@ class SharedCiContractTest(unittest.TestCase):
 
                 dependency_review_step_index, dependency_review_step = self.require_uses_step(
                     path,
-                    "ForgingAlpha/.github/actions/ci-dependency-review@v1",
+                    "ForgingAlpha/.github/actions/ci-dependency-review@main",
                 )
                 expected_condition = "${{ github.repository != 'ForgingAlpha/.github' && github.event_name == 'pull_request' }}"
                 if path == ROOT / "actions" / "ci-elixir" / "action.yml":
@@ -325,35 +325,35 @@ class SharedCiContractTest(unittest.TestCase):
                 expected,
                 uses,
                 f"Parent CI must dogfood {expected}. "
-                "WHY: this repo should validate the in-branch shared actions before release tags move. "
+                "WHY: this repo should validate the in-branch shared actions before the candidate is human-merged. "
                 f"HOW: add a local uses step for {expected} in .github/workflows/ci.yml.",
             )
         self.assertNotIn(
             "./actions/ci-shell",
             uses,
-            "Parent CI must not call local ./actions/ci-shell before v1 moves. "
-            "WHY: GitHub resolves composite uses steps before step-level if guards, so ci-shell would try to download unreleased @v1 shared actions during self-CI. "
-            "HOW: run shellcheck and bash -n directly in .github/workflows/ci.yml until ci-shell's remote dependencies exist at v1.",
+            "Parent CI must not call local ./actions/ci-shell before the candidate is human-merged. "
+            "WHY: GitHub resolves composite uses steps before step-level if guards, so ci-shell would try to download live @main shared actions during self-CI. "
+            "HOW: run shellcheck and bash -n directly in .github/workflows/ci.yml so the candidate does not mix local source with live main.",
         )
         self.assertIn(
             "shellcheck -S style",
             validate_shell_run,
             "Parent CI must still run ShellCheck directly. "
-            "WHY: skipping ./actions/ci-shell is only a bootstrap guard, not a relaxation of shell validation. "
+            "WHY: skipping ./actions/ci-shell is candidate-source isolation, not a relaxation of shell validation. "
             "HOW: keep shellcheck -S style in the direct Validate Shell step.",
         )
         self.assertIn(
             'if ! bash -n "$file"; then',
             validate_shell_run,
             "Parent CI must still run Bash syntax validation directly. "
-            "WHY: skipping ./actions/ci-shell is only a bootstrap guard, not a relaxation of shell validation. "
+            "WHY: skipping ./actions/ci-shell is candidate-source isolation, not a relaxation of shell validation. "
             "HOW: keep the executable bash -n \"$file\" branch in the direct Validate Shell step.",
         )
         self.assertIn(
             "python3 -m unittest discover -s actions/ci-remote-probe-guard/tests",
             run_blocks,
             "Parent CI must run the remote probe guard test suite. "
-            "WHY: REQ-015 requires shared action contracts to self-validate before release tags move. "
+            "WHY: REQ-015 requires shared action contracts to self-validate before the candidate is human-merged. "
             "HOW: keep the Test Remote Probe Guard action step in .github/workflows/ci.yml.",
         )
 
@@ -432,42 +432,18 @@ class SharedCiContractTest(unittest.TestCase):
                     )
 
                 steps = workflow["jobs"]["probe"]["steps"]
-                guard_index = next(
-                    (
-                        index
-                        for index, step in enumerate(steps)
-                        if step.get("uses") == "ForgingAlpha/.github/actions/ci-remote-probe-guard@v1"
-                    ),
-                    None,
-                )
-                checkout_index = next(
-                    (
-                        index
-                        for index, step in enumerate(steps)
-                        if step.get("uses") == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-                    ),
-                    None,
-                )
-
-                self.assertIsNotNone(
-                    guard_index,
-                    f"{path} must use the shared probe guard at @v1. "
-                    "WHY: diagnostics use the same latest-green control-plane channel. "
-                    "HOW: restore ForgingAlpha/.github/actions/ci-remote-probe-guard@v1.",
-                )
-                self.assertIsNotNone(
-                    checkout_index,
-                    f"{path} must checkout the target ref after validation. "
-                    "WHY: target code is untrusted input until the guard normalizes checkout_ref. "
-                    "HOW: restore the SHA-pinned actions/checkout step after the guard.",
-                )
-                self.assertLess(
-                    guard_index,
-                    checkout_index,
-                    f"{path} must run the probe guard before checkout. "
-                    "WHY: checkout_ref is a dispatch input and must be validated before use. "
-                    f"HOW: reorder probe steps; guard_index={guard_index}, checkout_index={checkout_index}.",
-                )
+                guard_index = next(i for i, step in enumerate(steps) if step.get("id") == "guard")
+                checkout_index = next(i for i, step in enumerate(steps)
+                                      if step.get("name") == "Checkout target ref")
+                source_index = next(i for i, step in enumerate(steps)
+                                    if step.get("name") == "Checkout coherent trusted source")
+                self.assertLess(source_index, guard_index)
+                self.assertLess(guard_index, checkout_index)
+                self.assertIn("probe-source/actions/ci-remote-probe-guard",
+                              steps[guard_index]["run"].replace('${PROBE_SOURCE}', 'probe-source'))
+                self.assertEqual(steps[source_index]["with"]["ref"], "${{ steps.source.outputs.sha }}")
+                self.assertEqual(steps[checkout_index]["with"]["path"], "consumer")
+                self.assertEqual(steps[checkout_index]["with"]["persist-credentials"], "false")
 
                 run_blocks = "\n".join(
                     step.get("run", "") for step in steps if isinstance(step, dict)
@@ -511,8 +487,8 @@ class SharedCiContractTest(unittest.TestCase):
 
         self.assertEqual(
             probe.get("uses"),
-            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@v1",
-            "ci-probe template must call the centralized reusable workflow at @v1. "
+            "ForgingAlpha/.github/.github/workflows/ci-probe-elixir-postgres.yml@main",
+            "ci-probe template must call the centralized reusable workflow at @main. "
             "WHY: templates should install thin wrappers, not drift-prone copied command bodies. "
             f"HOW: restore the reusable workflow call; probe={probe!r}",
         )

@@ -3,17 +3,21 @@
 The [owning Architecture](../../docs/architecture.md#selected-container-foundation-source)
 defines admission, update ownership, withdrawal and rollback. This action checks
 the actual checkout before any copied helper executes. It runs offline with
-Python's standard library, using only its own released catalog and verifier.
+Python's standard library, using only its own resolved checking-source catalog and verifier.
 
-The catalog currently admits no core revision. Synthetic fixture success does
+The catalog lists approved core revisions. Synthetic fixture success does
 not make a draft core eligible. Human source delivery, required checks, private
-derivation evidence and a reviewed shared release precede real admission.
+derivation evidence and a human-reviewed main merge precede real admission.
 
 ## Consumer wiring
 
-Each platform selects one `.foundation/` directory and adjacent `foundation.lock`
-at its checkout root. Component configuration stays application-owned; its
-adapter supplies the platform build root explicitly.
+Each platform selects one `tools/container-foundation/` directory and a root
+`foundation.lock`. Existing `.foundation/` imports remain supported during the
+explicit transition. Exactly one of these two fixed payload locations must
+exist; the verifier rejects dual, partial, linked or non-directory selections,
+including a linked `tools/` ancestor. Unrelated content under `tools/` is allowed.
+Component configuration stays application-owned; its adapter supplies the
+platform build root explicitly.
 
 Keep the existing required shared checks and run this gate before the
 application-owned adapter. The following steps illustrate ordering inside the
@@ -22,7 +26,7 @@ or an application scaffold:
 
 ```yaml
 - name: Verify selected container core
-  uses: ForgingAlpha/.github/actions/ci-foundation@v1
+  uses: ForgingAlpha/.github/actions/ci-foundation@main
 - name: Qualify application containers
   run: python3 -I bin/container-ci.py
 ```
@@ -32,8 +36,10 @@ use `continue-on-error`; the adapter must not use `always()` or another conditio
 that runs after failure. Enrollment tests demonstrate the actual private
 checkout, exact resolved shared revision and adapter ordering. The gate neither
 executes the adapter nor deploys containers. An ordinary update-ownership check
-also invokes this same checker if either pair member exists. No pair there is
-reported not applicable; the standalone gate always requires the complete pair.
+also invokes this same checker if either supported payload leaf or the root lock
+exists, including dangling links and partial selections. Absence of all three is
+reported not applicable; unrelated `tools/` content does not enroll a repository.
+The standalone gate always requires the complete pair.
 
 The application integration owner prepares complete imported updates through
 human-reviewed app PRs. The fixed first-party reviewed-import profile is the
@@ -69,11 +75,29 @@ in qualified private task/artifact custody. Do not put the real lock, inventory,
 payload or private receipt into this public repository, CI logs or artifacts.
 Public self-CI uses synthetic fixtures exclusively.
 
+Catalog schema version 1 permits an optional trusted record field `payload_paths`:
+a nonempty, unique list containing only `.foundation` and/or
+`tools/container-foundation`. Existing records without the field permit only
+`.foundation`. Qualify the exact helper's support for each permitted location
+before adding the field to its record. The derived record intentionally omits
+this policy decision. The lock format, upstream identity and inventory remain
+unchanged; a consumer cannot add layout eligibility to its lock. New standard
+adoption requires a main-adopted record explicitly permitting
+`tools/container-foundation`. Preserve a compatible legacy selection until that
+record is available, then use the core-owned update and layout-migration
+procedures. Moving an older legacy-only helper does not establish compatibility.
+
 An approved record addition goes through the existing human-reviewed shared
-policy PR and protected `v1` release. All consumers reuse it; no per-app catalog
+policy PR and human merge into protected main. All consumers reuse it; no per-app catalog
 or new credential is created. Source admission includes update-coverage review
 for that exact payload so future native-manager surfaces cannot acquire an
 overlapping updater. The current core's variable image inputs stay app-owned.
+
+For a coordinated source and layout change, human-merge the exact core source
+and verify its canonical delivery before merging its shared catalog admission
+into protected main. Application source updates and layout migrations follow
+that adoption. Execution uses the catalog from its resolved checking source,
+never a second catalog fetched from later main. A proposed record in a task branch grants no runtime use.
 
 ## Evidence and failures
 
@@ -83,9 +107,9 @@ for that field; it does not prove the input was missing or a read was attempted.
 Successful admission also reports the authenticated core commit/tree. Retain
 these with the same job's native
 `Set up job` action-acquisition log, which records the resolved `.github` commit.
-The action ref `v1` and the consumer workflow SHA are not that commit. A missing
+The action ref `main` and the consumer workflow SHA are not that commit. A missing
 or ambiguous native association leaves source-version evidence incomplete.
-Local/candidate action tests do not establish a protected shared release.
+Local/candidate action tests do not establish human source adoption.
 
 Errors report WHAT, WHY and HOW without exposing private paths or inventory.
 Restore a complete approved pair for checkout drift; request shared admission
@@ -114,3 +138,8 @@ python3 -I actions/ci-foundation/scripts/foundation_source.py catalog
 python3 -m unittest discover -s actions/ci-foundation/tests
 python3 -m unittest discover -s actions/ci-update-ownership/tests
 ```
+
+Source recovery uses a checked corrective or revert PR and human merge into main.
+A whole-policy revert may restore a previously withdrawn approval; disclose the
+exact restored records and use a forward fix when withdrawal must persist. Earlier
+source and run records remain evidence, without an active historical-tag fallback.

@@ -365,7 +365,7 @@ class UpdateOwnershipTest(unittest.TestCase):
             with self.subTest(config=config), self.assertRaises(update_ownership.OwnershipError):
                 update_ownership.validate_central_preset(config)
 
-    def test_central_preset_keeps_first_party_actions_on_v1_rollout(self):
+    def test_central_preset_keeps_first_party_actions_owned_by_human_main_merges(self):
         valid = update_ownership.load_json(PRESET)
         matching = [
             rule

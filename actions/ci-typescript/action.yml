@@ -15,7 +15,7 @@
 #         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 #           with:
 #             fetch-depth: 0
-#         - uses: ForgingAlpha/.github/actions/ci-typescript@v1
+#         - uses: ForgingAlpha/.github/actions/ci-typescript@main
 #           with:
 #             working-directory: plugin
 #
@@ -29,7 +29,7 @@
 #         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 #           with:
 #             fetch-depth: 0
-#         - uses: ForgingAlpha/.github/actions/ci-typescript@v1
+#         - uses: ForgingAlpha/.github/actions/ci-typescript@main
 
 name: CI TypeScript
 description: "TypeScript CI: prettier, eslint, tsc, tests"
@@ -52,15 +52,15 @@ runs:
   steps:
     - name: Enforce merge flow
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
-      uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
 
     - name: Validate Alpha Apps policy
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
-      uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
+      uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@main
 
     - name: Validate Markdown
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
-      uses: ForgingAlpha/.github/actions/ci-markdown@v1
+      uses: ForgingAlpha/.github/actions/ci-markdown@main
 
     - name: Plan GitHub Actions safety gate
       id: github_actions_safety
@@ -168,15 +168,15 @@ runs:
 
     - name: Validate GitHub Actions safety
       if: ${{ steps.github_actions_safety.outputs.run == 'true' }}
-      uses: ForgingAlpha/.github/actions/ci-github-actions@v1
+      uses: ForgingAlpha/.github/actions/ci-github-actions@main
 
     - name: Validate Dependabot coverage
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
-      uses: ForgingAlpha/.github/actions/ci-dependabot-coverage@v1
+      uses: ForgingAlpha/.github/actions/ci-dependabot-coverage@main
 
     - name: Review dependency changes
       if: ${{ github.repository != 'ForgingAlpha/.github' && github.event_name == 'pull_request' }}
-      uses: ForgingAlpha/.github/actions/ci-dependency-review@v1
+      uses: ForgingAlpha/.github/actions/ci-dependency-review@main
 
     - name: Setup Node.js (${{ inputs.node-version }})
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

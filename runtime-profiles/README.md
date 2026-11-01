@@ -14,3 +14,10 @@ avoids publishing an approved profile that the current installer cannot enforce.
 Runtime updates change a complete compatible tuple here first. Direct consumer
 runtime changes fail required CI. Generic Renovate mise updates and lock-file
 maintenance remain disabled until the constrained projection writer is active.
+
+Catalog source becomes active through its checked, human-reviewed merge into
+protected `.github/main`. Each execution uses the catalog from its exact resolved
+checking source; later main movement does not replace that input. Source adoption
+does not create an assignment, update a consumer lock, qualify a runtime backend
+or establish hosted enrollment. Recovery uses the same human-reviewed main PR
+path and records the exact restored or changed assignments.

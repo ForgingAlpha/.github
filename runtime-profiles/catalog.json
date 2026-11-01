@@ -19,6 +19,33 @@
           }
         }
       ]
+    },
+    "node-24-astro-7": {
+      "description": "Node.js 24 and npm 11 runtime compatible with Astro 7 static sites",
+      "approved_tuples": [
+        {
+          "id": "node-24.22.1-npm-11.8.0",
+          "state": "current",
+          "tools": {
+            "node": {
+              "version": "24.22.1",
+              "required_platforms": [
+                "linux-x64",
+                "macos-arm64",
+                "macos-x64"
+              ]
+            },
+            "npm": {
+              "version": "11.8.0",
+              "required_platforms": [
+                "linux-x64",
+                "macos-arm64",
+                "macos-x64"
+              ]
+            }
+          }
+        }
+      ]
     }
   },
   "assignments": {
@@ -28,6 +55,10 @@
     },
     "ForgingAlpha/analyzingalpha-site": {
       "profile": "node-24-site",
+      "status": "active"
+    },
+    "ForgingAlpha/layas-learning-lab-site": {
+      "profile": "node-24-astro-7",
       "status": "active"
     }
   }

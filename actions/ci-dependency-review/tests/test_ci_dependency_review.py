@@ -21,6 +21,7 @@ POLICY = ROOT / "actions" / "ci-dependency-review" / "scripts" / "license_policy
 OFFICIAL_ACTION = "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294"
 CHECKOUT_SHA = "d23441a48e516b6c34aea4fa41551a30e30af803"
 FIRST_PARTY_COMMIT = "a" * 40
+FIRST_PARTY_TREE = "d" * 40
 FIRST_PARTY_BLOB = "b" * 40
 
 sys.path.insert(0, str(SCRIPT.parent))
@@ -34,6 +35,38 @@ validator_spec.loader.exec_module(validator)
 class CiDependencyReviewTest(unittest.TestCase):
     def load_action(self):
         return yaml.safe_load(ACTION.read_text(encoding="utf-8"))
+
+    def test_explicit_workspace_interface_preserves_legacy_default(self):
+        action=self.load_action()
+        self.assertEqual(action["inputs"]["workspace"]["default"],"${{ github.workspace }}")
+        step=next(s for s in action["runs"]["steps"] if s.get("name")=="Validate dependency license evidence")
+        self.assertEqual(step["env"]["DEPENDENCY_WORKSPACE"],"${{ inputs.workspace }}")
+        self.assertEqual(step["env"]["GITHUB_LICENSE_TOKEN"],"${{ github.token }}")
+        self.assertTrue(any(s.get("uses")==OFFICIAL_ACTION for s in action["runs"]["steps"]))
+
+    def test_explicit_secondary_workspace_wins_over_decoy_default(self):
+        aliases = (("tool-alias", "real-tool", "1.2.3"),)
+        change = self.npm_alias_change(*aliases[0])
+        concrete = {
+            "change_type": "added", "ecosystem": "npm", "manifest": "package-lock.json",
+            "name": "real-tool", "version": "1.2.3", "package_url": "pkg:npm/real-tool@1.2.3",
+            "license": "Apache-2.0",
+        }
+        with self.npm_alias_workspace(aliases) as consumer, tempfile.TemporaryDirectory() as decoy, mock.patch.object(
+            validator, "fetch_npm_registry_release"
+        ) as fetch:
+            Path(decoy, "package.json").write_text('{}')
+            Path(decoy, "package-lock.json").write_text('{}')
+            environment = {"GITHUB_WORKSPACE": decoy, "DEPENDENCY_WORKSPACE": str(consumer)}
+            code, _, error = self.run_main([change, concrete], extra_env=environment)
+            self.assertEqual(code, 0, error)
+            lock = consumer / "package-lock.json"
+            value = json.loads(lock.read_text())
+            value["packages"]["node_modules/tool-alias"]["version"] = "9.9.9"
+            lock.write_text(json.dumps(value))
+            code, _, _ = self.run_main([change, concrete], extra_env=environment)
+            self.assertNotEqual(code, 0)
+            fetch.assert_not_called()
 
     def run_validator(self, changes, token=None, extra_env=None):
         value = changes if isinstance(changes, str) else json.dumps(changes)
@@ -71,9 +104,9 @@ class CiDependencyReviewTest(unittest.TestCase):
             "change_type": "added",
             "ecosystem": "actions",
             "name": f"ForgingAlpha/.github/actions/{action}",
-            "version": "1.*.*",
+            "version": "main",
             "package_url": (
-                f"pkg:githubactions/ForgingAlpha/.github/actions/{action}@1.%2A.%2A"
+                f"pkg:githubactions/ForgingAlpha/.github/actions/{action}@main"
             ),
             "license": None,
         }
@@ -83,13 +116,14 @@ class CiDependencyReviewTest(unittest.TestCase):
 
     def first_party_api_responses(self, paths=("actions/ci-merge-flow/action.yml",)):
         ref = {
-            "ref": "refs/tags/v1",
+            "ref": "refs/heads/main",
             "object": {"type": "commit", "sha": FIRST_PARTY_COMMIT},
         }
         tree = {
+            "sha": FIRST_PARTY_TREE,
             "truncated": False,
             "tree": [
-                {"path": path, "type": "blob", "sha": FIRST_PARTY_BLOB, "size": 123}
+                {"path": path, "type": "blob", "mode": "100644", "sha": FIRST_PARTY_BLOB, "size": 123}
                 for path in paths
             ],
         }
@@ -290,10 +324,10 @@ class CiDependencyReviewTest(unittest.TestCase):
             self.assertLessEqual(receipt[measured], receipt["bounds"][limit])
 
     def test_other_repository_does_not_claim_artifact_approval(self):
-        # The official SPDX action still owns rejecting this custom license there;
-        # the supplementary evidence guard must not claim the central exception.
+        # Neither stage may admit this custom license outside its exact exception.
         code, stdout, stderr = self.run_main([self.artifact_change()], token="")
-        self.assertEqual(code, 0, stderr)
+        self.assertEqual(code, 1, stderr)
+        self.assertIn("unapproved or malformed license expression", stderr)
         self.assertNotIn("Verified reviewed artifact", stdout)
 
     def test_artifact_guard_rejects_mismatched_or_missing_change_evidence(self):
@@ -408,7 +442,7 @@ class CiDependencyReviewTest(unittest.TestCase):
 
     def test_contract_has_no_caller_bypass_or_license_override(self):
         action = self.load_action()
-        self.assertNotIn("inputs", action)
+        self.assertEqual(set(action["inputs"]), {"workspace"})
         text = ACTION.read_text(encoding="utf-8")
         for obsolete in ("enabled", "deny-licenses", "warn-only"):
             self.assertNotIn(obsolete, text)
@@ -460,7 +494,7 @@ class CiDependencyReviewTest(unittest.TestCase):
     def test_missing_license_guard_runs_even_if_official_review_fails(self):
         action = self.load_action()
         guard = next(
-            step for step in action["runs"]["steps"] if step.get("name") == "Reject missing license evidence"
+            step for step in action["runs"]["steps"] if step.get("name") == "Validate dependency license evidence"
         )
         self.assertIn("always()", guard["if"])
         self.assertEqual(guard["env"]["DEPENDENCY_REPOSITORY"], "${{ github.repository }}")
@@ -472,7 +506,7 @@ class CiDependencyReviewTest(unittest.TestCase):
         self.assertNotIn("DEPENDENCY_BASE_SHA", guard["env"])
         self.assertEqual(
             guard["env"]["DEPENDENCY_WORKSPACE"],
-            "${{ github.workspace }}",
+            "${{ inputs.workspace }}",
         )
 
     def test_validator_accepts_known_license_and_ignores_removals(self):
@@ -487,12 +521,102 @@ class CiDependencyReviewTest(unittest.TestCase):
     def test_recognized_license_does_not_use_fallback_or_require_token(self):
         changes = [{"change_type": "added", "package_url": "pkg:npm/good@1", "license": "MIT"}]
         with mock.patch.object(validator, "fetch_github_license") as fetch, mock.patch.object(
-            validator, "fetch_first_party_release_tree"
+            validator, "fetch_first_party_main_tree"
         ) as first_party_fetch:
             code, _, stderr = self.run_main(changes, token="")
             self.assertEqual(code, 0, stderr)
         fetch.assert_not_called()
         first_party_fetch.assert_not_called()
+
+    def test_real_astro_licenses_and_complete_approved_alternatives_pass(self):
+        expressions = (
+            "LGPL-3.0-or-later",
+            "Apache-2.0 AND LGPL-3.0-or-later",
+            "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
+            "0BSD", "BSD-3-Clause", "ISC",
+            "MIT OR GPL-3.0-only",
+            "MIT AND (Apache-2.0 OR GPL-3.0-only)",
+            "(MIT OR LGPL-2.1-or-later) AND Apache-2.0",
+            "(Apache-2.0 WITH LLVM-exception) OR MIT",
+            "MIT OR LicenseRef-unknown",
+            "MIT OR LicenseRef-X.OTHER",
+            "MIT OR DocumentRef-X.OTHER:LicenseRef-unknown",
+        )
+        changes = [
+            {"change_type": "added", "package_url": f"pkg:npm/example-{index}@1", "license": expression}
+            for index, expression in enumerate(expressions)
+        ]
+        with mock.patch.object(validator, "fetch_github_license") as github_lookup, mock.patch.object(
+            validator, "fetch_npm_registry_release"
+        ) as npm_lookup:
+            code, _, stderr = self.run_main(changes, token="")
+        self.assertEqual(code, 0, stderr)
+        github_lookup.assert_not_called()
+        npm_lookup.assert_not_called()
+
+    def test_guard_rejects_unapproved_ranges_and_malformed_raw_license_evidence(self):
+        expressions = (
+            "LGPL-3.0-only", "LGPL-2.1-or-later", "LGPL-2.1-only",
+            "GPL-3.0-only", "AGPL-3.0-only", "MPL-2.0",
+            "MIT AND GPL-3.0-only", "Apache-2.0 WITH LLVM-exception",
+            "MIT WITH LLVM-exception AND Apache-2.0",
+            "NOASSERTION", "LicenseRef-unknown",
+            "OTHER", "MIT OR OTHER", "OTHER OR MIT", "MIT OR OTHER.0",
+            "MIT AND (Apache-2.0 OR OTHER)", "MIT OR OTHER:LicenseRef-X",
+            "MIT OR", "MIT AND", "MIT Apache-2.0",
+            "MIT || Apache-2.0", "MIT && Apache-2.0", "MIT;True",
+            "__import__(os)", "not MIT", "MIT == MIT", "MIT(MIT)",
+            "()", "(MIT", "MIT)", "MIT WITH", "WITH MIT",
+            "MIT WITH LLVM-exception WITH Autoconf-exception-3.0",
+            "MIT OR (Apache-2.0 AND)",
+            "MIT and Apache-2.0", "MIT oR LGPL-3.0-only",
+        )
+        for expression in expressions:
+            with self.subTest(expression=expression):
+                change = {"change_type": "added", "package_url": "pkg:npm/example@1", "license": expression}
+                code, _, stderr = self.run_main([change], token="")
+                self.assertEqual(code, 1, stderr)
+                self.assertIn("unapproved or malformed license expression", stderr)
+                self.assertIn("WHAT:", stderr)
+                self.assertIn("WHY:", stderr)
+                self.assertIn("HOW:", stderr)
+
+    def test_expression_bounds_refuse_adversarial_input_before_ast_parsing(self):
+        expressions = (
+            "(" * 1024 + "MIT" + ")" * 1024,
+            " OR ".join(["MIT"] * 10000),
+            " OR ".join(["MIT"] * 300),
+        )
+        for expression in expressions:
+            with self.subTest(bytes=len(expression)), mock.patch(
+                "license_policy.ast.parse", side_effect=AssertionError("Unbounded input reached AST parser")
+            ):
+                self.assertFalse(validator.approved_license_expression(expression))
+
+    def test_complete_with_expression_requires_its_own_central_approval(self):
+        expression = "Apache-2.0 WITH LLVM-exception"
+        self.assertFalse(validator.approved_license_expression(expression))
+        with mock.patch("license_policy.APPROVED_SPDX", (*validator.APPROVED_SPDX, expression)):
+            self.assertTrue(validator.approved_license_expression(expression))
+            self.assertFalse(validator.approved_license_expression("MIT WITH LLVM-exception"))
+
+    def test_revision_bound_license_lookup_keeps_exact_lgpl_identifiers(self):
+        identity = validator.parse_github_action_identity({
+            "package_url": f"pkg:githubactions/actions/checkout@{CHECKOUT_SHA}",
+            "source_repository_url": "https://github.com/actions/checkout",
+        })
+        assert identity is not None
+        for identifier, allowed in (
+            ("LGPL-3.0-or-later", True), ("LGPL-3.0-only", False), ("LGPL-2.1-or-later", False)
+        ):
+            with self.subTest(identifier=identifier):
+                response = io.BytesIO(json.dumps({"license": {"spdx_id": identifier}}).encode())
+                with mock.patch.object(validator.urllib.request, "urlopen", return_value=response):
+                    if allowed:
+                        self.assertEqual(validator.fetch_github_license(identity, "read-token"), identifier)
+                    else:
+                        with self.assertRaises(validator.EvidenceError):
+                            validator.fetch_github_license(identity, "read-token")
 
     def test_exact_github_action_uses_revision_bound_approved_license(self):
         changes = [
@@ -514,7 +638,7 @@ class CiDependencyReviewTest(unittest.TestCase):
         self.assertEqual(identity.sha, CHECKOUT_SHA)
         self.assertEqual(token, "test-token")
 
-    def test_first_party_action_uses_fixed_v1_commit_and_tree(self):
+    def test_first_party_action_uses_fixed_main_commit_and_tree(self):
         changes = [
             self.first_party_change(source=None),
             self.first_party_change("ci-dependency-review"),
@@ -574,11 +698,14 @@ class CiDependencyReviewTest(unittest.TestCase):
             change[field] = value
             invalid.append(change)
         for package_url in (
-            "pkg:githubactions/ForgingAlpha/.github/actions/nested/path@1.%2A.%2A",
-            "pkg:githubactions/ForgingAlpha/.github/actions/ci_merge_flow@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/nested/path@main",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci_merge_flow@main",
             "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@2.%2A.%2A",
             "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@1.*.*",
-            "pkg:githubactions/forgingalpha/.github/actions/ci-merge-flow@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@v1",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@refs/heads/main",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@MAIN",
+            "pkg:githubactions/forgingalpha/.github/actions/ci-merge-flow@main",
         ):
             change = self.first_party_change()
             change["package_url"] = package_url
@@ -597,8 +724,8 @@ class CiDependencyReviewTest(unittest.TestCase):
         bad_ref_payloads = (
             {},
             {"ref": "refs/tags/v2", "object": {"type": "commit", "sha": FIRST_PARTY_COMMIT}},
-            {"ref": "refs/tags/v1", "object": {"type": "tag", "sha": FIRST_PARTY_COMMIT}},
-            {"ref": "refs/tags/v1", "object": {"type": "commit", "sha": "ABC"}},
+            {"ref": "refs/heads/main", "object": {"type": "tag", "sha": FIRST_PARTY_COMMIT}},
+            {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "ABC"}},
         )
         for payload in bad_ref_payloads:
             with self.subTest(payload=payload), mock.patch.object(
@@ -607,20 +734,18 @@ class CiDependencyReviewTest(unittest.TestCase):
                 return_value=io.BytesIO(json.dumps(payload).encode()),
             ):
                 with self.assertRaises(validator.EvidenceError):
-                    validator.fetch_first_party_release_tree("read-token")
+                    validator.fetch_first_party_main_tree("read-token")
 
-        valid_ref = self.first_party_api_responses()[0]
+        valid_ref, _ = self.first_party_api_responses()
         bad_tree_payloads = (
-            {},
-            {"truncated": True, "tree": []},
-            {"truncated": False, "tree": None},
-            {"truncated": False, "tree": [None]},
-            {
-                "truncated": False,
-                "tree": [{"path": "actions/x/action.yml", "type": "blob", "sha": "bad"}],
-            },
+            ({"sha": FIRST_PARTY_TREE, "truncated": True, "tree": []}, "invalid or truncated"),
+            ({"sha": FIRST_PARTY_TREE, "truncated": False, "tree": None}, "no entry list"),
+            ({"sha": FIRST_PARTY_TREE, "truncated": False, "tree": [None]}, "malformed entry"),
+            ({"sha": FIRST_PARTY_TREE, "truncated": False,
+              "tree": [{"path": "actions/x/action.yml", "type": "blob", "sha": "bad"}]},
+             "malformed entry"),
         )
-        for payload in bad_tree_payloads:
+        for payload, expected in bad_tree_payloads:
             with self.subTest(payload=payload), mock.patch.object(
                 validator.urllib.request,
                 "urlopen",
@@ -629,13 +754,52 @@ class CiDependencyReviewTest(unittest.TestCase):
                     io.BytesIO(json.dumps(payload).encode()),
                 ],
             ):
-                with self.assertRaises(validator.EvidenceError):
-                    validator.fetch_first_party_release_tree("read-token")
+                with self.assertRaisesRegex(validator.EvidenceError, expected):
+                    validator.fetch_first_party_main_tree("read-token")
+
+    def test_main_snapshot_is_resolved_once_and_keeps_exact_commit_tree(self):
+        # A later main value is deliberately queued. This decision must not read it.
+        responses = self.first_party_api_responses()
+        later = {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "e" * 40}}
+        responses.append(io.BytesIO(json.dumps(later).encode()))
+        with mock.patch.object(validator.urllib.request, "urlopen", side_effect=responses) as request:
+            code, output, error = self.run_main([self.first_party_change()])
+        self.assertEqual(code, 0, error)
+        self.assertEqual(request.call_count, 2)
+        self.assertIn(FIRST_PARTY_COMMIT, output)
+        self.assertIn(FIRST_PARTY_BLOB, output)
+        self.assertIn("not an execution receipt", output)
+        self.assertNotIn("e" * 40, output)
+
+    def test_main_tree_requires_immutable_tree_identity(self):
+        for sha in (None, "", "bad", "A" * 40, 42):
+            with self.subTest(sha=sha):
+                ref, tree = self.first_party_api_responses()
+                payload = json.loads(tree.getvalue())
+                payload["sha"] = sha
+                with mock.patch.object(validator.urllib.request, "urlopen", side_effect=[
+                    ref, io.BytesIO(json.dumps(payload).encode()),
+                ]) as request:
+                    code, _, error = self.run_main([self.first_party_change()])
+                self.assertNotEqual(code, 0)
+                self.assertIn("WHAT:", error)
+                self.assertEqual(request.call_count, 2)
+
+    def test_main_provenance_api_failure_has_no_tag_fallback(self):
+        for index in range(2):
+            with self.subTest(stage=index):
+                responses = self.first_party_api_responses()[:index] + [TimeoutError("unavailable")]
+                with mock.patch.object(validator.urllib.request, "urlopen", side_effect=responses) as request:
+                    code, _, error = self.run_main([self.first_party_change()])
+                self.assertNotEqual(code, 0)
+                self.assertIn("WHAT:", error)
+                self.assertEqual(request.call_count, index + 1)
+                self.assertTrue(all('/tags/' not in c.args[0].full_url for c in request.call_args_list))
 
     def test_first_party_action_path_must_be_one_exact_blob(self):
         identity = validator.FirstPartyActionIdentity(
             "ci-merge-flow",
-            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@1.%2A.%2A",
+            "pkg:githubactions/ForgingAlpha/.github/actions/ci-merge-flow@main",
         )
         wrong_entries = (
             (),
@@ -658,13 +822,27 @@ class CiDependencyReviewTest(unittest.TestCase):
         for entries in wrong_entries:
             with self.subTest(entries=entries), mock.patch.object(
                 validator,
-                "fetch_first_party_release_tree",
+                "fetch_first_party_main_tree",
                 return_value=(FIRST_PARTY_COMMIT, entries),
             ):
                 with self.assertRaises(validator.EvidenceError):
                     validator.verify_first_party_actions(
                         {identity.action_directory: identity}, "read-token"
                     )
+
+    def test_main_action_blob_requires_regular_file_and_positive_size(self):
+        for changes in ({"mode": "120000"}, {"mode": "160000"}, {"mode": None},
+                        {"size": None}, {"size": 0}, {"size": True}):
+            with self.subTest(changes=changes):
+                ref, tree = self.first_party_api_responses()
+                payload = json.loads(tree.getvalue())
+                payload["tree"][0].update(changes)
+                with mock.patch.object(validator.urllib.request, "urlopen", side_effect=[
+                    ref, io.BytesIO(json.dumps(payload).encode()),
+                ]):
+                    code, _, error = self.run_main([self.first_party_change()])
+                self.assertNotEqual(code, 0)
+                self.assertIn("WHAT:", error)
 
     def test_first_party_tree_allows_unrelated_zero_byte_blob(self):
         ref, tree = self.first_party_api_responses()
@@ -677,7 +855,7 @@ class CiDependencyReviewTest(unittest.TestCase):
             "urlopen",
             side_effect=[ref, io.BytesIO(json.dumps(tree_payload).encode())],
         ):
-            commit_sha, entries = validator.fetch_first_party_release_tree("read-token")
+            commit_sha, entries = validator.fetch_first_party_main_tree("read-token")
 
         self.assertEqual(commit_sha, FIRST_PARTY_COMMIT)
         self.assertEqual(len(entries), 2)

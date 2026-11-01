@@ -14,7 +14,7 @@
 #         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 #           with:
 #             fetch-depth: 0
-#         - uses: ForgingAlpha/.github/actions/ci-shell@v1
+#         - uses: ForgingAlpha/.github/actions/ci-shell@main
 
 name: CI Shell
 description: "Shell CI: shellcheck + bash syntax validation"
@@ -34,15 +34,15 @@ runs:
   steps:
     - name: Enforce merge flow
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
-      uses: ForgingAlpha/.github/actions/ci-merge-flow@v1
+      uses: ForgingAlpha/.github/actions/ci-merge-flow@main
 
     - name: Validate Alpha Apps policy
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
-      uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
+      uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@main
 
     - name: Validate Markdown
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
-      uses: ForgingAlpha/.github/actions/ci-markdown@v1
+      uses: ForgingAlpha/.github/actions/ci-markdown@main
 
     - name: Plan GitHub Actions safety gate
       id: github_actions_safety
@@ -150,11 +150,11 @@ runs:
 
     - name: Validate GitHub Actions safety
       if: ${{ steps.github_actions_safety.outputs.run == 'true' }}
-      uses: ForgingAlpha/.github/actions/ci-github-actions@v1
+      uses: ForgingAlpha/.github/actions/ci-github-actions@main
 
     - name: Validate Dependabot coverage
       if: ${{ github.repository != 'ForgingAlpha/.github' }}
-      uses: ForgingAlpha/.github/actions/ci-dependabot-coverage@v1
+      uses: ForgingAlpha/.github/actions/ci-dependabot-coverage@main
 
     - name: Run shell checks
       env:

@@ -11,12 +11,25 @@ tags:
 
 ## Shared CI
 
-### REQ-001 - Single Required CI Status
+### REQ-001 - Stable CI Result And Central Baseline
 
-Shared automation SHALL preserve one required status named `CI`.
+Shared automation SHALL preserve a stable required result named `CI`. An
+enrolled application repository SHALL additionally require the central baseline
+under a distinct identity. An explicitly enrolled document-only repository MAY
+use its complete central bootstrap result as its initial `CI` producer.
+An explicitly enrolled full application profile MAY assign its product `CI`
+producer to the central workflow only with complete applicable product checks,
+an unambiguous producer, preserved protection and qualified transition/recovery.
 
 **Fit:** Every supported consumer can make one `CI` result required without
-depending on matrix job names.
+depending on matrix job names. A centrally required common baseline has a
+distinct identity from application CI. An explicitly enrolled document-only
+bootstrap may obtain its initial `CI` result from the central workflow only
+when that result covers its complete declared profile; it cannot replace an
+existing product CI result or its producer restrictions. Application migration
+preserves those restrictions and complete product coverage; a common-baseline
+result cannot substitute for product CI. A transition cannot accept duplicate
+indistinguishable results or weaken required checks while changing producers.
 
 ### REQ-002 - Approved Source Truth
 
@@ -51,32 +64,40 @@ caller preparation, and their assigned tests.
 
 ## Rollout And Protection
 
-### REQ-005 - Reviewed Green Current-Channel Rollout
+### REQ-005 - Protected Main Is Active
 
-A reviewed merge to `.github/main` SHALL advance mutable `v1` only after the
-approved `CI` workflow succeeds from a `push` on that exact merged commit and it
-remains the current `main` SHA.
+Protected, human-merged `.github/main` SHALL be the active first-party shared
+automation source. Required exact-revision checks and authorized human review
+SHALL precede the human merge. A separate tag promotion, post-merge acceptance
+or recurring source-pin update SHALL NOT be required to activate that source.
 
-**Fit:** A red, stale, or superseded commit cannot move `v1`.
+**Fit:** A new applicable execution selects protected `main`; a successful
+merge does not wait for `v1`, an operator repin or a second source approval.
+Post-merge failures remain observable and do not silently select older code.
 
-### REQ-006 - Serialized And Recorded Rollout
+### REQ-006 - Exact Execution Source Evidence
 
-Every `v1` movement SHALL be serialized, use an expected-old raw-ref lease, and
-SHALL create an immutable rollout or rollback tag plus a summary containing the
-previous SHA, new SHA, CI run or rollback source, and actor. Mutable movement
-and immutable record creation SHALL use one atomic push so a failure changes
-neither ref.
+Shared execution SHALL retain the exact resolved automation commit, applicable
+workflow or Action identity, consumer revision and outcome. The source selected
+for an execution SHALL remain coherent with its helpers and policy inputs.
+An already resolved execution SHALL NOT substitute a later `main` revision.
 
-**Fit:** Concurrent runs cannot reorder `v1`; every deployed control-plane
-version has an immutable recovery point.
+**Fit:** Central workflow jobs use their defining workflow commit throughout
+admission, product lanes and finalization. Composite execution retains the native
+resolved Action commit and applicable verifier/catalog fingerprints. A branch
+name or consumer commit alone cannot stand in for executed-source identity.
 
-### REQ-007 - Constrained Rollback
+### REQ-007 - Human-Reviewed Source Recovery
 
-Rollback SHALL require operator approval and SHALL accept only an existing
-protected immutable rollout tag whose commit historically passed `CI`.
+Recovery of active shared automation SHALL use a corrective or revert pull
+request through the same required checks, exact-head human approval and human
+merge into protected `main`. It SHALL preserve the affected run/source evidence.
+Automation SHALL NOT force-update `main`, select a historical tag as an active
+fallback or grant itself rollback or merge authority.
 
-**Fit:** Arbitrary refs, non-`main` ancestry, and shell input are rejected;
-immutable tags never move, and every eligible target has the required CI evidence.
+**Fit:** A reviewed recovery merge becomes active through REQ-005. Earlier
+commits and tag/run records remain historical evidence without a second channel
+or an automatic restoration of withdrawn policy approvals.
 
 ### REQ-008 - Least-Privilege Trusted Automation
 
@@ -93,8 +114,8 @@ reviewed release comment. Downloaded tools SHALL use an exact version and
 verified integrity or provenance.
 
 **Fit:** CI rejects floating external tags, branches, and unqualified images.
-Internal `ForgingAlpha/.github/...@v1` remains the documented current-channel
-exception.
+Only fixed first-party `ForgingAlpha/.github/...@main` references are the
+documented active-source exception. This does not relax third-party pins.
 
 ## Runtime And Dependencies
 
@@ -127,22 +148,53 @@ derived projections rather than independent owners.
 Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
 of three days for patches, seven days for minors, and thirty days for majors.
 
-**Fit:** Eligible patch, minor, and major proposals target a code repository's
-protected `dev`; an authorized human merges them after exact-head `CI` and
+**Fit:** Eligible patch, minor, and major proposals follow REQ-027's ordinary
+route: `main` for `.github` and `control-plane`, and `dev` for applications,
+followed by a separate human-merged promotion to `main`. Other classes retain
+their Current declared route. An authorized human merges each proposal
+after exact-head `CI` and
 applicable approval. Renovate and platform auto-merge are disabled, including
 policy overrides. Runtime and tool changes use the same path after their exact generated
 locks and integrity data pass CI. Main-only control-plane updates merge through
-protected `main` only after their complete control-plane gates pass.
+protected `main` only after their complete control-plane gates pass. The existing
+updater/default-branch coupling SHALL be reconciled and qualified wherever its
+configured target conflicts with that route; no default-branch or settings change
+is authorized by this requirement alone.
 
 ### REQ-013 - Immediate Security Updates
+
+Security-only Dependabot proposals MAY target the repository's protected default
+`main` directly, including when a separate `dev` exists. Every eligible security
+source proposal, targeting protected `main` or `dev`, SHALL satisfy the common
+classification, exact-patch, current-base, CI, CodeQL and human-merge obligations
+below. Direct-to-main delivery SHALL NOT require a second source merge or a
+cross-branch production projection. Ordinary admission SHALL NOT represent any
+proposal as classified or projected security evidence.
+
+The target branch SHALL be bound to the repository's protected default branch by
+the existing update-ownership contract. CI enrollment does not change that default
+or updater target. Changing that default SHALL reconcile both normal and security
+updater targets, source and hosted settings, and qualify the resulting flow before
+reliance. The trusted caller and proof SHALL bind the actual source
+branch, repository, pull request, base and head; branch existence or an untrusted
+proposal field SHALL NOT select a weaker proof. Existing enrolled security consumers
+SHALL retain their proof obligations until their successor flow is reconciled and
+qualified. Missing classification capability or evidence leaves security eligibility
+unproved; changing ordinary PR admission SHALL NOT bypass that failure.
+
+The direct route grants no security-App credential, new credential exposure,
+bypass or merge authority. It SHALL use only the already authorized security
+boundary and required least-privilege capabilities; unavailable prerequisites stop
+the affected security flow. A separate-dev source additionally requires the
+cross-branch projection obligations below before production delivery.
 
 Only a Dependabot pull request with a re-provable official GitHub
 vulnerability-alert association and a trusted automation-App classification
 check bound to its exact source base, exact current head, complete associated
 OPEN or FIXED GHSA set, and approved manifest-and-lock change SHALL be treated
-as eligible for security-patch projection. Eligible security updates
+as eligible security remediation. Eligible security updates
 SHALL bypass normal cooldown. An authorized human SHALL perform the source
-merge into protected `dev` only after that exact head passes its classification,
+merge into the bound protected source branch only after that exact head passes its classification,
 required `CI`, CodeQL, and applicable approval. Trusted
 exact-head CI SHALL succeed. Trusted aggregate CodeQL SHALL succeed except that
 its terminal neutral result MAY be accepted only after exact source
@@ -218,6 +270,19 @@ compare the pre-fix blobs and modes for both `package.json` and
 `package-lock.json` against current `main`, even when a transitive-only fix
 changes only the lock.
 
+A direct-main security merge SHALL preserve the same immutable classified source
+chain and supported merge shape, with `main` as its source and production branch.
+Read-only source observation SHALL re-prove that exact merged pull request, its
+pre-merge classification, observed human merger, ordered parents, source-head tree
+and official advisory association. It SHALL NOT manufacture a projection
+attestation or retroactively create missing classification. Its exact merged
+revision remains subject to the applicable deployment evidence in REQ-014.
+
+Concurrent ordinary changes to the production manifest or lock SHALL NOT relax
+the separate-dev projection's exact-preimage requirement. A mismatch stops that
+projection until the source and current production base can be reconciled through
+their human-reviewed change paths and the required proof is re-established.
+
 **Fit:** Stale native auto-merge state and retired security routing labels are
 ineligible and fail closed.
 A changed source head, untrusted merge identity, incomplete or changed GHSA set,
@@ -230,14 +295,20 @@ modes. Projection is serialized by repository and lockfile; more than one open
 production projection touching the same lock is ambiguous and fails closed. A
 rerun after an accepted ref, check, or pull-request write with a lost response
 adopts only the exact recorded state and performs no second mutable write.
-The consumer caller SHALL provide a non-cancelling concurrency group keyed by
-repository, target branch, and lock path. Enrollment SHALL fail until that
-caller-side serialization is installed. Lock ownership proof SHALL reject an
+Consumer callers SHALL provide non-cancelling concurrency groups scoped by
+repository and target branch. A group MAY additionally be scoped by lock path
+only when that preserves exclusion among every writer that can touch that lock.
+A projection affecting multiple locks SHALL share the repository-and-target
+group with every potentially overlapping writer. A key derived only from the
+selected lock set SHALL NOT substitute for that common group: unequal sets can
+overlap. Enrollment SHALL fail until caller-side serialization and transitions
+from existing, queued, or running writers are installed and qualified.
+Lock ownership proof SHALL reject an
 incomplete, capped, mismatched, or duplicate pull-request file enumeration.
 
-### REQ-014 - Verified Projection And Exact-SHA Deployment
+### REQ-014 - Verified Security Delivery And Exact-SHA Deployment
 
-A security production pull request SHALL receive fresh strict `main`-target CI
+A projected security production pull request SHALL receive fresh strict `main`-target CI
 and CodeQL on its exact current head and base. Read-only verification SHALL
 independently reconstruct the expected patch, re-prove source and alert
 provenance, verify the exact trusted check runs, and reject armed native
@@ -246,18 +317,24 @@ merge under the owning repository's protected procedure. Quality and scanning
 requirements SHALL have no automation bypass. Creating the draft projection
 SHALL NOT require approval or checks that can exist only after its creation.
 
-The deployed revision SHALL be the exact resulting `main` merge revision and
-tree. The source Dependabot head, its `dev` merge, the production preimage, the
-projected head, the resulting `main` merge, and the deployment SHALL remain one
-traceable immutable chain; they are not required to share one commit SHA.
+Where the product has a deployment obligation, its deployed revision SHALL be
+the exact resulting `main` merge revision and tree. A separate-dev security flow
+SHALL preserve the source Dependabot head, its `dev` merge, production preimage,
+projected head, resulting `main` merge and deployment as one traceable immutable
+chain; those revisions are not required to share one commit SHA. A direct-main
+flow SHALL preserve its classified base and head, actual human merge and applicable
+deployment without adding fictitious intermediate revisions. Shared-source
+activation under REQ-005 is not evidence of a product deployment.
 
 **Fit:** The recorded source head/base or current production head/base moving or
 mismatching before merge fails closed; later unrelated `dev` movement does
-not. Post-merge observation binds the actual push revision and merged pull
+not. For a projection, post-merge observation binds the actual push revision and merged pull
 request to its trusted projection attestation, verifies current `main`, ordered
 parents and expected tree, and performs no mutation. The independently triggered
 deployment binds itself to and reports that exact `main` push revision and may
-begin concurrently; post-merge observation is not its admission gate.
+begin concurrently; post-merge observation is not its admission gate. Direct-main
+security observation uses the source proof in REQ-013. Ordinary non-security
+merges make neither security claim and need no security attestation.
 A deployment failure remains visible for
 governed retry or roll-forward; automation does not silently roll back to a
 vulnerable revision.
@@ -266,8 +343,9 @@ vulnerable revision.
 
 ### REQ-015 - Protected Branches And Refs
 
-Application `dev` SHALL require pull requests and `CI`. Application `main`,
-deployment refs, and control-plane release tags SHALL reject untrusted direct
+Every repository's protected `main` and any protected `dev` SHALL require
+pull requests and applicable complete `CI`. Those branches, deployment refs,
+and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
 
 **Fit:** Independent no-bypass rules enforce required CI, CodeQL, current-base
@@ -280,8 +358,9 @@ rollout and deployment permissions do not confer branch or merge authority.
 ### REQ-016 - Operator Boundary
 
 Agents MAY prepare changes, tests, commits, and operator scripts. Destructive
-pushes, ruleset administration, rollout enablement, and rollback execution
-remain operator-owned.
+pushes, ruleset administration, credential/App setup and settings transitions
+remain operator-owned. Only an authorized human executes a source-recovery PR
+merge; this does not create a separate source-activation step after that merge.
 
 **Fit:** Automation and agent workflows contain no operator SSH key, personal
 access token, or agent-readable personal credential.
@@ -298,8 +377,8 @@ request is open.
 
 Renovate SHALL own normal external version updates and SHALL NOT create
 vulnerability-remediation pull requests. Internal
-`ForgingAlpha/.github@v1` references SHALL remain excluded from Renovate and
-owned by the protected control-plane rollout. Dependabot SHALL own security
+`ForgingAlpha/.github@main` references SHALL remain excluded from Renovate and
+owned by the protected human-merge path. Dependabot SHALL own security
 remediation and SHALL NOT create normal version-update pull requests.
 
 **Fit:** Required CI validates the central Renovate preset, security-only
@@ -317,16 +396,18 @@ separate writer verifies bot identity, exact head, and an allowlisted file diff
 before committing only the expected generated artifacts. The new exact head
 must pass locked-mode `CI`.
 
-### REQ-020 - Version-Coherent Control-Plane Release
+### REQ-020 - Coherent Premerge Consumer Validation
 
-For repositories enrolled in the version-coherent consumer gate, an update to
-shared automation SHALL NOT advance `v1` until representative consumer profiles exercise one
-coherent candidate revision and the exact merged control-plane commit remains
-green and current. Every rollout SHALL satisfy REQ-005 through REQ-007 and the
-operator checklist, whether or not the consumer gate is enrolled.
+Before a shared automation change merges, required validation SHALL exercise
+one coherent candidate revision and the affected consumer-profile behavior.
+An enrolled version-coherent consumer gate SHALL remain a required premerge
+obligation; changing the active-source mechanism SHALL NOT silently remove it.
+The impact assessment SHALL distinguish preserved coverage, changed obligations
+and operational observations still needed for affected consumers.
 
-**Fit:** Candidate tests cannot mix proposed top-level Actions with sibling
-Actions from the already-live `v1`; failure or ambiguity leaves `v1` unchanged.
+**Fit:** Candidate checks cannot mix proposed top-level code with helpers from
+another mutable reference. Missing required premerge coverage blocks the merge;
+execution observations after merge record delivery and do not activate source.
 
 ### REQ-021 - External Plugin Update Ownership
 
@@ -352,18 +433,28 @@ legacy-tag exception.
 
 Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
-commercial-use allowlist; callers SHALL NOT disable the review, substitute a
-denylist, or exempt individual packages. Missing, unknown, or custom license
+approved SPDX allowlist; callers SHALL NOT disable the review, substitute a
+denylist, or exempt individual packages. The standard allowlist SHALL preserve
+its existing permissive license identifiers and add `LGPL-3.0-or-later`. This
+identifier permits selection of LGPL version 3; its inclusion SHALL NOT imply
+blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
+custom or unknown licenses. Those require a separate reviewed central policy
+decision unless an applicable existing artifact exception already covers them.
+For a compound SPDX expression, every obligation in the selected licensing
+alternative SHALL be centrally eligible: every member of `AND` must be approved;
+`OR` requires at least one fully approved alternative. A `WITH` exception SHALL
+require explicit central approval of the complete expression. An unknown or
+malformed expression SHALL fail closed. Missing, unknown, or custom license
 evidence SHALL fail closed for third-party dependencies except for a reviewed
 central repository-and-artifact exception as specified below. When GitHub omits
 license metadata for a third-party GitHub Action pinned to an exact commit SHA,
 the central gate MAY resolve the repository license at that exact revision
 through GitHub's official license API and SHALL accept only an SPDX identifier
 already present in the same central allowlist. A centrally fixed
-`ForgingAlpha/.github/actions/*@v1` first-party action MAY instead satisfy the
-gate through strict ownership and release provenance: the evidence record
-SHALL match the fixed repository and major channel exactly, the protected `v1`
-reference SHALL resolve directly to a commit, and that exact commit SHALL
+`ForgingAlpha/.github/actions/*@main` first-party action MAY instead satisfy the
+gate through strict ownership and protected-main provenance: the evidence record
+SHALL match the fixed repository and main reference exactly, that reference
+SHALL resolve directly to a commit, and that exact commit SHALL
 contain the named action. Callers SHALL NOT select or broaden this first-party
 evidence class. When GitHub reports a null license for an exact pinned root npm
 alias, the central gate MAY normalize it to the underlying package only when the
@@ -400,10 +491,36 @@ and malformed or oversized files SHALL fail closed. This exception SHALL NOT rel
 vulnerability review, the SPDX default, or other evidence classes. Later artifact
 updates SHALL require a new reviewed central policy change.
 
+Standard license eligibility SHALL NOT establish compliance for a particular use.
+The accountable product release owner SHALL assess the actual use and contents
+being delivered. For LGPL-covered library modifications, linked/combined works
+or redistribution, the owner SHALL identify and satisfy applicable copyright and
+license notices, license-copy, corresponding-source, replacement/relinking,
+reverse-engineering and installation-information conditions before delivery.
+Required evidence SHALL be retained with the existing product release record,
+bound to the delivered contents and applicable license terms. Unresolved
+applicable obligations SHALL stop the affected delivery. A dependency's optional
+or development classification alone SHALL NOT establish that it is absent from
+the delivered product. Internal build use and generated output SHALL be assessed
+from the actual output: using a tool alone SHALL NOT be treated as licensing all
+its output under LGPL, and covered content copied into output SHALL NOT be
+assumed exempt. Ordinary maintenance that changes neither the applicable terms
+nor their use/distribution basis SHALL reuse applicable existing compliance
+evidence; it SHALL NOT require a new central package/version exception.
+
+The shared-CI owner SHALL enforce standard SPDX eligibility through the official
+dependency-review action and the existing mandatory evidence guard. Product
+release owners retain actual-use compliance responsibility; a green license check
+SHALL NOT be represented as legal clearance. Vulnerability severity and scope
+thresholds, existing evidence classes, the Mapbox artifact exception and human
+approval/merge requirements SHALL remain unchanged. Source adoption alone SHALL
+NOT establish released enforcement; the consumed gate revision SHALL implement
+the adopted policy before operational reliance.
+
 **Fit:** Approved third-party SPDX evidence passes; non-approved evidence
 fails; the exact-revision third-party resolver fails closed on malformed
 identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
-first-party resolver fails closed on any schema, repository, channel, commit,
+first-party resolver fails closed on any schema, repository, reference, commit,
 tree, or action-path mismatch; npm alias normalization fails closed on any manifest,
 PURL, spec, lock format, target, registry, artifact, integrity, license, redirect,
 availability, response-size, or lookup-count mismatch;
@@ -412,23 +529,157 @@ including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
+The enforcing release must demonstrate that an approved LGPL expression passes
+eligibility, while mixed expressions with an unapproved mandatory license and
+standalone GPL/AGPL or unknown/custom evidence fail without an applicable central
+exception. Product release verification checks the owner's assessment against the
+actual use, delivered contents and applicable terms, including covered generated
+content, library redistribution and changed distribution. Missing required evidence
+or unresolved applicable obligations refuse delivery; CI eligibility alone cannot
+satisfy these release obligations.
 
 ### REQ-024 - Human Trust-Surface Approval
 
 Every change in a control-plane repository and every change to a repository's
 workflow or detected production-control surface SHALL require approval from an
-authorized human code owner on the exact current pull-request revision. An
+authorized human reviewer on the exact current pull-request revision. An
 agent or authoring-bot identity SHALL NOT satisfy or bypass that approval.
 Every PR merge, including dependency and security changes, SHALL be executed
 by an applicable authorized human. Separately scoped classification, proposal,
 tag rollout and deployment effects retain their own authorization; none
 authorizes an automated merge or persistent-branch push.
 
-**Fit:** Required CI validates a canonical `.github/CODEOWNERS` file whose final
-active block assigns the complete control-plane tree, or the applicable trust
-and production-control paths, to an authorized human. Protected-branch rules
-require code-owner review and dismiss or invalidate approval when the reviewed
-head changes. Tests exercise permitted proposal and verification behavior and
-reject automation that approves, merges, queues a merge, or directly updates a
-persistent branch. Hosted permissions and human execution require operational
-qualification; local tests cannot prove them.
+**Fit:** For an enrolled team-review profile, protected-branch rules require the approved human-review team for the
+complete change and dismiss or invalidate approval when the reviewed head
+changes. A centrally enrolled team-review profile validates fresh effective
+branch rules against its trusted team identity, approval count, coverage and
+stale-approval policy; a missing, unavailable or weaker rule fails closed. A
+consumer pull request cannot select that identity or lower those requirements.
+Unmigrated callers retain the current canonical `.github/CODEOWNERS` validation
+and applicable code-owner rules until an explicit, qualified migration preserves
+their required protection. A CODEOWNERS file is not required solely to duplicate
+verified team protection in an enrolled profile. Tests exercise permitted
+proposal and verification behavior and reject automation that approves, merges,
+queues a merge, or directly updates a persistent branch. Hosted permissions,
+team eligibility, bypass actors and human execution require operational qualification; local
+tests cannot prove them. This contract creates no enrollment or settings change.
+
+### REQ-025 - Centrally Required Baseline Pilot
+
+Organization-required workflows SHALL execute the approved shared baseline on
+the intended consumer revision, using a coherent reviewed checking-source
+revision and read-only permissions. The pilot SHALL preserve existing CI,
+scanning, human review, branch protection and pre-execution integrity obligations.
+An explicitly enrolled application profile MAY additionally produce complete
+product `CI` under REQ-001. Its profile SHALL run the full declared Rust, Astro
+or mixed component coverage on the complete consumer revision; missing inputs
+or a documentation-only diff SHALL NOT select a lighter profile.
+
+Qualification SHALL cover the enrolled CI profile and the shared behavior that the
+proposed change can affect. The shared-CI owner SHALL retain a source-bound, reviewed
+impact assessment in the existing task or proposal record, using complete consumer
+candidate inputs and base state, checking-source before/after revisions and
+dependencies. Material affected-scope and unrelatedness judgments SHALL receive
+independent verification, including no-change and scope-exclusion dispositions. A
+consumer SHALL NOT narrow its own profile or required coverage. Uncertain impact SHALL
+require conservative additional validation or block the affected source or
+consumer-change proposal before reliance.
+
+A qualified profile MAY progress independently of unrelated profiles only when all of
+its required pilot cases and the shared behavior it relies on are verified. These cases
+include valid, invalid and repaired changes, App-created and already-open pull-request
+triggers, consumer skip/configuration/application-input refusal, and source restoration
+with observed valid-pass and invalid-block behavior. A new repository or branch SHALL
+additionally qualify its actual target context, identity, current-base checks, result
+producers and required protections; earlier content validation is not a current-target
+CI result. Changes to shared enforcement, profile selection, permissions or other common
+inputs SHALL receive qualification across every affected profile.
+
+The document-bootstrap and actual hosted Rust targets establish their own scoped
+evidence; neither can substitute for the other or establish whole-pilot completion.
+Their presence in the initial pilot does not make an unrelated profile's missing
+evidence a blanket prerequisite for additional enrollment. Every proposed enrollment or
+migration SHALL identify and qualify its affected profiles and shared behavior. Removal
+of consumer common calls requires complete coverage for that affected scope, preserving
+product-specific checks; whole-pilot completion requires all initial pilot targets and
+their required cases.
+
+Changing the application CI producer SHALL preserve every dependent security,
+release and event-trigger contract, including required push-event checks. A
+consumer whose existing local-CI security binding or push-event obligations
+cannot be preserved and qualified SHALL retain its existing producer. Source
+capability SHALL NOT enroll a consumer or update an organization ruleset's
+repository or branch selection. An existing enrolled rule SHALL follow protected
+`.github/main` after the one-time human-executed settings transition; later human
+merges SHALL NOT require a recurring source-pin update or source-activation gate.
+Initial enrollment, selector or producer changes SHALL still bind target,
+preserved controls and observed enforcement/recovery evidence. Producer retirement
+SHALL follow equivalent-coverage qualification, with a recoverable consumer change
+where restoring a removed caller requires source delivery rather than a settings revert.
+
+**Fit:** A narrowly selected pilot proves actual valid, invalid and repaired
+changes, GitHub App-created and already-open pull requests, and an observed
+controlled source update followed by human-reviewed main recovery with recorded
+resulting source and required pass/fail enforcement. A recovered source
+that is failed, cancelled, skipped or unexecuted is not recovery. Adding a rule,
+passing local tests or publishing source alone does
+not establish execution or enforcement. CodeQL remains separately configured.
+
+### REQ-026 - Explicit Document Bootstrap
+
+A document-only bootstrap profile SHALL be explicitly enrolled by the approved
+central source, validate its governing documents and tracked Markdown, and admit
+only its declared non-executable inputs. Application profiles SHALL fail when
+their expected manifests or commands are missing rather than select bootstrap.
+
+**Fit:** Unknown enrollment, changed repository identity, application code,
+executable lint configuration, custom formatters/rules, untracked required
+inputs, malformed configuration and unavailable required evidence fail with
+actionable remediation. Bootstrap reuses existing checking implementations only
+where their behavior satisfies this boundary. It does not execute consumer
+helpers or weaken normal product validation. Transition to an application
+profile requires explicit enrollment and its meaningful product checks.
+
+### REQ-027 - Uniform Proposal Admission
+
+Shared admission SHALL follow control-plane ASR-AUTH-005. Authored changes use
+nonpersistent branches in assigned Task Worktrees. `ForgingAlpha/.github` and
+`ForgingAlpha/control-plane` use task-branch proposals to protected `main`.
+Application task branches SHALL target protected `dev`, followed by a separate
+same-repository `dev` to `main` promotion PR. Ordinary application task-to-main
+proposals SHALL be refused, including when `dev` is missing. A missing branch
+SHALL NOT authorize its creation. Neither route SHALL require staging.
+
+Repository class and route SHALL resolve from the Current owning governing
+definition, using PROJECT context where available, not from branch existence.
+Other classes retain their Current declared routes; missing or conflicting
+evidence stops the affected proposal. This contract creates no classification
+registry or new route exception. Admission SHALL preserve complete applicable checks, current-base
+protection, exact-revision human approval and human execution of every merge;
+admitting a proposal to checks SHALL NOT confer merge or persistent-branch-write
+authority.
+
+Central enrollment SHALL support the named main-only route and required
+application `dev` integration without
+requiring a staging declaration, branch or environment. Target selection SHALL
+remain explicit and centrally owned, preserving repository identity, complete
+profile, result-producer, review, runtime and foundation obligations. An absent
+application input SHALL NOT select a lighter profile. An ordinary proposal on
+its permitted route does not require security-projection proof. A disallowed
+ordinary application task-to-main proposal SHALL NOT use security admission to
+bypass `dev`. Actual security classifications and projections retain
+REQ-013/014's separate eligibility, proof and credential boundaries.
+
+Obsolete staging requirements and legacy route representations SHALL be retired
+through a qualified replacement preserving required application `dev` integration,
+REQ-022 and REQ-025. Existing enforcement that
+contradicts this admission contract remains an unresolved implementation
+obligation until replaced; adoption of this source alone does not resolve it.
+
+**Fit:** A task PR to `main` in either named control repository, an application
+task PR to `dev`, and its `dev` to `main` promotion run their complete applicable
+checks. An ordinary application task PR to `main` fails with or without `dev`.
+Unknown or conflicting class/route evidence fails; missing staging does not.
+An invalid security claim does not acquire a verified classification or projection
+through ordinary admission. Retiring legacy route modes or callers preserves every
+still-applicable security, event, result and product-check obligation under REQ-025.

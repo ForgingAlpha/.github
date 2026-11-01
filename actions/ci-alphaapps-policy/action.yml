@@ -16,7 +16,7 @@
 #         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 #           with:
 #             fetch-depth: 0
-#         - uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@v1
+#         - uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@main
 
 name: CI Alpha Apps Policy
 description: "Alpha Apps policy: source-truth baseline structure and human ownership"
