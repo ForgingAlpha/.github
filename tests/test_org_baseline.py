@@ -1,5 +1,6 @@
 """REQ-024–026: preserve valid bootstrap and refuse trust-boundary violations."""
 import copy
+import hashlib
 import importlib.util
 import io
 import itertools
@@ -12,22 +13,54 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from route_fixture_support import git_context, git_data
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("tested_org_baseline", ROOT / "actions/ci-org-baseline/scripts/baseline.py")
 baseline = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = baseline
 spec.loader.exec_module(baseline)
-# Nonauthoritative legacy fixture: preserve schema-1 bootstrap regression coverage
-# independently of the production catalog's coordinated application cutover.
+# Synthetic bootstrap fixture; production accepts schema3 only.
 ENTRY = {
-    "repository": "ForgingAlpha/layas-learning-lab-site",
-    "repository_id": 1420939261,
-    "branches": ["dev", "main"],
-    "profile": "documentation-bootstrap",
-    "team_id": 20299307,
-    "minimum_approvals": 1,
+    "repository": "ForgingAlpha/layas-learning-lab-site", "repository_id": 1420939261,
+    "branches": ["dev", "main"], "profile": "documentation-bootstrap", "team_id": 20299307,
+    "minimum_approvals": 1, "producer": "bootstrap", "qualification_subject": {"kind": "none"},
+    "review_policy": {"kind": "qualified-team", "team_id": 20299307, "minimum_approvals": 1},
+    "foundation": "not-applicable", "components": [],
 }
+
+
+def row(entry):
+    part = {"mode": "central", "selected_targets": entry["branches"], **{k: entry[k] for k in
+        ("profile", "producer", "qualification_subject", "review_policy", "foundation", "components")}}
+    entry["participation"] = part
+    return {k: entry[k] for k in ("repository", "repository_id", "proposal", "participation")}
+
+
+def bind_fixture(fixture, entry, name="PROJECT.md"):
+    data = fixture.git('show', fixture.base + ':' + name).encode()
+    lines = data.decode().splitlines(keepends=True)
+    start, end = ("<!-- route -->", "<!-- end-route -->") if name == 'docs/route.md' else ('# Project', 'Documentation.')
+    i, j = [n for n, x in enumerate(lines) if x.rstrip('\n') == start][0], [n for n, x in enumerate(lines) if x.rstrip('\n') == end][0]
+    entry['proposal'] = {'task_target': 'dev', 'promotions': [{'source': 'dev', 'target': 'main', 'same_repository': True}],
+      'evidence': {'adoption_branch': 'dev', 'adopted_commit': fixture.base,
+        'files': [{'path': name, 'sha256': hashlib.sha256(data).hexdigest()}],
+        'regions': [{'path': name, 'start': start, 'end': end, 'sha256': hashlib.sha256(''.join(lines[i+1:j]).encode()).hexdigest()}],
+        'reconciliation_sha256': 'c'*64, 'governing_sha256': 'f'*64, 'rule': 'application', 'persistent_sources': ['dev','main']}}
+    row(entry)
+    entry['proposal']['evidence'].update(context=git_context(fixture.root,fixture.base),transition={'kind':'none'})
+    return entry
+
+
+def admission_record(fixture, entry, source='d'*40):
+    projected = row(entry)
+    subject = baseline.route.subject(fixture.event(), projected)
+    kind, proof = baseline.route.ordinary(projected, subject, False)
+    return {'schema_version': 2, 'kind': kind, **subject,
+            'head_tree_sha': fixture.git('rev-parse', fixture.head+'^{tree}').strip(),
+            'policy_evidence_sha256': baseline.route.digest(entry['proposal']['evidence']),
+            'checking_source_sha': source, 'checking_fingerprints': baseline.route.fingerprint(),
+            'enrollment_sha256': baseline.route.digest(projected), 'source_correspondence':{'authority':0,'subjects':baseline.route.local_correspondence(fixture.root,projected,[fixture.base,fixture.head])}, 'proof': proof}
 
 
 def successful_needs(plan, **receipts):
@@ -47,7 +80,11 @@ class CatalogTests(unittest.TestCase):
         self.assertTrue(entries)
         for entry in entries:
             for branch in entry["branches"]:
-                self.assertEqual(baseline.select(entries, entry["repository"], entry["repository_id"], branch), entry)
+                if entry['participation']['mode'] == 'central':
+                    self.assertEqual(baseline.select(entries, entry["repository"], entry["repository_id"], branch), entry)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'metadata-only'):
+                        baseline.select(entries, entry["repository"], entry["repository_id"], branch)
 
 
 def rules():
@@ -75,6 +112,11 @@ class Fixture:
         for name in baseline.DATA_PATHS:
             self.write(name, '{"schema_version": 1}\n')
         self.commit()
+        self.base = self.head
+        self.git("update-ref", f"refs/remotes/origin/{branch}", self.base)
+        self.write('docs/change.md', '# Change\n')
+        self.commit()
+        self.entry = bind_fixture(self, copy.deepcopy(ENTRY))
 
     def git(self, *args):
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
@@ -95,7 +137,7 @@ class Fixture:
         repo = {"id": ENTRY["repository_id"], "full_name": ENTRY["repository"]}
         return {"repository": repo, "number": 1, "pull_request": {
             "base": {"repo": repo, "ref": self.branch, "sha": self.base},
-            "head": {"repo": repo, "ref": "feature/docs", "sha": self.head}}}
+            "head": {"repo": repo, "ref": "dev" if self.branch == "main" else "feature/docs", "sha": self.head}}}
 
 
 class FakeApi:
@@ -124,6 +166,8 @@ class AdmissionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.fixture = Fixture(Path(self.temp.name) / "consumer")
+        patcher = patch.object(baseline.route, 'admission', side_effect=lambda api, event, entry, source: admission_record(self.fixture, self.fixture.entry, source))
+        patcher.start(); self.addCleanup(patcher.stop)
 
     def test_real_git_docs_and_verified_projection_aliases(self):
         texts = baseline.admit_tree(self.fixture.root, self.fixture.head)
@@ -208,23 +252,23 @@ class AdmissionTests(unittest.TestCase):
         env = {"GITHUB_REPOSITORY": ENTRY["repository"], "GITHUB_REPOSITORY_ID": str(ENTRY["repository_id"]),
                "BASELINE_SOURCE_SHA": "a" * 40}
         with patch.dict(os.environ, env):
-            result = baseline.run(self.fixture.root, self.fixture.event(), [ENTRY], FakeApi(self.fixture))
+            result = baseline.run(self.fixture.root, self.fixture.event(), [self.fixture.entry], FakeApi(self.fixture))
             self.assertEqual(result["head"], self.fixture.head)
             self.assertEqual(result["source"], "ForgingAlpha/.github")
             self.fixture.write("PROJECT.md", "<!-- markdownlint-disable MD001 -->\n# Title\n\n### Skipped heading\n")
             self.fixture.commit()
             with self.assertRaisesRegex(ValueError, "Markdown"):
-                baseline.run(self.fixture.root, self.fixture.event(), [ENTRY], FakeApi(self.fixture))
+                baseline.run(self.fixture.root, self.fixture.event(), [self.fixture.entry], FakeApi(self.fixture))
             self.fixture.write("PROJECT.md", "# Title\n\n## Repaired heading\n")
             self.fixture.commit()
-            baseline.run(self.fixture.root, self.fixture.event(), [ENTRY], FakeApi(self.fixture))
+            baseline.run(self.fixture.root, self.fixture.event(), [self.fixture.entry], FakeApi(self.fixture))
 
     def test_provisional_metadata_never_uses_definition_only_exception(self):
         self.fixture.write("docs/intent.md", "---\nstatus: provisional\n---\n\n# Intent\n")
         self.fixture.commit()
         with patch.dict(os.environ, {"GITHUB_REPOSITORY": ENTRY["repository"], "GITHUB_REPOSITORY_ID": str(ENTRY["repository_id"])}):
             with self.assertRaisesRegex(ValueError, "approved structural"):
-                baseline.run(self.fixture.root, self.fixture.event(), [ENTRY], FakeApi(self.fixture))
+                baseline.run(self.fixture.root, self.fixture.event(), [self.fixture.entry], FakeApi(self.fixture))
 
     def test_main_runs_complete_profile_with_fresh_main_evidence(self):
         fixture = Fixture(Path(self.temp.name) / "main", branch="main")
@@ -232,7 +276,7 @@ class AdmissionTests(unittest.TestCase):
         with patch.dict(os.environ, {"GITHUB_REPOSITORY": ENTRY["repository"],
                                      "GITHUB_REPOSITORY_ID": str(ENTRY["repository_id"]),
                                      "BASELINE_SOURCE_SHA": "b" * 40}):
-            result = baseline.run(fixture.root, fixture.event(), [ENTRY], api)
+            result = baseline.run(fixture.root, fixture.event(), [self.fixture.entry], api)
         self.assertEqual((result["base"], result["head"]), (fixture.base, fixture.head))
         self.assertEqual(result["source_sha"], "b" * 40)
         self.assertEqual(api.reads, [f'/repos/{ENTRY["repository"]}/pulls/1',
@@ -257,7 +301,7 @@ class AdmissionTests(unittest.TestCase):
                 with patch.dict(os.environ, {"GITHUB_REPOSITORY": ENTRY["repository"],
                                              "GITHUB_REPOSITORY_ID": str(ENTRY["repository_id"])}):
                     with self.assertRaisesRegex(ValueError, diagnostic):
-                        baseline.run(fixture.root, fixture.event(), [ENTRY], api)
+                        baseline.run(fixture.root, fixture.event(), [self.fixture.entry], api)
 
     def test_complete_path_refuses_executable_formatter_without_side_effect(self):
         marker = Path(self.temp.name) / "must-not-exist"
@@ -265,7 +309,7 @@ class AdmissionTests(unittest.TestCase):
         self.fixture.commit()
         with patch.dict(os.environ, {"GITHUB_REPOSITORY": ENTRY["repository"], "GITHUB_REPOSITORY_ID": str(ENTRY["repository_id"])}):
             with self.assertRaisesRegex(ValueError, "undeclared"):
-                baseline.run(self.fixture.root, self.fixture.event(), [ENTRY], FakeApi(self.fixture))
+                baseline.run(self.fixture.root, self.fixture.event(), [self.fixture.entry], FakeApi(self.fixture))
         self.assertFalse(marker.exists())
 
     def test_admitted_unicode_boundary_reaches_real_locked_lint(self):
@@ -276,7 +320,7 @@ class AdmissionTests(unittest.TestCase):
         self.assertLess(sum(len(text.encode("utf-8")) for text in strings.values()), 8 * 1024 * 1024)
         self.assertGreater(len(json.dumps(strings).encode()), 16 * 1024 * 1024)  # Discriminates the original transport defect.
         with patch.dict(os.environ, {"GITHUB_REPOSITORY": ENTRY["repository"], "GITHUB_REPOSITORY_ID": str(ENTRY["repository_id"])}):
-            result = baseline.run(self.fixture.root, self.fixture.event(), [ENTRY], FakeApi(self.fixture))
+            result = baseline.run(self.fixture.root, self.fixture.event(), [self.fixture.entry], FakeApi(self.fixture))
         self.assertEqual(result["head"], self.fixture.head)
 
     def test_gitlink_is_not_a_document(self):
@@ -287,41 +331,20 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             baseline.admit_tree(self.fixture.root, self.fixture.head)
 
-    def test_cli_logs_only_public_subject_not_authenticated_result(self):
-        event_path = Path(self.temp.name) / "event.json"
+    def test_cli_requires_current_staged_contract_without_logging_authenticated_result(self):
+        event_path = Path(self.temp.name) / 'event.json'
         event_path.write_text(json.dumps(self.fixture.event()))
-        source_sha = "a" * 40
-        canary = "TEST_ONLY_AUTH_RESULT_MUST_NOT_BE_LOGGED"
         original_git = baseline.git
-
-        def fixture_source_git(root, *args, **kwargs):
-            if root == baseline.SOURCE and args == ("rev-parse", "HEAD"):
-                return (source_sha + "\n").encode()
-            if root == baseline.SOURCE and args == ("status", "--porcelain", "--untracked-files=all"):
-                return b""
-            return original_git(root, *args, **kwargs)
-
-        output = io.StringIO()
-
-        def authenticated_side_effect(root, event, entries, api):
-            event["pull_request"]["base"]["sha"] = canary
-            return {"credential": canary}
-
-        with patch.dict(os.environ, {"GITHUB_EVENT_NAME": "pull_request", "BASELINE_SOURCE_SHA": source_sha,
-                                     "GITHUB_EVENT_PATH": str(event_path), "GITHUB_TOKEN": "fixture-credential"}), \
-                patch.object(sys, "argv", ["baseline.py", "--consumer-root", str(self.fixture.root)]), \
-                patch.object(baseline, "git", side_effect=fixture_source_git), \
-                patch.object(baseline, "Api", return_value=object()), \
-                patch.object(baseline, "run", side_effect=authenticated_side_effect) as authenticated, \
-                patch.object(sys, "stdout", output):
-            baseline.main()
-        authenticated.assert_called_once()
-        self.assertNotIn(canary, output.getvalue())
-        result = json.loads(output.getvalue())
-        self.assertEqual(result["head"], self.fixture.head)
-        self.assertEqual(result["source_sha"], source_sha)
-        self.assertEqual(result["consumer"], ENTRY["repository"])
-
+        def source_git(root, *args, **kwargs):
+            if root == baseline.SOURCE and args == ('rev-parse','HEAD'): return b'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
+            if root == baseline.SOURCE and args == ('status','--porcelain','--untracked-files=all'): return b''
+            return original_git(root,*args,**kwargs)
+        with patch.dict(os.environ, {'GITHUB_EVENT_NAME':'pull_request','BASELINE_SOURCE_SHA':'a'*40,'GITHUB_EVENT_PATH':str(event_path)}), \
+             patch.object(sys,'argv',['baseline.py','--consumer-root',str(self.fixture.root)]), \
+             patch.object(baseline,'git',side_effect=source_git), patch.object(baseline,'Api') as api, \
+             patch.object(sys,'stdout',io.StringIO()) as output:
+            with self.assertRaisesRegex(ValueError,'explicit schema-3 stage'): baseline.main()
+            api.assert_not_called(); self.assertEqual(output.getvalue(),'')
 
     def test_staged_bootstrap_freezes_before_auth_and_discards_authenticated_returns(self):
         from types import SimpleNamespace
@@ -329,7 +352,7 @@ class AdmissionTests(unittest.TestCase):
         event = self.fixture.event()
         source = 'd' * 40
         canary = 'AUTHENTICATED_RETURN_MUST_NOT_BE_PUBLIC'
-        frozen = baseline.public_receipt(self.fixture.root, event, [ENTRY], source)
+        frozen = baseline.public_receipt(self.fixture.root, event, [self.fixture.entry], source)
         actual_plan = baseline.make_plan
         order = []
         def plan(*args):
@@ -341,29 +364,33 @@ class AdmissionTests(unittest.TestCase):
             return FakeApi(self.fixture)
         env = {'GITHUB_REPOSITORY': ENTRY['repository'], 'GITHUB_REPOSITORY_ID': str(ENTRY['repository_id']),
                'GITHUB_TOKEN': 'fixture-credential', 'GITHUB_OUTPUT': str(output),
-               'BASELINE_NEEDS': json.dumps(successful_needs(baseline.make_plan(self.fixture.root, event, ENTRY, source)))}
+               'BASELINE_NEEDS': json.dumps(successful_needs(baseline.make_plan(self.fixture.root, event, self.fixture.entry, source, admission_record(self.fixture, self.fixture.entry, source))))}
         with patch.dict(os.environ, env), patch.object(baseline, 'make_plan', side_effect=plan), \
                 patch.object(baseline, 'Api', side_effect=authenticate), patch.object(baseline, 'run', return_value={'credential': canary}):
-            baseline.staged_main(SimpleNamespace(stage='admit'), self.fixture.root, event, [ENTRY], source)
+            baseline.staged_main(SimpleNamespace(stage='admit'), self.fixture.root, event, [self.fixture.entry], source)
             self.assertNotIn(canary, output.read_text())
             with patch.object(sys, 'stdout', io.StringIO()) as logged:
-                baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [ENTRY], source)
-            self.assertEqual(json.loads(logged.getvalue()), frozen)
+                baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [self.fixture.entry], source)
+            final = json.loads(logged.getvalue())
+            for key in ('head','base','consumer','source_sha'): self.assertEqual(final[key],frozen[key])
+            self.assertEqual(final['schema_version'],4)
+            self.assertEqual(final['admission_kind'],'ordinary-task')
+            self.assertEqual(final['required_results'],{'baseline':'success'})
             self.assertNotIn(canary, logged.getvalue())
             with patch.object(sys, 'stdout', io.StringIO()) as logged, self.assertRaises(ValueError):
-                baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [ENTRY], 'e' * 40)
+                baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [self.fixture.entry], 'e' * 40)
             self.assertEqual(logged.getvalue(), '')
-            admitted = baseline.make_plan(self.fixture.root, event, ENTRY, source)
+            admitted = baseline.make_plan(self.fixture.root, event, self.fixture.entry, source, admission_record(self.fixture, self.fixture.entry, source))
             for change in ({'source_sha': 'e' * 40}, {'head': 'e' * 40}, {'base': 'e' * 40}, {'components': [{'kind': 'astro'}]}):
                 bad = successful_needs({**admitted, **change})
                 os.environ['BASELINE_NEEDS'] = json.dumps(bad)
                 with self.subTest(change=change), patch.object(sys, 'stdout', io.StringIO()) as logged, self.assertRaises(ValueError):
-                    baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [ENTRY], source)
+                    baseline.staged_main(SimpleNamespace(stage='finalize'), self.fixture.root, event, [self.fixture.entry], source)
                 self.assertEqual(logged.getvalue(), '')
             output.unlink()
             def mutate(*args): event['pull_request']['base']['sha'] = 'e' * 40
             with patch.object(baseline, 'run', side_effect=mutate), self.assertRaises(ValueError):
-                baseline.staged_main(SimpleNamespace(stage='admit'), self.fixture.root, event, [ENTRY], source)
+                baseline.staged_main(SimpleNamespace(stage='admit'), self.fixture.root, event, [self.fixture.entry], source)
             self.assertFalse(output.exists())
 
 
@@ -378,19 +405,19 @@ class EvidenceTests(unittest.TestCase):
                 baseline.catalog({"schema_version": 1, "repositories": [{**ENTRY, **change}]})
 
     def test_branch_enrollment_permits_main_only_when_centrally_declared(self):
-        for branch in ("dev", "main"):
-            self.assertIs(baseline.select([ENTRY], ENTRY["repository"], ENTRY["repository_id"], branch), ENTRY)
-        legacy = baseline.catalog({"schema_version": 1, "repositories": [{**ENTRY, "branches": ["dev"]}]})
-        baseline.select(legacy, ENTRY["repository"], ENTRY["repository_id"], "dev")
-        with self.assertRaisesRegex(ValueError, "unknown or changed"):
-            baseline.select(legacy, ENTRY["repository"], ENTRY["repository_id"], "main")
-        for branches in (None, [], "main", ["main"], ["dev", "dev"], ["dev", "*"],
-                         ["dev", "main", "staging"], ["dev", True]):
-            with self.subTest(branches=branches), self.assertRaisesRegex(ValueError, "branch selection"):
-                baseline.catalog({"schema_version": 1, "repositories": [{**ENTRY, "branches": branches}]})
-        missing = {key: value for key, value in ENTRY.items() if key != "branches"}
-        with self.assertRaisesRegex(ValueError, "record fields"):
-            baseline.catalog({"schema_version": 1, "repositories": [missing]})
+        with tempfile.TemporaryDirectory() as directory:
+            f = Fixture(Path(directory) / 'consumer')
+            e = row(f.entry)
+            for branch in ('dev', 'main'):
+                entries = baseline.catalog({'schema_version': 3, 'repositories': [e]})
+                baseline.select(entries, e['repository'], e['repository_id'], branch)
+            for branches in (None, [], 'main', ['dev','dev'], ['dev','*'], ['dev','main','staging'], ['dev',True]):
+                bad = copy.deepcopy(e); bad['participation']['selected_targets'] = branches
+                with self.subTest(branches=branches), self.assertRaises((ValueError, TypeError)):
+                    baseline.catalog({'schema_version': 3, 'repositories': [bad]})
+            for version in (1,2):
+                with self.assertRaisesRegex(ValueError, 'unsupported enrollment schema'):
+                    baseline.catalog({'schema_version': version, 'repositories': [e]})
 
     def test_weakened_team_evidence_fails_additive_rules_preserve_stronger(self):
         baseline.team_configuration(rules(), ENTRY)
@@ -569,11 +596,13 @@ class ApplicationFixture(Fixture):
                       'review_policy': {'kind': 'codeowners'}, 'foundation': 'not-applicable', 'components': sorted(components, key=lambda c: c['root'])}
         if producer == 'qualification':
             self.entry['qualification_subject'] = {'kind': 'legacy-ci', 'branch': 'dev', 'legacy_workflow': {'path': '.github/workflows/ci.yml', 'blob': self.git('rev-parse', self.head + ':.github/workflows/ci.yml').strip(), 'job_id': 'legacy'}}
+        self.entry.pop('release_route')
+        bind_fixture(self, self.entry, 'docs/route.md')
         self.runtime = {'schema_version': 1, 'profiles': {'fixture': {'description': 'NONAUTHORITATIVE SOURCE FIXTURE', 'approved_tuples': [{'id': 'fixture-1', 'state': 'current', 'tools': tools}]}}, 'assignments': {ENTRY['repository']: {'profile': 'fixture', 'status': 'active'}}}
 
     def plan(self):
-        baseline.catalog({'schema_version': 2, 'repositories': [self.entry]})
-        return baseline.app_plan(self.root, self.event(), self.entry, 'd' * 40, self.runtime)
+        baseline.catalog({'schema_version': 3, 'repositories': [row(self.entry)]})
+        return baseline.app_plan(self.root, self.event(), self.entry, 'd' * 40, self.runtime, admission_record=admission_record(self, self.entry))
 
 
 class ApplicationTests(unittest.TestCase):
@@ -631,12 +660,12 @@ class ApplicationTests(unittest.TestCase):
         for change in ({'producer': None}, {'extra': True}, {'foundation': 'unknown'}, {'repository_id': True}):
             entry = {**self.f.entry, **change}
             with self.subTest(change=change), self.assertRaises(ValueError):
-                baseline.catalog({'schema_version': 2, 'repositories': [entry]})
+                baseline.catalog({'schema_version': 3, 'repositories': [{**row(entry), **({'extra':True} if 'extra' in change else {})}]})
         for tests in (None, [], {'kind': 'required', 'scripts': []}, {'kind': 'owner-declared-none', 'evidence_sha256': ''}):
             entry = copy.deepcopy(self.f.entry)
             entry['components'][0]['tests'] = tests
             with self.assertRaises(ValueError):
-                baseline.catalog({'schema_version': 2, 'repositories': [entry]})
+                baseline.catalog({'schema_version': 3, 'repositories': [row(entry)]})
         f = ApplicationFixture(self.directory / 'none', no_tests=True)
         plan = f.plan()
         with patch.object(baseline, 'checked', return_value=b'v24.18.0\n') as command:
@@ -704,20 +733,17 @@ class ApplicationTests(unittest.TestCase):
         self.f.commit()
         with self.assertRaisesRegex(ValueError, 'compiler environment'): self.f.plan()
 
-    def test_route_unrelated_edit_and_authorized_transition(self):
-        self.f.write('docs/route.md', '# Unrelated architecture edit\n\n<!-- route -->\nDirect release through dev.\n<!-- end-route -->\n')
+    def test_route_unrelated_edit_and_controlling_change(self):
+        self.f.write('docs/unrelated.md', '# Unrelated prose\n'); self.f.commit()
+        self.assertEqual(self.f.plan()['admission']['kind'], 'ordinary-task')
+        self.f.write('docs/route.md', '# New precedence\n\n<!-- route -->\nDirect release through dev.\n<!-- end-route -->\n')
         self.f.commit()
-        self.assertEqual(self.f.plan()['route'], 'direct')
-        self.f.write('docs/route.md', '# Release\n\n<!-- route -->\nStaging is required.\n<!-- end-route -->\n')
-        self.f.commit()
-        with self.assertRaisesRegex(ValueError, 'route declaration'): self.f.plan()
-        successor = {**self.f.entry['release_route']['declarations'][0], 'kind': 'staged', 'text': 'Staging is required.\n'}
-        self.f.entry['release_route']['declarations'].append(successor)
-        self.f.entry['release_route']['transition'] = 'owner-authorized'
-        self.f.entry['branches'] = ['dev', 'staging', 'main']
-        self.assertEqual(self.f.plan()['route'], 'staged')
-        # New declaration may be proposed before its commit is an ancestor of base.
-        self.assertNotEqual(self.f.head, self.f.base)
+        with self.assertRaisesRegex(ValueError, 'controlling source changed'):
+            self.f.plan()
+        # An unchanged selected region cannot conceal changed controlling bytes.
+        for version in (1,2):
+            with self.assertRaisesRegex(ValueError, 'unsupported enrollment schema'):
+                baseline.catalog({'schema_version':version, 'repositories':[row(self.f.entry)]})
 
     def test_qualification_valid_invalid_repair_on_moving_base_without_repin(self):
         f = ApplicationFixture(self.directory / 'qualification', producer='qualification')
@@ -782,7 +808,7 @@ class ApplicationTests(unittest.TestCase):
     def test_admission_and_every_executed_source_must_match_final_plan(self):
         app = self.f.plan()
         docs = Fixture(self.directory / 'documents')
-        bootstrap = baseline.make_plan(docs.root, docs.event(), ENTRY, 'd' * 40)
+        bootstrap = baseline.make_plan(docs.root, docs.event(), docs.entry, 'd' * 40, admission_record(docs, docs.entry))
         for plan in (bootstrap, app):
             receipts = {phase: json.dumps({'schema_version': 1, 'phase': phase,
                         'plan_sha256': baseline.plan_digest(plan), 'components': [
@@ -800,6 +826,10 @@ class ApplicationTests(unittest.TestCase):
                     baseline.aggregate(plan, bad)
             for field, value in (('source_sha', 'e' * 40), ('head', 'e' * 40), ('base', 'e' * 40),
                                  ('components', [] if plan is app else [{'kind': 'astro'}]),
+                                 ('proposal', {**plan['proposal'], 'task_target': 'staging'}),
+                                 ('admission_sha256', '0' * 64),
+                                 ('checking_fingerprints', {}), ('required_jobs', []),
+                                 ('profile', 'wrong-profile'), ('producer', 'qualification'),
                                  ('repository_id', True)):
                 bad = copy.deepcopy(needs)
                 bad['baseline']['outputs']['plan'] = json.dumps({**plan, field: value})
@@ -876,6 +906,12 @@ class ApplicationTests(unittest.TestCase):
                 return original(argv, cwd, env, **kwargs)
         def common():
             event = self.f.event(); event['repository']['default_branch'] = 'dev'
+            # This formatting test explicitly qualifies each exact successor
+            # instruction closure; the route suite separately refuses unknowns.
+            e=self.f.entry['proposal']['evidence']
+            successor={k:copy.deepcopy(e[k]) for k in ('files','regions','context')}
+            successor['context']=git_context(self.f.root,self.f.head)
+            e['transition']={'kind':'none'} if successor['context']==e['context'] else {'kind':'forward','predecessor':{k:copy.deepcopy(e[k]) for k in ('files','regions','context')},'successor':successor,'reconciliation_sha256':'9'*64}
             with patch.object(baseline, 'checked', side_effect=command), patch.object(baseline.policy, 'incomplete_baseline', return_value=[]):
                 baseline.application_common(self.f.root, event, self.f.entry, FakeApi(self.f), self.f.plan())
         common()
@@ -903,8 +939,8 @@ class ApplicationTests(unittest.TestCase):
         for owner in ('validate_product_lifecycle_baseline.py', 'validate_codeowners_contract.py', 'lint_bootstrap.mjs', 'check_workflows.py', 'check_dependabot_coverage.py', 'validate_update_ownership.py', 'foundation_source.py'):
             self.assertEqual(sum(owner in command for command in joined), 1, owner)
         self.assertFalse(any('lint_markdown.mjs' in command for command in joined))
-        self.assertTrue(any('check_merge_flow.sh declared-route' in command for command in joined))
-        self.assertTrue(any('--default-branch dev' in command for command in joined))
+        self.assertFalse(any('check_merge_flow.sh' in command for command in joined))
+        self.assertFalse(any('--default-branch' in command for command in joined))
         for (argv, cwd, *rest), _ in calls:
             self.assertIn(cwd, (self.f.root, baseline.SOURCE))
 
@@ -912,7 +948,7 @@ class ApplicationTests(unittest.TestCase):
         event = self.f.event(); event['repository']['default_branch'] = 'dev'
         plan = self.f.plan()
         owners = ('validate_product_lifecycle_baseline.py', 'validate_codeowners_contract.py',
-                  'check_merge_flow.sh', 'lint_bootstrap.mjs', 'install_actionlint.sh',
+                  'lint_bootstrap.mjs', 'install_actionlint.sh',
                   'check_workflows.py', 'check_dependabot_coverage.py',
                   'validate_update_ownership.py', 'foundation_source.py')
         for owner in owners:
@@ -926,6 +962,8 @@ class ApplicationTests(unittest.TestCase):
             ), self.assertRaisesRegex(ValueError, 'owner refusal'):
                 baseline.application_common(self.f.root, event, self.f.entry, FakeApi(self.f), plan)
             self.assertTrue(any(Path(str(part)).name == owner for part in calls[-1]))
+        with patch.object(baseline.route, 'validate_admission', side_effect=ValueError('owner refusal: admission')), patch.object(baseline, 'checked'), patch.object(baseline.policy, 'incomplete_baseline', return_value=[]), self.assertRaisesRegex(ValueError, 'owner refusal: admission'):
+            baseline.application_common(self.f.root, event, self.f.entry, FakeApi(self.f), plan)
         self.f.write('custom/action.yaml', 'name: unsafe\ndescription: test\nruns:\n  using: composite\n  steps:\n    - uses: actions/checkout@main\n')
         self.f.commit(); plan = self.f.plan()
         with patch.object(baseline, 'checked'), patch.object(baseline.policy, 'incomplete_baseline', return_value=[]), self.assertRaisesRegex(ValueError, 'Action safety'):
@@ -981,7 +1019,7 @@ class ApplicationTests(unittest.TestCase):
         api = FakeApi(self.f)
         env = {'GITHUB_REPOSITORY': ENTRY['repository'], 'GITHUB_REPOSITORY_ID': str(ENTRY['repository_id']),
                'GITHUB_OUTPUT': str(output), 'GITHUB_TOKEN': 'fixture-api-only'}
-        with patch.dict(os.environ, env), patch.object(baseline, 'Api', return_value=api), \
+        with patch.dict(os.environ, env), patch.object(baseline.route, 'admission', side_effect=lambda api, event, entry, source: admission_record(self.f, self.f.entry, source)), patch.object(baseline, 'Api', return_value=api), \
                 patch.object(baseline, 'application_integrity', side_effect=fixture_integrity), \
                 patch.object(baseline, 'application_common') as common, patch.object(baseline, 'checked', side_effect=command):
             baseline.staged_main(SimpleNamespace(stage='admit'), self.f.root, event, [self.f.entry], 'd' * 40)
@@ -991,7 +1029,7 @@ class ApplicationTests(unittest.TestCase):
             os.environ['BASELINE_PLAN'] = admitted['plan']
             for stage in ('preflight', 'install', 'static', 'tests'):
                 before = len(calls)
-                with self.subTest(stage=stage), self.assertRaisesRegex(ValueError, 'job plan differs'):
+                with self.subTest(stage=stage), self.assertRaisesRegex(ValueError, 'admission subject/source mismatch'):
                     baseline.staged_main(SimpleNamespace(stage=stage), self.f.root, event, [self.f.entry], 'e' * 40)
                 self.assertEqual(len(calls), before)
             baseline.staged_main(SimpleNamespace(stage='preflight'), self.f.root, event, [self.f.entry], 'd' * 40)
@@ -1021,6 +1059,159 @@ class ApplicationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'base branch moved'):
                 baseline.staged_main(SimpleNamespace(stage='finalize'), self.f.root, event, [self.f.entry], 'd' * 40)
         self.assertEqual(sum(x[-1] == 'format' for x in calls), 1)
+
+    def test_real_security_proofs_conserve_complete_central_plan_and_outputs(self):
+        """Real Git trees + S1 verifier; provider attestations/product tools are fixtures."""
+        import base64
+        from types import SimpleNamespace
+        from test_proposal_route import security_fixture, Api as RouteApi
+        for projected in (False, True):
+            with self.subTest(projected=projected):
+                f = ApplicationFixture(self.directory / ('projection' if projected else 'source'))
+                f.base = f.head; f.branch = 'main'
+                f.git('update-ref', 'refs/remotes/origin/main', f.base)
+                f.write('package-lock.json', '{"lockfileVersion":3,"packages":{},"version":"2"}')
+                f.commit()
+                bind_fixture(f, f.entry, 'docs/route.md')
+                _, original_event, raw, module = security_fixture(projected)
+                repo = f.entry['repository']
+                base_tree = f.git('rev-parse', f.base+'^{tree}').strip()
+                head_tree = f.git('rev-parse', f.head+'^{tree}').strip()
+                replacements = {'ForgingAlpha/alphaapps-site':repo, 'a'*40:f.base, 'b'*40:f.head,
+                                ('c' if projected else 'd')*40:base_tree,
+                                ('d' if projected else 'e')*40:head_tree}
+                def translate(value):
+                    text=json.dumps(value)
+                    for before, after in replacements.items(): text=text.replace(before,after)
+                    return json.loads(text)
+                api = RouteApi(translate(raw.gets), translate(raw.page_values))
+                actual_objects=git_data(f.root,repo,[f.base,f.head])
+                # Preserve provider-only synthetic test-merge metadata while
+                # taking every real base/head tree/blob from the fixture Git store.
+                api.gets.update(actual_objects)
+                event = translate(original_event)
+                event['repository']['id'] = f.entry['repository_id']
+                for side in ('head','base'):event['pull_request'][side]['repo']['id']=f.entry['repository_id']
+                f.event = lambda: copy.deepcopy(event)
+                api.gets[f'repos/{repo}']['id']=f.entry['repository_id']
+                api.gets[f'repos/{repo}/pulls/{event["number"]}']=copy.deepcopy(event['pull_request'])
+                for revision, tree in ((f.base,base_tree),(f.head,head_tree)):
+                    entries=[]
+                    for line in f.git('ls-tree', revision).splitlines():
+                        meta,name=line.split('\t');mode,kind,oid=meta.split()
+                        entries.append({'path':name,'mode':mode,'type':kind,'sha':oid})
+                        if kind=='blob':
+                            data=baseline.git(f.root,'show',revision+':'+name)
+                            api.gets[f'repos/{repo}/git/blobs/{oid}']=module.encoded_blob(data)
+                    api.gets[f'repos/{repo}/git/trees/{tree}']={'truncated':False,'tree':entries}
+                    for source in f.entry['proposal']['evidence']['files']:
+                        data=baseline.git(f.root,'show',revision+':'+source['path'])
+                        api.gets[f'repos/{repo}/contents/{source["path"]}?ref={revision}']={
+                            'type':'file','encoding':'base64','size':len(data),'content':base64.b64encode(data).decode(),
+                            'sha':f.git('rev-parse',revision+':'+source['path']).strip()}
+                api.gets[f'repos/{repo}/compare/{f.base}...{f.base}']={'status':'identical','merge_base_commit':{'sha':f.base}}
+                api.gets[f'repos/{repo}/branches/dev']={'commit':{'sha':f.base},'protected':True}
+                if projected:
+                    check=api.page_values[f'repos/{repo}/commits/{f.head}/check-runs?filter=all&per_page=100'][0]['check_runs'][0]
+                    proof=module.security_patch.parse_projection_attestation(json.loads(check['output']['summary']))
+                    check.update(module.security_patch.projection_check_payload(proof))
+                record=baseline.route.admission(api,event,row(f.entry),'d'*40)
+                self.assertEqual(record['kind'],'security-projection' if projected else 'dependabot-source')
+                self.assertIsNone(baseline.route.ordinary(row(f.entry),record,False))
+                original_integrity=baseline.application_integrity
+                def integrity(root, inventory, entry, *args):
+                    return original_integrity(root,inventory,entry,f.runtime)
+                class CurrentApi:
+                    def get(self, path):
+                        return api.get(path.lstrip('/'))
+                    def rules(self, *args):
+                        return rules()
+                calls=[];fail=[False]
+                output=self.directory/('projection-output' if projected else 'source-output')
+                output.write_text('outer=unchanged\n')
+                def command(argv,cwd,env=None,**kwargs):
+                    calls.append(argv)
+                    if 'validate_update_ownership.py' in ' '.join(argv):
+                        self.assertNotIn('GITHUB_OUTPUT',env)
+                    if '--version' in argv:return b'v24.18.0\n'
+                    if argv[-3:]==['central','script','test'] and fail[0]:raise ValueError('required product test failed')
+                env={'GITHUB_OUTPUT':str(output),'GITHUB_TOKEN':'fixture-read-only','GITHUB_REPOSITORY':repo,
+                     'GITHUB_REPOSITORY_ID':str(f.entry['repository_id'])}
+                with patch.dict(os.environ,env),patch.object(baseline.route.security,'GhApi',return_value=api), \
+                     patch.object(baseline,'Api',return_value=CurrentApi()),patch.object(baseline,'application_integrity',side_effect=integrity), \
+                     patch.object(baseline,'checked',side_effect=command):
+                    # Execute actual common composition: no child proof field may reach outer output.
+                    plan=baseline.app_plan(f.root,event,f.entry,'d'*40,f.runtime,admission_record=record)
+                    baseline.application_common(f.root,event,f.entry,CurrentApi(),plan)
+                    self.assertEqual(output.read_text(),'outer=unchanged\n')
+                    baseline.staged_main(SimpleNamespace(stage='admit'),f.root,event,[f.entry],'d'*40)
+                    fields=dict(line.split('=',1) for line in output.read_text().splitlines())
+                    self.assertEqual(set(fields),{'outer','plan','profile','producer','result_name','mise_version'})
+                    plan=json.loads(fields['plan']);self.assertEqual(plan['admission'],record)
+                    os.environ['BASELINE_PLAN']=fields['plan']
+                    for stage in ('preflight','install','static'):
+                        baseline.staged_main(SimpleNamespace(stage=stage),f.root,event,[f.entry],'d'*40)
+                    static=dict(line.split('=',1) for line in output.read_text().splitlines())['receipt']
+                    fail[0]=True
+                    with self.assertRaisesRegex(ValueError,'required product test'):
+                        baseline.staged_main(SimpleNamespace(stage='tests'),f.root,event,[f.entry],'d'*40)
+                    fail[0]=False
+                    baseline.staged_main(SimpleNamespace(stage='tests'),f.root,event,[f.entry],'d'*40)
+                    tests=dict(line.split('=',1) for line in output.read_text().splitlines())['receipt']
+                    os.environ['BASELINE_NEEDS']=json.dumps(successful_needs(plan,static=static,tests=tests))
+                    with patch.object(sys,'stdout',io.StringIO()) as final:
+                        baseline.staged_main(SimpleNamespace(stage='finalize'),f.root,event,[f.entry],'d'*40)
+                    self.assertEqual(json.loads(final.getvalue())['admission_kind'],record['kind'])
+                    bad=copy.deepcopy(plan);bad['admission']['kind']='ordinary-task'
+                    os.environ['BASELINE_NEEDS']=json.dumps(successful_needs(bad,static=static,tests=tests))
+                    with self.assertRaises(ValueError):
+                        baseline.staged_main(SimpleNamespace(stage='finalize'),f.root,event,[f.entry],'d'*40)
+                self.assertTrue(any('validate_update_ownership.py' in ' '.join(c) for c in calls))
+                self.assertTrue(any(c[-1:] == ['format'] for c in calls))
+
+    def test_actual_central_pr_updater_subprocess_and_event_transport(self):
+        import shutil
+        f=self.f
+        f.write('renovate.json',json.dumps({'extends':['local>ForgingAlpha/.github:renovate-config'],'baseBranchPatterns':['dev']}))
+        f.write('.github/dependabot.yml','version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    open-pull-requests-limit: 0\n')
+        f.commit();f.base=f.head;f.write('docs/pr.md','# Candidate\n');f.commit()
+        f.git('update-ref','refs/remotes/origin/dev',f.base);bind_fixture(f,f.entry,'docs/route.md')
+        event=f.event();event['repository']['default_branch']='main';repo=f.entry['repository']
+        gets=git_data(f.root,repo,[f.base,f.head])
+        gets.update({f'repos/{repo}':event['repository'],f'repos/{repo}/pulls/1':{**event['pull_request'],'number':1,'state':'open'},
+             f'repos/{repo}/branches/dev':{'commit':{'sha':f.base},'protected':True},
+             f'repos/{repo}/branches/feature%2Fdocs':{'commit':{'sha':f.head},'protected':False},
+             f'repos/{repo}/compare/{f.base}...{f.base}':{'status':'identical','merge_base_commit':{'sha':f.base}}})
+        bundle=self.directory/'checking-bundle';shutil.copytree(ROOT,bundle,ignore=shutil.ignore_patterns('.git','__pycache__'))
+        (bundle/'actions/ci-org-baseline/enrollment.json').write_text(json.dumps({'schema_version':3,'repositories':[row(f.entry)]}))
+        spec=importlib.util.spec_from_file_location('central_pr_fixture',bundle/'actions/ci-org-baseline/scripts/baseline.py')
+        central=importlib.util.module_from_spec(spec);spec.loader.exec_module(central)
+        event_file=self.directory/'pr-event';event_file.write_text(json.dumps(event))
+        api_file=self.directory/'api';api_file.write_text(json.dumps(gets))
+        gh=self.directory/'gh';gh.write_text('#!/usr/bin/env python3\nimport os,json,sys\nassert sys.argv[1]=="api" and "--method" not in sys.argv\nif os.environ.get("GH_TOKEN",os.environ.get("GITHUB_TOKEN"))!="fixture-read-only":sys.exit("fixture token unavailable")\nprint(json.dumps(json.load(open(os.environ["FIXTURE_API"]))[sys.argv[-1]]))\n');gh.chmod(0o700)
+        output=self.directory/'outer-output';output.write_text('outer=unchanged\n')
+        env={'PATH':str(self.directory)+os.pathsep+os.environ['PATH'],'FIXTURE_API':str(api_file),'GITHUB_EVENT_PATH':str(event_file),
+             'GITHUB_EVENT_NAME':'pull_request','GITHUB_TOKEN':'fixture-read-only','GITHUB_REPOSITORY':repo,
+             'GITHUB_REPOSITORY_ID':str(f.entry['repository_id']),'GITHUB_OUTPUT':str(output)}
+        executed=[];original_checked=central.checked
+        def command(argv,cwd,environment=None,**kwargs):
+            if any(str(x).endswith('/validate_update_ownership.py') for x in argv):
+                self.assertNotIn('GITHUB_OUTPUT',environment)
+                executed.append((argv,cwd))
+                return original_checked(argv,cwd,environment,**kwargs)
+            # Other complete common owners retain their separate suites; no
+            # installation/tool/product execution is claimed by this boundary test.
+        with patch.dict(os.environ,env):
+            record=central.route.admission(central.route.security.GhApi(),event,row(f.entry),'d'*40)
+            plan=central.app_plan(f.root,event,f.entry,'d'*40,f.runtime,admission_record=record)
+            with patch.object(central,'checked',side_effect=command):
+                central.application_common(f.root,event,f.entry,FakeApi(f),plan)
+                self.assertEqual(output.read_text(),'outer=unchanged\n')
+                event_file.write_text(json.dumps({**event,'repository':{'full_name':'ForgingAlpha/wrong','id':1}}))
+                with self.assertRaisesRegex(ValueError,'required command failed'):
+                    central.application_common(f.root,event,f.entry,FakeApi(f),plan)
+                self.assertEqual(output.read_text(),'outer=unchanged\n')
+        self.assertEqual(len(executed),2)
 
     def test_capture_enforces_limits_while_process_is_running(self):
         self.assertEqual(baseline.checked([sys.executable, '-c', 'print("ok")'], self.directory, capture=True, capture_limit=3), b'ok\n')

@@ -19,7 +19,8 @@ class MainSourceContractTest(unittest.TestCase):
         triggers = workflow.get('on', workflow.get(True))
         self.assertEqual(triggers['pull_request']['branches'], ['main'])
         self.assertEqual(triggers['push']['branches'], ['main'])
-        self.assertEqual(workflow['permissions'], {'contents': 'read'})
+        self.assertEqual(workflow['permissions'], {'contents': 'read', 'pull-requests': 'read', 'checks': 'read'})
+        self.assertEqual(workflow['jobs']['CI']['steps'][0]['with']['ref'], '${{ github.event.pull_request.head.sha || github.sha }}')
         self.assertEqual(workflow['jobs']['CI']['name'], 'CI')
         for job in workflow['jobs'].values():
             self.assertNotIn('write', (job.get('permissions') or {}).values())

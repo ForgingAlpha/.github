@@ -1,55 +1,741 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "repositories": [
+    {
+      "repository": "ForgingAlpha/.github",
+      "repository_id": 1137664016,
+      "proposal": {
+        "task_target": "main",
+        "promotions": [],
+        "evidence": {
+          "adoption_branch": "main",
+          "adopted_commit": "d5800379be06c9da15bdaba10358d3508d8eda71",
+          "files": [
+            {
+              "path": "docs/architecture.md",
+              "sha256": "526be7f26af00292614938016b531880e44a9556410ee0f5be403852e1ae5e2d"
+            },
+            {
+              "path": "docs/intent.md",
+              "sha256": "80499fbdb61549cfdfa38f92da8b32770bfb23af60dc4f399b4d65bd2879ab4e"
+            },
+            {
+              "path": "docs/requirements.md",
+              "sha256": "20ed79d8237206024e0c4cbb497802226a2728c71ba6c2fd27fa295c799d3b15"
+            }
+          ],
+          "regions": [
+            {
+              "path": "docs/intent.md",
+              "start": "## Purpose",
+              "end": "## Durable Outcomes",
+              "sha256": "a54de8ffcbcee476d104fe49347a380f8a266556c41279aaceb409b9961a4e68"
+            }
+          ],
+          "governing_sha256": "20ed79d8237206024e0c4cbb497802226a2728c71ba6c2fd27fa295c799d3b15",
+          "rule": "named-control",
+          "persistent_sources": [
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "absent"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "absent"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "absent"
+            }
+          ],
+          "transition": {
+            "kind": "none"
+          },
+          "reconciliation_sha256": "7440b6bf443c0ec368b1aa01263703e6056dec8fa261655dac0dd443b9a4b989"
+        }
+      },
+      "participation": {
+        "mode": "metadata-only"
+      }
+    },
+    {
+      "repository": "ForgingAlpha/control-plane",
+      "repository_id": 739528598,
+      "proposal": {
+        "task_target": "main",
+        "promotions": [],
+        "evidence": {
+          "adoption_branch": "main",
+          "adopted_commit": "e5cd3a00815982e79ceedb3522eb3cf6dbd8c233",
+          "files": [
+            {
+              "path": "PROJECT.md",
+              "sha256": "81b730fe5378e27911dedb4114b30231b68a59ad9476522792fce434ba08a130"
+            },
+            {
+              "path": "docs/architecture.md",
+              "sha256": "7dd1af69f7d24320cea44ba698790ff623a23902c2ddc4b2b12fe286bfd00016"
+            },
+            {
+              "path": "docs/intent.md",
+              "sha256": "deea937cad4fe90bf2f29d6fde633f68a823aa7b889da732c29ac9384fefee73"
+            },
+            {
+              "path": "docs/requirements.md",
+              "sha256": "ae38934d2279f87f1ac16706be5eb60e955521b9974d8cbbeace721642c4c332"
+            }
+          ],
+          "regions": [
+            {
+              "path": "docs/intent.md",
+              "start": "## Purpose",
+              "end": "## Desired Outcomes, in Priority Order",
+              "sha256": "3049947dc5315ee9700174b11a2fe4b864d186ec3a1216cf17527aae80e5da41"
+            }
+          ],
+          "reconciliation_sha256": "760656c82cdcd1437703f75f699c785ca38e85f6aa3ff3145d768f650454d80e",
+          "governing_sha256": "1151f3c9b7a5efc0745031bbecd1db1a0b4d302ad1fb978eea998269ed8fabea",
+          "rule": "named-control",
+          "persistent_sources": [
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "file",
+              "sha256": "81b730fe5378e27911dedb4114b30231b68a59ad9476522792fce434ba08a130"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "symlink",
+              "target": "PROJECT.md"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "symlink",
+              "target": "PROJECT.md"
+            }
+          ],
+          "transition": {
+            "kind": "none"
+          }
+        }
+      },
+      "participation": {
+        "mode": "metadata-only"
+      }
+    },
+    {
+      "repository": "ForgingAlpha/alphaapps-site",
+      "repository_id": 1151008489,
+      "proposal": {
+        "task_target": "dev",
+        "promotions": [
+          {
+            "source": "dev",
+            "target": "main",
+            "same_repository": true
+          }
+        ],
+        "evidence": {
+          "adoption_branch": "dev",
+          "adopted_commit": "f660dfdd4339a2495962afe1ea040180760e11f3",
+          "files": [
+            {
+              "path": "docs/architecture.md",
+              "sha256": "67825316c20a874978c6e7de9daf06149acf1000efa241e48ccbd6c1191bdda7"
+            },
+            {
+              "path": "docs/intent.md",
+              "sha256": "f7fb4164d7669b19679ba799e924ebbb79a404b35ac5b8cdf7b1afaaf5a4625f"
+            },
+            {
+              "path": "docs/requirements.md",
+              "sha256": "872718dbd39fd16f2266e93b55946e4b5d89d6d75cbb6b885c27f96f1c4b268b"
+            }
+          ],
+          "regions": [
+            {
+              "path": "docs/intent.md",
+              "start": "## Purpose",
+              "end": "## Served Audience Or System",
+              "sha256": "b5249d20cdab6b2c8ac43882f544d3fb43869c22ff37e67d0329aa2484bc168c"
+            }
+          ],
+          "reconciliation_sha256": "d8a969e2177fde63f5ca4cf073dba58ace1587f5c29cf894e422fff869eef502",
+          "governing_sha256": "1151f3c9b7a5efc0745031bbecd1db1a0b4d302ad1fb978eea998269ed8fabea",
+          "rule": "application",
+          "persistent_sources": [
+            "dev",
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "absent"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "absent"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "absent"
+            }
+          ],
+          "transition": {
+            "kind": "none"
+          }
+        }
+      },
+      "participation": {
+        "mode": "metadata-only"
+      }
+    },
+    {
+      "repository": "ForgingAlpha/analyzingalpha-site",
+      "repository_id": 1151414035,
+      "proposal": {
+        "task_target": "dev",
+        "promotions": [
+          {
+            "source": "dev",
+            "target": "main",
+            "same_repository": true
+          }
+        ],
+        "evidence": {
+          "adoption_branch": "dev",
+          "adopted_commit": "43af9c19e8a508b714418b7aac3b96f8945592c0",
+          "files": [
+            {
+              "path": "docs/architecture.md",
+              "sha256": "388d9ece15d8758730c488ac586a39e83c97b39eda0a6151d584fef767cc50cd"
+            },
+            {
+              "path": "docs/intent.md",
+              "sha256": "23219e3f16d307fc5ff963538ab146ffcd0a9162c082873bdbf770e78fe48be3"
+            },
+            {
+              "path": "docs/requirements.md",
+              "sha256": "842944308e5abad15e51f919b743072df1cee650b9a3c9cbe319ea7fbd9c18f8"
+            }
+          ],
+          "regions": [
+            {
+              "path": "docs/intent.md",
+              "start": "## Purpose",
+              "end": "## Served Audience Or System",
+              "sha256": "f59c3934e5a01d5b06cfd8bf42abc8bc7097f335a837228d5b09af9be188fabd"
+            }
+          ],
+          "reconciliation_sha256": "ef8e4404bd2b6c865bf9e615f915bf78b6c3e8c0a80995c2f5f03fdc66598692",
+          "governing_sha256": "1151f3c9b7a5efc0745031bbecd1db1a0b4d302ad1fb978eea998269ed8fabea",
+          "rule": "application",
+          "persistent_sources": [
+            "dev",
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "absent"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "absent"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "absent"
+            }
+          ],
+          "transition": {
+            "kind": "none"
+          }
+        }
+      },
+      "participation": {
+        "mode": "metadata-only"
+      }
+    },
+    {
+      "repository": "ForgingAlpha/container-foundation",
+      "repository_id": 1428636846,
+      "proposal": {
+        "task_target": "dev",
+        "promotions": [
+          {
+            "source": "dev",
+            "target": "main",
+            "same_repository": true
+          }
+        ],
+        "evidence": {
+          "adoption_branch": "dev",
+          "adopted_commit": "481bd4c066deabcbd6996da4871f3e7f2ac49df9",
+          "files": [
+            {
+              "path": "PROJECT.md",
+              "sha256": "b96433c252688cdbbd5990d0e5ffe29bfe64f39e25ba6a8da3056c639a33db5a"
+            },
+            {
+              "path": "docs/architecture.md",
+              "sha256": "57b120f7b48eab460262c420c5bbfb441bd5b08ae26d3b89e50beaa9b696830d"
+            },
+            {
+              "path": "docs/governing-source-bindings.json",
+              "sha256": "8f95a3ef7aadf70a7d9d47b9422857fab5d4906764e447481bc599e5efcea459"
+            },
+            {
+              "path": "docs/intent.md",
+              "sha256": "8224c1444a741a6c3dc29e5f36355f4f481e6d2e46bbae533ecabc9e6a1fd1b6"
+            },
+            {
+              "path": "docs/requirements.md",
+              "sha256": "c8416e06bd7fcae324eb6d57426d896b565f67f09cc3cc92ee63e20742cfda4a"
+            }
+          ],
+          "regions": [
+            {
+              "path": "docs/architecture.md",
+              "start": "## Source proposal route",
+              "end": "## CI and dependency selections",
+              "sha256": "23a231bd75b63d9b5bc9f8fab585dc895d9707d99edde9cb3bf4cf8c6f20a2ef"
+            }
+          ],
+          "reconciliation_sha256": "b2f7d94585a7a852c2bcaf7c156301070e2217b1e124aae2e3eb1976d3f81024",
+          "governing_sha256": "1151f3c9b7a5efc0745031bbecd1db1a0b4d302ad1fb978eea998269ed8fabea",
+          "rule": "owner-declared",
+          "persistent_sources": [
+            "dev",
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "file",
+              "sha256": "b96433c252688cdbbd5990d0e5ffe29bfe64f39e25ba6a8da3056c639a33db5a"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "symlink",
+              "target": "PROJECT.md"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "symlink",
+              "target": "PROJECT.md"
+            }
+          ],
+          "transition": {
+            "kind": "forward",
+            "predecessor": {
+              "files": [],
+              "regions": [],
+              "context": [
+                {
+                  "path": "AGENTS.md",
+                  "kind": "absent"
+                },
+                {
+                  "path": "CLAUDE.md",
+                  "kind": "absent"
+                },
+                {
+                  "path": "PROJECT.md",
+                  "kind": "absent"
+                },
+                {
+                  "path": "docs/architecture.md",
+                  "kind": "absent"
+                },
+                {
+                  "path": "docs/governing-source-bindings.json",
+                  "kind": "absent"
+                },
+                {
+                  "path": "docs/intent.md",
+                  "kind": "absent"
+                },
+                {
+                  "path": "docs/requirements.md",
+                  "kind": "absent"
+                }
+              ]
+            },
+            "successor": {
+              "files": [
+                {
+                  "path": "PROJECT.md",
+                  "sha256": "b96433c252688cdbbd5990d0e5ffe29bfe64f39e25ba6a8da3056c639a33db5a"
+                },
+                {
+                  "path": "docs/architecture.md",
+                  "sha256": "57b120f7b48eab460262c420c5bbfb441bd5b08ae26d3b89e50beaa9b696830d"
+                },
+                {
+                  "path": "docs/governing-source-bindings.json",
+                  "sha256": "8f95a3ef7aadf70a7d9d47b9422857fab5d4906764e447481bc599e5efcea459"
+                },
+                {
+                  "path": "docs/intent.md",
+                  "sha256": "8224c1444a741a6c3dc29e5f36355f4f481e6d2e46bbae533ecabc9e6a1fd1b6"
+                },
+                {
+                  "path": "docs/requirements.md",
+                  "sha256": "c8416e06bd7fcae324eb6d57426d896b565f67f09cc3cc92ee63e20742cfda4a"
+                }
+              ],
+              "regions": [
+                {
+                  "path": "docs/architecture.md",
+                  "start": "## Source proposal route",
+                  "end": "## CI and dependency selections",
+                  "sha256": "23a231bd75b63d9b5bc9f8fab585dc895d9707d99edde9cb3bf4cf8c6f20a2ef"
+                }
+              ],
+              "context": [
+                {
+                  "path": "PROJECT.md",
+                  "kind": "file",
+                  "sha256": "b96433c252688cdbbd5990d0e5ffe29bfe64f39e25ba6a8da3056c639a33db5a"
+                },
+                {
+                  "path": "AGENTS.md",
+                  "kind": "symlink",
+                  "target": "PROJECT.md"
+                },
+                {
+                  "path": "CLAUDE.md",
+                  "kind": "symlink",
+                  "target": "PROJECT.md"
+                }
+              ]
+            },
+            "reconciliation_sha256": "b2f7d94585a7a852c2bcaf7c156301070e2217b1e124aae2e3eb1976d3f81024"
+          }
+        }
+      },
+      "participation": {
+        "mode": "metadata-only"
+      }
+    },
+    {
+      "repository": "ForgingAlpha/alphaapps-outliers",
+      "repository_id": 1266594538,
+      "proposal": {
+        "task_target": "dev",
+        "promotions": [
+          {
+            "source": "dev",
+            "target": "main",
+            "same_repository": true
+          }
+        ],
+        "evidence": {
+          "adoption_branch": "dev",
+          "adopted_commit": "d4e5e61061caca0ef429d23074697ed05334ef18",
+          "files": [
+            {
+              "path": "docs/architecture.md",
+              "sha256": "77e62bdc53f61a377942dc5d59c95a7930913f0a3e551bcf42a8de8b7d7e80bf"
+            },
+            {
+              "path": "docs/intent.md",
+              "sha256": "c25b1623c9a50e5c72c3e23fc2db01cecde4c74360ec35e8f6d876c2d8ed0c75"
+            },
+            {
+              "path": "docs/requirements.md",
+              "sha256": "b1d99606b3c2c10c676411b0e43fae0c125c7dd99a49cf5fe8d2333e608e31b8"
+            }
+          ],
+          "regions": [
+            {
+              "path": "docs/intent.md",
+              "start": "## Purpose",
+              "end": "## Problem",
+              "sha256": "1d3281a219f586db2d7c9e2187d50e05d846901d95dfcc3efd441823e1ee0836"
+            }
+          ],
+          "reconciliation_sha256": "0e3af95b263452f64b090bb95718bb33b3801bbb219e3cd12b70c718b87710dd",
+          "governing_sha256": "1151f3c9b7a5efc0745031bbecd1db1a0b4d302ad1fb978eea998269ed8fabea",
+          "rule": "application",
+          "persistent_sources": [
+            "dev",
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "absent"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "file",
+              "sha256": "7a24da7b4e90d036a73bd92739b4fcd54a806ef0d9ad443ab884bacac66fd27b"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "absent"
+            }
+          ],
+          "transition": {
+            "kind": "none"
+          }
+        }
+      },
+      "participation": {
+        "mode": "metadata-only"
+      }
+    },
+    {
+      "repository": "ForgingAlpha/client-georgie-smigel-group",
+      "repository_id": 1313903802,
+      "proposal": {
+        "task_target": "dev",
+        "promotions": [
+          {
+            "source": "dev",
+            "target": "main",
+            "same_repository": true
+          }
+        ],
+        "evidence": {
+          "adoption_branch": "dev",
+          "adopted_commit": "b8f36b1efc9d4ecc952900d695f9d012c07999e9",
+          "files": [
+            {
+              "path": "PROJECT.md",
+              "sha256": "a0681bd4ee954e4e694e9168ddd9509568c6e65c3646a83badd0fd952667ef8e"
+            },
+            {
+              "path": "README.md",
+              "sha256": "c2decd0b3290df94ccf6039a87dc90abfa2c3778682168a4af8937759991cd9a"
+            }
+          ],
+          "regions": [
+            {
+              "path": "PROJECT.md",
+              "start": "## Repository proposal route",
+              "end": "## Task context",
+              "sha256": "6fd27162c26ee7f600797af2f014760ab828d4707efd0ad72fc17f27afd1266c"
+            }
+          ],
+          "reconciliation_sha256": "eafb7315fda3cba2407a84854041993fa9f493a5d986b0d84d741f96c2a920c8",
+          "governing_sha256": "1151f3c9b7a5efc0745031bbecd1db1a0b4d302ad1fb978eea998269ed8fabea",
+          "rule": "owner-declared",
+          "persistent_sources": [
+            "dev",
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "file",
+              "sha256": "a0681bd4ee954e4e694e9168ddd9509568c6e65c3646a83badd0fd952667ef8e"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "symlink",
+              "target": "PROJECT.md"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "symlink",
+              "target": "PROJECT.md"
+            }
+          ],
+          "transition": {
+            "kind": "none"
+          }
+        }
+      },
+      "participation": {
+        "mode": "metadata-only"
+      }
+    },
+    {
+      "repository": "ForgingAlpha/turnkeyleads-app",
+      "repository_id": 1017445965,
+      "proposal": {
+        "task_target": "dev",
+        "promotions": [
+          {
+            "source": "dev",
+            "target": "main",
+            "same_repository": true
+          }
+        ],
+        "evidence": {
+          "adoption_branch": "dev",
+          "adopted_commit": "5dae8856644b793b8a0879255a02b1f5be2ff360",
+          "files": [
+            {
+              "path": "docs/architecture.md",
+              "sha256": "1835b1f71329afc333a5dd54553ddd6c3417072206cf2b6629d22c8f1e00abf9"
+            },
+            {
+              "path": "docs/intent.md",
+              "sha256": "d856f315ad5d023355172d10088b6f62e0f263a668e9a6814952a665ca583a5a"
+            },
+            {
+              "path": "docs/requirements.md",
+              "sha256": "a8cea11ffe39806ed4ff0d04e81e8f23164865022477c5b5454b6a96fb70ebba"
+            }
+          ],
+          "regions": [
+            {
+              "path": "docs/intent.md",
+              "start": "## Terminology",
+              "end": "## Strategic Commitment",
+              "sha256": "48e1fca3974512aa33fdd8d4ab2b649b6c97db5400c7f8d08def64b16217a1ab"
+            }
+          ],
+          "reconciliation_sha256": "1973a290f0a3fa2337de65885743ba98d74e35977376ec7970b63e41003daca2",
+          "governing_sha256": "1151f3c9b7a5efc0745031bbecd1db1a0b4d302ad1fb978eea998269ed8fabea",
+          "rule": "application",
+          "persistent_sources": [
+            "dev",
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "absent"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "file",
+              "sha256": "df899a7859e1b4e0b27bf020f986b8dbe4ea3cc88808154db876f6b304121dde"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "absent"
+            }
+          ],
+          "transition": {
+            "kind": "none"
+          }
+        }
+      },
+      "participation": {
+        "mode": "metadata-only"
+      }
+    },
     {
       "repository": "ForgingAlpha/layas-learning-lab-site",
       "repository_id": 1420939261,
-      "branches": [
-        "dev",
-        "main"
-      ],
-      "profile": "astro",
-      "producer": "central-product",
-      "qualification_subject": {
-        "kind": "none"
-      },
-      "release_route": {
-        "declarations": [
+      "proposal": {
+        "task_target": "dev",
+        "promotions": [
           {
-            "kind": "direct",
-            "path": "PROJECT.md",
-            "start": "The Alpha Apps Control Plane owns shared process. Resolve its physical `GLOBAL.md`",
-            "end": "Read [Intent](docs/intent.md), [Requirements](docs/requirements.md), and",
-            "text": "from the loaded global entry and use its `README.md` to select the applicable route.\nThis project introduces no exceptions to that process.\n\n"
+            "source": "dev",
+            "target": "main",
+            "same_repository": true
           }
         ],
-        "transition": "none",
-        "reconciliation_sha256": "e896148027f7a9cb7b91f27a3df39e36ec89689eb8e63ddfe9c4f45da3456740"
-      },
-      "review_policy": {
-        "kind": "qualified-team",
-        "team_id": 20299307,
-        "minimum_approvals": 1
-      },
-      "foundation": "not-applicable",
-      "components": [
-        {
-          "kind": "astro",
-          "root": ".",
-          "static_scripts": [
-            "ci:browser",
-            "test:root-build"
+        "evidence": {
+          "adoption_branch": "dev",
+          "adopted_commit": "3d5d3197fcec0e7fbaf70e64d3d9a5e5ee2e481b",
+          "files": [
+            {
+              "path": "PROJECT.md",
+              "sha256": "2e8843287838e8911f1edc038a0c6ce1f9f01b28833d7e9ed6ad7ac78e1705ef"
+            },
+            {
+              "path": "docs/architecture.md",
+              "sha256": "95def283ec9172e59959feb02e925b5183562b53b568aee47791775d61d8311a"
+            },
+            {
+              "path": "docs/governing-source-bindings.json",
+              "sha256": "7d0f7ff01e4b78e92ce2ca34d6dc45dc5d35607e6ce1bd968cd6ff1efd5314aa"
+            },
+            {
+              "path": "docs/intent.md",
+              "sha256": "c69f6f48fddba26677750fc890477b91fdfe20581c8290ffa17549c5fb1ef66d"
+            },
+            {
+              "path": "docs/requirements.md",
+              "sha256": "a56dbe8fe86133f67dbf417b064c918d77548801e2270c49b3e4375cdffdd811"
+            }
           ],
-          "tests": {
-            "kind": "required",
-            "scripts": [
-              "test",
-              "test:publication",
-              "test:dev"
-            ]
+          "regions": [
+            {
+              "path": "docs/intent.md",
+              "start": "## Purpose",
+              "end": "## Scope",
+              "sha256": "09af9e87e32419ea5314e7d1576f28952232837af8bc093857dc3f31cf400ab1"
+            }
+          ],
+          "reconciliation_sha256": "4ed0de6d8c1506e726a1606c9009113668259b869045043dffac8b9ab6b4011d",
+          "governing_sha256": "1151f3c9b7a5efc0745031bbecd1db1a0b4d302ad1fb978eea998269ed8fabea",
+          "rule": "application",
+          "persistent_sources": [
+            "dev",
+            "main"
+          ],
+          "context": [
+            {
+              "path": "PROJECT.md",
+              "kind": "file",
+              "sha256": "2e8843287838e8911f1edc038a0c6ce1f9f01b28833d7e9ed6ad7ac78e1705ef"
+            },
+            {
+              "path": "AGENTS.md",
+              "kind": "symlink",
+              "target": "PROJECT.md"
+            },
+            {
+              "path": "CLAUDE.md",
+              "kind": "symlink",
+              "target": "PROJECT.md"
+            }
+          ],
+          "transition": {
+            "kind": "none"
           }
         }
-      ]
+      },
+      "participation": {
+        "mode": "central",
+        "selected_targets": [
+          "dev",
+          "main"
+        ],
+        "profile": "astro",
+        "producer": "central-product",
+        "qualification_subject": {
+          "kind": "none"
+        },
+        "review_policy": {
+          "kind": "qualified-team",
+          "team_id": 20299307,
+          "minimum_approvals": 1
+        },
+        "foundation": "not-applicable",
+        "components": [
+          {
+            "kind": "astro",
+            "root": ".",
+            "static_scripts": [
+              "ci:browser",
+              "test:root-build"
+            ],
+            "tests": {
+              "kind": "required",
+              "scripts": [
+                "test",
+                "test:publication",
+                "test:dev"
+              ]
+            }
+          }
+        ]
+      }
     }
   ]
 }

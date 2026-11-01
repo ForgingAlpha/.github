@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import copy
+import base64
+import hashlib
+import shutil
 import importlib.util
 import json
 import os
@@ -13,6 +16,8 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0,str(ROOT/'tests'))
+from route_fixture_support import git_data, git_context
 SCRIPT = ROOT / "actions" / "ci-update-ownership" / "scripts" / "validate_update_ownership.py"
 PRESET = ROOT / "renovate-config.json"
 ACTION = ROOT / "actions" / "ci-update-ownership" / "action.yml"
@@ -52,24 +57,81 @@ class UpdateOwnershipTest(unittest.TestCase):
         action = ACTION.read_text(encoding="utf-8")
         self.assertIn(".github/update-policy.json", action)
         self.assertIn("--repository-root .", action)
-        self.assertIn("UPDATE_POLICY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}", action)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", action)
+        self.assertNotIn("--default-branch", action)
         self.assertIn("renovate.json", action)
         self.assertIn(".github/dependabot.yml", action)
-        self.assertNotIn("github.token", action)
         self.assertNotIn("secrets.", action)
 
-    def run_owned_action(self, root, default_branch="main"):
-        step = yaml.safe_load(ACTION.read_text())["runs"]["steps"][0]
-        env = dict(
-            os.environ,
-            GITHUB_ACTION_PATH=str(ACTION.parent),
-            UPDATE_POLICY_DEFAULT_BRANCH=default_branch,
-            PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"],
-        )
-        return subprocess.run(
-            ["bash", "-c", step["run"]], cwd=root, env=env,
-            capture_output=True, text=True, timeout=15,
-        )
+    def run_owned_action(self, root, default_branch="main", task_target="main", event_kind="push", checkout="full", scopes=None):
+        # Actual published shell and Python entrypoints, with a committed synthetic
+        # consumer and exact GET-only provider responses. No real service access.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp=Path(directory); consumer=tmp/'consumer';consumer.mkdir();bundle=tmp/'bundle';bundle.mkdir()
+            for rel in ('.github/update-policy.json','renovate.json','.github/dependabot.yml'):
+                if (root/rel).exists():
+                    dst=consumer/rel;dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(root/rel,dst)
+            text=b'# Owner\n\nControl.\n\n## End\n';(consumer/'PROJECT.md').write_bytes(text)
+            def git(*args):return subprocess.check_output(['git','-c','user.name=Fixture','-c','user.email=fixture@example.invalid',*args],cwd=consumer,text=True).strip()
+            git('init','-q','-b',task_target);git('add','.');git('commit','-q','-m','fixture');head=git('rev-parse','HEAD')
+            base=head
+            if event_kind=='pull_request':
+                (consumer/'change.md').write_text('fixture PR change\n');git('add','.');git('commit','-q','-m','head');head=git('rev-parse','HEAD')
+            repo={'full_name':'ForgingAlpha/.github' if task_target=='main' else 'ForgingAlpha/alphaapps-site','id':1137664016 if task_target=='main' else 1151008489,'default_branch':default_branch}
+            evidence={'adoption_branch':task_target,'adopted_commit':base if event_kind=='pull_request' else head,'files':[{'path':'PROJECT.md','sha256':hashlib.sha256(text).hexdigest()}],
+               'regions':[{'path':'PROJECT.md','start':'# Owner','end':'## End','sha256':hashlib.sha256(b'\nControl.\n\n').hexdigest()}],
+               'rule':'named-control' if task_target=='main' else 'application','persistent_sources':['main'] if task_target=='main' else ['dev','main'],'reconciliation_sha256':'c'*64,'governing_sha256':'f'*64}
+            evidence.update(context=git_context(consumer,base),transition={'kind':'none'})
+            row={'repository':repo['full_name'],'repository_id':repo['id'],'proposal':{'task_target':task_target,'promotions':[] if task_target=='main' else [{'source':'dev','target':'main','same_repository':True}],'evidence':evidence},'participation':{'mode':'metadata-only'}}
+            for rel in set(update_ownership.route.CHECKING_FILES)|{'actions/ci-foundation/scripts/foundation_source.py','actions/ci-foundation/approved.json'}:
+                dst=bundle/rel;dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/rel,dst)
+            (bundle/'actions/ci-org-baseline/enrollment.json').write_text(json.dumps({'schema_version':3,'repositories':[row]}))
+            event={'repository':repo,'ref':'refs/heads/'+task_target,'before':'a'*40,'after':head,'deleted':False,'forced':False}
+            canonical=base if event_kind=='pull_request' else head
+            gets={f'repos/{repo["full_name"]}':repo, f'repos/{repo["full_name"]}/branches/{task_target}':{'commit':{'sha':canonical},'protected':True},
+                  f'repos/{repo["full_name"]}/compare/{head}...{head}':{'status':'identical','merge_base_commit':{'sha':head}},
+                  f'repos/{repo["full_name"]}/contents/PROJECT.md?ref={head}':{'type':'file','encoding':'base64','size':len(text),'sha':hashlib.sha1(b'blob '+str(len(text)).encode()+b'\0'+text).hexdigest(),'content':base64.b64encode(text).decode()}}
+            gets.update(git_data(consumer,repo['full_name'],[base,head]))
+            gets[f'repos/{repo["full_name"]}/compare/{base}...{base}']={'status':'identical','merge_base_commit':{'sha':base}}
+            if event_kind=='pull_request':
+                pr={'number':17,'state':'open','base':{'repo':repo,'ref':task_target,'sha':base},'head':{'repo':repo,'ref':'task/change','sha':head}}
+                event={'repository':repo,'number':17,'pull_request':pr}
+                gets[f'repos/{repo["full_name"]}/pulls/17']=pr
+                gets[f'repos/{repo["full_name"]}/branches/task%2Fchange']={'commit':{'sha':head},'protected':False}
+            (tmp/'event').write_text(json.dumps(event))
+            (tmp/'gets').write_text(json.dumps(gets));gh=tmp/'gh'
+            gh.write_text('#!/usr/bin/env python3\nimport json,os,sys\nassert sys.argv[1]=="api" and "--method" not in sys.argv\nname=sys.argv[-1]\nneeded="pull-requests" if "/pulls/" in name else "contents"\nif json.loads(os.environ["FIXTURE_SCOPES"]).get(needed)!="read":sys.exit("fixture scope refused: "+needed)\nprint(json.dumps(json.load(open(os.environ["FIXTURE_GETS"]))[name]))\n');gh.chmod(0o700)
+            step=yaml.safe_load(ACTION.read_text())['runs']['steps'][0]
+            env={**os.environ,'GITHUB_ACTION_PATH':str(bundle/'actions/ci-update-ownership'),'PATH':str(tmp)+os.pathsep+os.environ['PATH'],
+                 'GITHUB_EVENT_PATH':str(tmp/'event'),'GITHUB_EVENT_NAME':event_kind,'GITHUB_SHA':head,'GITHUB_REPOSITORY':repo['full_name'],
+                 'GITHUB_REPOSITORY_ID':str(repo['id']),'FIXTURE_GETS':str(tmp/'gets'),'FIXTURE_SCOPES':json.dumps(scopes or {'contents':'read','pull-requests':'read'})}
+            if checkout=='shallow':
+                clone=tmp/'shallow';subprocess.run(['git','clone','-q','--depth=1','file://'+str(consumer),str(clone)],check=True,capture_output=True);consumer=clone
+            elif checkout=='merge':git('commit','-q','--allow-empty','-m','synthetic merge checkout')
+            elif checkout=='none':consumer=tmp/'no-checkout';consumer.mkdir()
+            return subprocess.run(['bash','-e','-c',step['run']],cwd=consumer,env=env,capture_output=True,text=True,timeout=20)
+
+    def test_application_dev_target_when_default_is_main_and_target_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'.github').mkdir()
+            (root/'.github/update-policy.json').write_text(json.dumps(self.policy))
+            (root/'renovate.json').write_text(json.dumps(self.renovate))
+            (root/'.github/dependabot.yml').write_text(yaml.safe_dump(self.dependabot))
+            result=self.run_owned_action(root,default_branch='main',task_target='dev')
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('base dev',result.stdout)
+            self.policy['base_branch']='main'
+            (root/'.github/update-policy.json').write_text(json.dumps(self.policy))
+            result=self.run_owned_action(root,default_branch='main',task_target='dev')
+            self.assertEqual(result.returncode,1)
+            self.assertIn('governed',result.stderr)
+
+    def test_real_pr_wrapper_and_exact_checkout_scope_boundaries(self):
+        for checkout,scopes,success in [('full',{'contents':'read','pull-requests':'read'},True),('shallow',{'contents':'read','pull-requests':'read'},False),('merge',{'contents':'read','pull-requests':'read'},False),('none',{'contents':'read','pull-requests':'read'},False),('full',{'contents':'read'},False)]:
+            with self.subTest(checkout=checkout,scopes=scopes):
+                result=self.run_owned_action(ROOT,event_kind='pull_request',checkout=checkout,scopes=scopes)
+                self.assertEqual(result.returncode,0 if success else 1,result.stdout+result.stderr)
+                if not success:self.assertNotIn('Update ownership validation passed',result.stdout)
 
     def test_repository_config_assigns_normal_and_security_owners(self):
         # Exercise REQ-018 through the same policy-selection path as required CI.
@@ -80,7 +142,7 @@ class UpdateOwnershipTest(unittest.TestCase):
         for boundary in (job, selected[0]):
             self.assertNotIn("if", boundary)
             self.assertNotIn("continue-on-error", boundary)
-        result = self.run_owned_action(ROOT)
+        result = self.run_owned_action(ROOT, default_branch="dev")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_owned_action_rejects_absent_or_conflicting_consumer_policy(self):
@@ -161,9 +223,9 @@ class UpdateOwnershipTest(unittest.TestCase):
         config["baseBranchPatterns"] = ["main"]
         with self.assertRaisesRegex(update_ownership.OwnershipError, "baseBranchPatterns"):
             update_ownership.validate_renovate(config, "dev")
-        update_ownership.validate_default_branch("dev", "dev")
-        with self.assertRaisesRegex(update_ownership.OwnershipError, "must equal repository default branch"):
-            update_ownership.validate_default_branch("dev", "main")
+        update_ownership.validate_governed_target("dev", "dev")
+        with self.assertRaisesRegex(update_ownership.OwnershipError, "must equal governed task target"):
+            update_ownership.validate_governed_target("dev", "main")
 
     def test_dependabot_normal_update_capacity_or_explicit_target_fails(self):
         config = copy.deepcopy(self.dependabot)

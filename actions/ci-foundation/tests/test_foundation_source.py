@@ -396,6 +396,28 @@ class FoundationAdmissionTest(unittest.TestCase):
         owner = ROOT / "actions/ci-update-ownership"
         trusted_owner = self.trusted.parent / "ci-update-ownership"
         shutil.copytree(owner, trusted_owner)
+        # Carry the selected route bundle and explicit synthetic owner proof.
+        # Provider objects below come from actual committed fixture Git objects.
+        sys.path.insert(0, str(ROOT / "tests"))
+        from test_proposal_route import fixture, route
+        from route_fixture_support import git_data, git_context
+        bundle = self.trusted.parents[1]
+        for name in route.CHECKING_FILES:
+            target = bundle / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, target)
+        entry, _, _ = fixture("main", "task/fixture", "ForgingAlpha/.github")
+        (self.consumer / "PROJECT.md").write_bytes(b"# Owner\n\nApplication.\n\n## End\n")
+        def git(*args):
+            return subprocess.check_output(["git", *args], cwd=self.consumer).decode().strip()
+        git("init", "-q", "-b", "main")
+        fake_gh = bundle / "gh"
+        fake_gh.write_text("#!/usr/bin/python3 -I\nimport json,os,sys\na=sys.argv[1:]\n"
+                           "assert a[0]=='api' and '--method' not in a\n"
+                           "v=json.load(open(os.environ['FIXTURE_GETS']))\n"
+                           "if a[-1] not in v:sys.exit('missing fixture proof: '+a[-1])\n"
+                           "print(json.dumps(v[a[-1]]))\n")
+        fake_gh.chmod(0o700)
         (self.consumer / ".github").mkdir()
         (self.consumer / ".github/update-policy.json").write_text(json.dumps({
             "schema_version": 1, "normal_update_owner": "renovate", "base_branch": "main"}))
@@ -413,7 +435,29 @@ class FoundationAdmissionTest(unittest.TestCase):
             "from pathlib import Path\nPath(" + repr(str(self.sentinel)) + ").touch()\n")
         env = dict(os.environ, GITHUB_ACTION_PATH=str(trusted_owner), UPDATE_POLICY_DEFAULT_BRANCH="main",
                    FOUNDATION_ACTION_REF="main", PYTHONPATH=str(startup))
+        env.update(PATH=str(bundle) + ":" + env["PATH"], FIXTURE_GETS=str(bundle / "gets"),
+                   GITHUB_EVENT_NAME="push", GITHUB_REPOSITORY="ForgingAlpha/.github",
+                   GITHUB_REPOSITORY_ID="1137664016", GITHUB_EVENT_PATH=str(bundle / "event"))
         def run():
+            git("add", "-A")
+            git("-c", "user.name=Synthetic fixture", "-c", "user.email=fixture@example.invalid",
+                "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "fixture state")
+            revision = git("rev-parse", "HEAD")
+            entry["proposal"]["evidence"]["adopted_commit"] = revision
+            entry["proposal"]["evidence"]["context"] = git_context(self.consumer, revision)
+            (bundle / "actions/ci-org-baseline/enrollment.json").write_text(
+                json.dumps({"schema_version": 3, "repositories": [entry]}))
+            repo = {"full_name": entry["repository"], "id": entry["repository_id"]}
+            gets = git_data(self.consumer, entry["repository"], [revision])
+            prefix = "repos/" + entry["repository"]
+            gets[prefix] = repo
+            gets[prefix + "/branches/main"] = {"commit": {"sha": revision}, "protected": True}
+            gets[prefix + "/compare/" + revision + "..." + revision] = {
+                "status": "identical", "merge_base_commit": {"sha": revision}}
+            (bundle / "gets").write_text(json.dumps(gets))
+            (bundle / "event").write_text(json.dumps({"repository": repo, "ref": "refs/heads/main",
+                "before": revision, "after": revision, "deleted": False, "forced": False}))
+            env["GITHUB_SHA"] = revision
             return subprocess.run(["bash", "-c", command], cwd=self.consumer,
                                   env=env, capture_output=True, text=True, timeout=15)
         result = run()

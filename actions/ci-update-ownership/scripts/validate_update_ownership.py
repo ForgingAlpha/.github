@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import sys
 import json
 import os
-import sys
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,13 @@ ALTERNATE_RENOVATE_CONFIGS = (
 class OwnershipError(ValueError):
     """Raised when update ownership is missing, overlapping, or unsafe."""
 
+
+# One trusted checking bundle; never import repository-local consumer code.
+_route_path = Path(__file__).resolve().parents[2] / "ci-org-baseline/scripts/proposal_route.py"
+_spec = importlib.util.spec_from_file_location("updater_proposal_route", _route_path)
+route = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = route
+_spec.loader.exec_module(route)
 
 def load_json(path: Path) -> dict[str, Any]:
     try:
@@ -83,10 +92,10 @@ def validate_renovate(config: dict[str, Any], base: str) -> None:
         raise OwnershipError(f"repository Renovate baseBranchPatterns must be exactly [{base!r}]")
 
 
-def validate_default_branch(base: str, default_branch: str) -> None:
-    if base != default_branch:
+def validate_governed_target(base: str, expected_target: str) -> None:
+    if base != expected_target:
         raise OwnershipError(
-            f"update policy base_branch {base!r} must equal repository default branch {default_branch!r}"
+            f"update policy base_branch {base!r} must equal governed task target {expected_target!r}"
         )
 
 
@@ -236,7 +245,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dependabot", type=Path)
     parser.add_argument("--central-preset", type=Path)
     parser.add_argument("--repository-root", type=Path)
-    parser.add_argument("--default-branch")
     return parser.parse_args()
 
 
@@ -247,18 +255,24 @@ def main() -> int:
             validate_central_preset(load_json(args.central_preset))
             print("✓ Central Renovate preset validation passed")
             return 0
-        if not args.policy or not args.renovate or not args.dependabot or not args.repository_root or not args.default_branch:
+        if not args.policy or not args.renovate or not args.dependabot or not args.repository_root:
             raise OwnershipError(
-                "repository-root, default-branch, policy, renovate, and dependabot paths are required for consumer validation"
+                "repository-root, policy, renovate, and dependabot paths are required for consumer validation"
             )
         _owner, base, _profile = validate_policy(load_json(args.policy))
-        validate_default_branch(base, args.default_branch)
+        event = route.read_event()
+        rows = route.catalog(route.decode((route.SOURCE / "actions/ci-org-baseline/enrollment.json").read_bytes()))
+        entry = route.select(rows, event["repository"]["full_name"], event["repository"]["id"])
+        expected_target = route.normal_target(route.security.GhApi(), event, entry, args.repository_root)
+        validate_governed_target(base, expected_target)
         validate_config_files(args.repository_root, args.renovate)
         validate_renovate(load_json(args.renovate), base)
         validate_security_only_dependabot(load_yaml(args.dependabot))
+        if route.normal_target(route.security.GhApi(), event, entry, args.repository_root) != expected_target:
+            raise OwnershipError("governed target moved during validation")
         print(f"✓ Update ownership validation passed (Renovate normal updates; Dependabot security only; base {base})")
         return 0
-    except OwnershipError as error:
+    except (OwnershipError, ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.SubprocessError, route.security.PolicyError) as error:
         print("✗ Update ownership validation failed", file=sys.stderr)
         print(f"  WHAT: {error}", file=sys.stderr)
         print("  WHY: every dependency surface must have one normal-update owner and a separate security lane.", file=sys.stderr)

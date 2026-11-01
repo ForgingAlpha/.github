@@ -29,6 +29,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: ForgingAlpha/.github/actions/ci-elixir@main
 ```
 
@@ -41,38 +43,38 @@ retain their Current declared route; resolve class and route from the owning
 governing definition, with PROJECT context where available. Missing or conflicting
 evidence stops the affected proposal. Missing `dev` grants no application
 task-to-main fallback. See [REQ-027](docs/requirements.md#req-027---uniform-proposal-admission).
-The legacy merge-flow wrapper still has
-its known dev-only promotion behavior; central schema-2 admission uses the explicit
-owner-declared route and does not infer it from branch existence. Security remediation
+The merge-flow wrapper and central schema-2 admission use the same checked
+owner projection and refuse unknown source correspondence. Metadata-only route
+rows do not grant central enrollment. Security remediation
 retains its separately governed classification and exact-patch proof; a separate-dev
 source additionally requires production projection and never carries unrelated `dev`
 work. Its CI admission reads
 Git objects, pull requests and trusted checks, so callers retain all three
 read-only token scopes shown above.
 
-## Central Documentation Pilot
+## Central Profiles and Documentation Pilot
 
 The organization-required entrypoint is
 [org-baseline.yml](.github/workflows/org-baseline.yml). Its trusted
-[enrollment](actions/ci-org-baseline/enrollment.json) initially selects only
+[enrollment](actions/ci-org-baseline/enrollment.json) retains central participation only for
 `ForgingAlpha/layas-learning-lab-site`, repository ID `1420939261`, on `dev` and `main`.
-This documentation profile supplies `CI` without a consumer workflow. Unknown
-identities and application content fail; missing manifests never select bootstrap.
+That row preserves its complete Astro profile. Other checked proposal rows are
+metadata-only and cannot produce a central result. The explicit documentation
+bootstrap remains a separately qualified profile; missing manifests never select it.
 The defining `.github` repository is outside this consumer pilot. Its baseline
 workflow excludes source-repository jobs, whose names remain distinct from `CI`
 even when skipped. Actual target result naming requires hosted qualification. The existing required `CI`
 workflow continues to validate this repository.
 
-This candidate changes the bootstrap check topology: `CI` moves from the `baseline`
-job to the final `result` job, and `baseline` reports `Organization Baseline`.
-The retained live Q6 source B is still adopted source
-`97a8a94c884f43c039278d117d0d9313d1465ec9`, with the old topology. Its results do not
-qualify this candidate. Protected main is active at human merge. Any consumer
+The complete check topology places `CI` on the final `result` job, while
+`baseline` reports `Organization Baseline`. Earlier Q6 documentation-pilot evidence
+does not qualify this schema-3 candidate or establish its current selector.
+Protected main is active at human merge. Any consumer
 transition must reconcile both check identities and recovery, then qualify its exact
 target before reliance. No live selector or Q6 binding changes with this source proposal.
 
 The job checks out the defining workflow commit separately from the exact consumer
-PR head. It admits tracked, non-executable Markdown, `.gitignore`, three enumerated
+PR head. Explicit documentation bootstrap admits tracked, non-executable Markdown, `.gitignore`, three enumerated
 JSON data paths, and the two verified root instruction projections to `PROJECT.md`.
 It checks governing metadata, fresh exact-base team-review configuration and every
 canonical Markdown input. The data-only runner uses the existing locked tool,
@@ -102,13 +104,14 @@ ordinary `ci-markdown` behavior are unchanged.
 ## Complete Application Profile Source
 
 The [organization baseline contract](actions/ci-org-baseline/README.md) defines the
-strict schema-2 source capability for Astro, Rust and mixed complete component trees.
-The shipped enrollment, runtime catalog and foundation catalog retain their existing
-assignments. Source fixtures exercise schema 2; they do not enroll a consumer.
+strict schema-3 source capability for Astro, Rust and mixed complete component trees.
+The checked proposal projection distinguishes metadata-only rows from explicit
+central participation. Runtime and foundation assignments retain their existing
+owners. Local source fixtures do not establish installed consumer eligibility.
 Rust/mixed remain fixture-only until actual approved runtime and consumer evidence exists.
 
 Admission and common checking process consumer data without executing its scripts.
-They check complete manifests, declared release route, source/foundation/runtime
+They check complete manifests, typed ordinary/security admission, source/foundation/runtime
 integrity, policy, controlled Markdown, workflow safety, dependency and update ownership.
 Product static checks and tests run in separate jobs on fresh bound checkouts; a final
 trusted job rederives the plan, requires every applicable job to succeed and refuses
@@ -170,6 +173,7 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-typescript` | Format, lint, type checking, and tests |
 | `ci-shell` | ShellCheck at style severity and Bash syntax |
 | `security-patch-classification` | Dependabot-safe preflight and trusted exact-source classification |
+| `security-patch-source-observation` | Read-only current-main push observation of an already classified human source merge |
 | `security-patch-projection` | Exact manifest/lock patch reconstruction on current `main` |
 | `security-patch-verification` | Read-only production re-proof before a human merge |
 
@@ -251,6 +255,52 @@ remain governed by their central assignments and exact locks; the current
 preset disables direct mise, Node-engine and generic lock-maintenance writes.
 Runtime update automation requires a qualified constrained writer.
 
+Unprivileged CI admission accepts a canonical Dependabot source targeting its
+actual main or dev default after structural identity, current-base, verified-commit
+and exact manifest/lock checks. It emits `admission_kind=dependabot-source` with
+repository, PR, branch, base, head, tree, changed paths and exact profile/pairs; this is not security eligibility and
+reads no official advisories. The existing projection admission keeps its fixed-App
+attestation and output contract. Classification resolves the canonical default;
+an explicit preflight `source-branch` must agree. Classification requires
+preflight's `source-branch`, PR, base and head outputs so both steps bind the
+same source. Missing branch input fails before a classification write; reconcile
+existing callers before releasing this contract.
+
+Legacy root npm classifications and projections retain their exact v2 payloads,
+external identities and immutable check completion times. Root npm support remains
+available without a new repository allowlist. Historical source-v1 checks remain
+ineligible and are never rewritten or upgraded.
+
+The source-owned [security profiles](actions/security-patch/profiles.json) declare
+five exact repository identities and seven manifest/lock pairs. They add nested
+npm in `.github` and Turnkey, and Cargo in Foundation. Canonical complete PR files
+select a nonempty, sorted set of declared pairs from one ecosystem. Every selected
+lock must change; unchanged manifests remain bound in both source and production
+preimages. Neither consumer configuration nor caller path arguments grant support.
+New sets use `alphaapps-security-source-v3` and
+`alphaapps-security-projection-v3`, with `manifest-lock-set-v1`, repository ID and
+complete `dependency_pairs`. Readers explicitly distinguish v2 from v3. Same-head
+check uniqueness spans versions; conflicting evidence never creates a replacement.
+
+Projection and verification callers omit both path inputs for canonical discovery.
+Either existing root literal remains a legacy-root assertion, including partial
+root callers. Non-root, malformed or explicitly empty CLI arguments refuse; Actions
+empty inputs represent omission. Inputs travel through quoted environment/argv.
+Complete source and projected Git trees preserve untouched siblings and subtree
+identities, and every selected manifest and lock must match the production preimage.
+Any open proposal touching any selected lock refuses the entire set. Retries adopt
+one deterministic whole-set result without ref updates, deletion or duplicate writes.
+
+The grouped proof binds the complete official GHSA set to an authenticated publisher
+patch; it does not independently solve or certify fixed dependency versions. The
+existing CodeQL neutral exception remains exclusive to its exact legacy root
+lock-only predicate. New profiles still require trusted CI and CodeQL success.
+All potentially overlapping set-capable writers need the same non-cancelling
+repository-and-target concurrency group, with existing, queued and running writers
+reconciled before activation. Installed caller/App/CodeQL capability and complete
+product/recovery qualification remain required. An old root-only reader is not a
+compatible recovery source after set proofs become active.
+
 Every eligible security source retains trusted classification, exact dependency-patch
 proof, required CI/CodeQL and human approval and merge under REQ-013/014. For a
 separate-dev source, the projector reconstructs only its verified manifest-and-lock
@@ -259,8 +309,10 @@ read-only verification precedes human production approval and merge. An eligible
 direct-main source instead has one human merge and read-only source observation;
 it does not create a second PR or use a projection-only attestation. Applicable
 deployment evidence binds the exact resulting revision; shared-source activation
-does not prove product deployment. The direct-source caller and observer remain
-implementation/qualification obligations described in Architecture; this contract
+does not prove product deployment. The
+[direct-source observer](actions/security-patch-source-observation/README.md)
+binds the actual main push and current ref to prior classification. Caller
+installation and consumer qualification remain required; source availability
 does not establish that either security path is operational in a consumer.
 
 Installations, hosted settings, caller enrollment and daily execution need

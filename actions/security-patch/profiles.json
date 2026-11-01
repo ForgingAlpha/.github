@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "repositories": [
+    {
+      "repository": "ForgingAlpha/.github",
+      "repository_id": 1137664016,
+      "pairs": [
+        {
+          "ecosystem": "npm",
+          "manifest_path": "actions/ci-markdown/package.json",
+          "lock_path": "actions/ci-markdown/package-lock.json"
+        }
+      ]
+    },
+    {
+      "repository": "ForgingAlpha/alphaapps-site",
+      "repository_id": 1151008489,
+      "pairs": [
+        {
+          "ecosystem": "npm",
+          "manifest_path": "package.json",
+          "lock_path": "package-lock.json"
+        }
+      ]
+    },
+    {
+      "repository": "ForgingAlpha/analyzingalpha-site",
+      "repository_id": 1151414035,
+      "pairs": [
+        {
+          "ecosystem": "npm",
+          "manifest_path": "package.json",
+          "lock_path": "package-lock.json"
+        }
+      ]
+    },
+    {
+      "repository": "ForgingAlpha/container-foundation",
+      "repository_id": 1428636846,
+      "pairs": [
+        {
+          "ecosystem": "cargo",
+          "manifest_path": "examples/fixture/Cargo.toml",
+          "lock_path": "examples/fixture/Cargo.lock"
+        },
+        {
+          "ecosystem": "cargo",
+          "manifest_path": "examples/second-consumer/Cargo.toml",
+          "lock_path": "examples/second-consumer/Cargo.lock"
+        }
+      ]
+    },
+    {
+      "repository": "ForgingAlpha/turnkeyleads-app",
+      "repository_id": 1017445965,
+      "pairs": [
+        {
+          "ecosystem": "npm",
+          "manifest_path": "assets/admin/package.json",
+          "lock_path": "assets/admin/package-lock.json"
+        },
+        {
+          "ecosystem": "npm",
+          "manifest_path": "assets/customer/package.json",
+          "lock_path": "assets/customer/package-lock.json"
+        }
+      ]
+    }
+  ]
+}

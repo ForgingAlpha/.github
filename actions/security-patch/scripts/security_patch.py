@@ -14,6 +14,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote
 
@@ -22,11 +23,15 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 APP_ID_RE = re.compile(r"^[1-9][0-9]*$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ROOT_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-SOURCE_SCHEMA = "alphaapps-security-source-v1"
+SOURCE_SCHEMA = "alphaapps-security-source-v2"
 PROJECTION_SCHEMA = "alphaapps-security-projection-v2"
 SOURCE_CHECK = "AlphaApps Security Classification"
 PROJECTION_CHECK = "AlphaApps Security Projection"
 PROFILE = "root-npm-v1"
+SET_PROFILE = "manifest-lock-set-v1"
+SET_SOURCE_SCHEMA = "alphaapps-security-source-v3"
+SET_PROJECTION_SCHEMA = "alphaapps-security-projection-v3"
+ROOT_PAIRS = ({"ecosystem": "npm", "manifest_path": "package.json", "lock_path": "package-lock.json"},)
 MAX_BLOB_BYTES = 20 * 1024 * 1024
 # Public GitHub App identity owned by the released control-plane policy. This
 # is a trust anchor, not a credential. Consumers cannot select or override it.
@@ -80,6 +85,108 @@ def require_profile_paths(manifest_path: str, lock_path: str) -> None:
     )
 
 
+def safe_path(value: Any) -> str:
+    require(isinstance(value, str) and 0 < len(value) <= 1024 and
+            all(ROOT_FILE_RE.fullmatch(part) and part not in {".", ".."}
+                for part in value.split("/")), "dependency path is not canonical")
+    return value
+
+
+def validate_pairs(value: Any) -> tuple[dict[str, str], ...]:
+    require(isinstance(value, (list, tuple)) and 0 < len(value) <= 32, "dependency pairs are missing")
+    paths = set()
+    for pair in value:
+        require(isinstance(pair, dict) and set(pair) == {"ecosystem", "manifest_path", "lock_path"}, "dependency pair fields differ")
+        require(isinstance(pair["ecosystem"], str), "dependency ecosystem is invalid")
+        family = {"npm": ("package.json", "package-lock.json"), "cargo": ("Cargo.toml", "Cargo.lock")}.get(pair["ecosystem"])
+        require(family is not None, "unsupported dependency ecosystem")
+        manifest, lock = safe_path(pair["manifest_path"]), safe_path(pair["lock_path"])
+        require(manifest.rpartition("/")[0] == lock.rpartition("/")[0] and
+                (manifest.rsplit("/", 1)[-1], lock.rsplit("/", 1)[-1]) == family, "dependency pair family/directory differs")
+        require(not paths.intersection((manifest, lock)), "duplicate dependency pair")
+        paths.update((manifest, lock))
+    require(list(value) == sorted(value, key=lambda p: p["lock_path"]), "dependency pairs must be sorted")
+    require(len({p["ecosystem"] for p in value}) == 1, "mixed dependency ecosystems")
+    return tuple(dict(p) for p in value)
+
+
+def declared_pairs(repository: str, repository_id: int) -> tuple[dict[str, str], ...]:
+    try:
+        raw = json.loads((Path(__file__).resolve().parents[1] / "profiles.json").read_text(), object_pairs_hook=unique_object)
+    except (OSError, ValueError) as error:
+        raise PolicyError("source-owned security profiles are unavailable") from error
+    require(isinstance(raw, dict) and set(raw) == {"schema_version", "repositories"} and
+            type(raw["schema_version"]) is int and raw["schema_version"] == 1, "invalid security profile schema")
+    require(isinstance(raw["repositories"], list) and 0 < len(raw["repositories"]) <= 32, "invalid security repositories")
+    names, ids, selected = set(), set(), None
+    for row in raw["repositories"]:
+        require(isinstance(row, dict) and set(row) == {"repository", "repository_id", "pairs"}, "security repository fields differ")
+        name, identity = row["repository"], row["repository_id"]
+        require(isinstance(name, str), "security repository name is invalid")
+        require_repository(name)
+        require(type(identity) is int and identity > 0 and name not in names and identity not in ids, "duplicate/invalid security repository identity")
+        names.add(name); ids.add(identity)
+        pairs = validate_pairs(row["pairs"])
+        if name == repository and identity == repository_id:
+            selected = pairs
+    require(selected is not None, "repository identity has no supported security profile")
+    return selected
+
+
+def repository_identity(api: GhApi, repository: str) -> int:
+    metadata = api.get(f"repos/{repository}", fresh=True)
+    require(isinstance(metadata, dict) and metadata.get("full_name") == repository and
+            type(metadata.get("id")) is int and metadata["id"] > 0, "canonical security repository identity differs")
+    return metadata["id"]
+
+
+def root_assertion(manifest: str | None, lock: str | None, profile: str | None = None) -> None:
+    require(manifest is None or manifest == "package.json", "root-npm-v1 requires package.json as the manifest assertion")
+    require(lock is None or lock == "package-lock.json", "root-npm-v1 requires package-lock.json as the lock assertion")
+    if manifest is not None or lock is not None:
+        require(profile in (None, PROFILE), "legacy root assertion cannot select a dependency set")
+
+
+def select_dependencies(api: GhApi, repository: str, files: list[dict[str, Any]],
+                        manifest: str | None = None, lock: str | None = None):
+    root_assertion(manifest, lock)
+    names = [f.get("filename") for f in files]
+    require(names and all(isinstance(p, str) for p in names) and len(names) == len(set(names)), "security changed paths are invalid or duplicate")
+    require(all(safe_path(p).rsplit("/", 1)[-1] in {"package.json", "package-lock.json", "Cargo.toml", "Cargo.lock"}
+                for p in names), "security patch changed disallowed path")
+    if set(names) <= {"package.json", "package-lock.json"}:
+        pairs, identity, profile = ROOT_PAIRS, None, PROFILE
+    else:
+        require(manifest is None and lock is None, "security patch changed disallowed path for legacy root assertion")
+        identity = repository_identity(api, repository)
+        declared = declared_pairs(repository, identity)
+        pairs = tuple(p for p in declared if set(names).intersection((p["manifest_path"], p["lock_path"])))
+        pairs = validate_pairs(pairs)
+        profile = SET_PROFILE
+    root_assertion(manifest, lock, profile)
+    validate_changed_paths(names, pairs)
+    return profile, identity, pairs
+
+
+def validate_changed_paths(changed: Any, pairs: tuple[dict[str, str], ...]) -> None:
+    require(isinstance(changed, (list, tuple)) and bool(changed) and
+            all(isinstance(p, str) for p in changed) and len(changed) == len(set(changed)), "invalid changed paths")
+    allowed = {p[k] for p in pairs for k in ("manifest_path", "lock_path")}
+    require(set(changed) <= allowed and all(p["lock_path"] in changed for p in pairs), "changed_paths must contain every selected lock and only selected pair members")
+
+
+def validate_profile(profile: str, pairs: Any, repository: str, repository_id: int | None):
+    pairs = validate_pairs(pairs)
+    if profile == PROFILE:
+        require(pairs == ROOT_PAIRS, "root profile pairs differ")
+    else:
+        require(profile == SET_PROFILE and pairs != ROOT_PAIRS, "invalid dependency set profile")
+        require(type(repository_id) is int and repository_id > 0, "invalid security repository ID")
+        declared = declared_pairs(repository, repository_id)
+        require(all(p in declared for p in pairs), "dependency set is not source-declared")
+    return pairs
+
+
 def require_pr_number(value: str | int, label: str = "pull request") -> int:
     rendered = str(value)
     require(bool(APP_ID_RE.fullmatch(rendered)), f"{label} number must be a positive integer")
@@ -88,6 +195,14 @@ def require_pr_number(value: str | int, label: str = "pull request") -> int:
 
 def canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def unique_object(items):
+    result = {}
+    for key, value in items:
+        require(key not in result, "duplicate JSON object field")
+        result[key] = value
+    return result
 
 
 def flatten_pages(pages: Any, label: str) -> list[Any]:
@@ -248,11 +363,30 @@ class SourceEvidence:
     pre: dict[str, BlobEntry]
     post: dict[str, BlobEntry]
     classification_app_slug: str
+    profile: str = PROFILE
+    repository_id: int | None = None
+    dependency_pairs: tuple[dict[str, str], ...] = ROOT_PAIRS
+
+
+@dataclass(frozen=True)
+class SourceAdmission:
+    """Structural CI admission only; no advisory or classification assertion."""
+
+    repository: str
+    pull_request: int
+    source_branch: str
+    source_base: str
+    source_head: str
+    source_tree: str
+    changed_paths: tuple[str, ...]
+    profile: str = PROFILE
+    dependency_pairs: tuple[dict[str, str], ...] = ROOT_PAIRS
 
 
 @dataclass(frozen=True)
 class SourceCandidate:
     repository: str
+    source_branch: str
     workflow_run: int
     pull_request: int
     source_base: str
@@ -260,17 +394,24 @@ class SourceCandidate:
     source_tree: str
     ghsa_set: tuple[str, ...]
     changed_paths: tuple[str, ...]
+    profile: str = PROFILE
+    repository_id: int | None = None
+    dependency_pairs: tuple[dict[str, str], ...] = ROOT_PAIRS
 
     def attestation(self) -> dict[str, Any]:
-        return {
-            "schema": SOURCE_SCHEMA,
+        result = {
+            "schema": SOURCE_SCHEMA if self.profile == PROFILE else SET_SOURCE_SCHEMA,
             "repository": self.repository,
             "pull_request": self.pull_request,
+            "source_branch": self.source_branch,
             "source_base_sha": self.source_base,
             "source_head_sha": self.source_head,
             "ghsa_set": list(self.ghsa_set),
-            "profile": PROFILE,
+            "profile": self.profile,
         }
+        if self.profile == SET_PROFILE:
+            result.update(repository_id=self.repository_id, dependency_pairs=list(self.dependency_pairs))
+        return result
 
 
 @dataclass(frozen=True)
@@ -289,10 +430,13 @@ class ProjectionEvidence:
     changed_paths: tuple[str, ...]
     manifest_path: str
     lock_path: str
+    profile: str = PROFILE
+    repository_id: int | None = None
+    dependency_pairs: tuple[dict[str, str], ...] = ROOT_PAIRS
 
     def attestation(self) -> dict[str, Any]:
-        return {
-            "schema": PROJECTION_SCHEMA,
+        result = {
+            "schema": PROJECTION_SCHEMA if self.profile == PROFILE else SET_PROJECTION_SCHEMA,
             "repository": self.repository,
             "source_pull_request": self.source_pull_request,
             "source_base_sha": self.source_base,
@@ -307,8 +451,12 @@ class ProjectionEvidence:
             "changed_paths": list(self.changed_paths),
             "manifest_path": self.manifest_path,
             "lock_path": self.lock_path,
-            "profile": PROFILE,
+            "profile": self.profile,
         }
+        if self.profile == SET_PROFILE:
+            del result["manifest_path"], result["lock_path"]
+            result.update(repository_id=self.repository_id, dependency_pairs=list(self.dependency_pairs))
+        return result
 
 
 def check_runs(api: GhApi, repository: str, sha: str, latest: bool = False) -> list[dict[str, Any]]:
@@ -346,11 +494,12 @@ def parse_attestation_check(
     summary = run.get("output", {}).get("summary")
     require(isinstance(summary, str), f"{name} check has no machine-readable summary")
     try:
-        attestation = json.loads(summary)
+        attestation = json.loads(summary, object_pairs_hook=unique_object)
     except json.JSONDecodeError as error:
         raise PolicyError(f"{name} check summary is not JSON") from error
     require(isinstance(attestation, dict), f"{name} attestation must be an object")
-    require(attestation.get("schema") == schema, f"{name} attestation schema is invalid")
+    versions = {SOURCE_SCHEMA: (SOURCE_SCHEMA, SET_SOURCE_SCHEMA), PROJECTION_SCHEMA: (PROJECTION_SCHEMA, SET_PROJECTION_SCHEMA)}
+    require(attestation.get("schema") in versions.get(schema, (schema,)), f"{name} attestation schema is invalid")
     slug = run.get("app", {}).get("slug")
     require(isinstance(slug, str) and slug, f"{name} check App slug is missing")
     return attestation, slug, run
@@ -446,6 +595,71 @@ def require_safe_blob(api: GhApi, repository: str, entry: BlobEntry) -> None:
         raise PolicyError(f"blob content for {entry.path} is malformed") from error
     require(len(decoded) == declared_size, f"blob size for {entry.path} does not match content")
     require(b"\x00" not in decoded, f"blob {entry.path} is binary")
+    try:
+        decoded.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise PolicyError(f"blob {entry.path} is not UTF-8") from error
+
+
+def complete_tree(api: GhApi, repository: str, tree_sha: str) -> dict[str, BlobEntry]:
+    """Walk nonrecursive immutable trees, retaining every ancestor and sibling."""
+    result: dict[str, BlobEntry] = {}
+    def visit(sha: str, prefix: str, ancestors: tuple[str, ...]):
+        require(len(ancestors) < 64 and sha not in ancestors, "tree depth/cycle is invalid")
+        _, entries = root_tree_from_tree(api, repository, sha)
+        for name, entry in entries.items():
+            require("/" not in name and name not in {".", ".."}, "nonrecursive tree path is invalid")
+            path = prefix + name
+            require(path not in result and len(result) < 100000, "complete tree is duplicate or exceeds bound")
+            result[path] = BlobEntry(path, entry.mode, entry.kind, entry.sha)
+            if entry.kind == "tree":
+                require(entry.mode == "040000", "tree ancestor mode is invalid")
+                visit(entry.sha, path + "/", (*ancestors, sha))
+        return result
+    return visit(tree_sha, "", ())
+
+
+def dependency_tree(api: GhApi, repository: str, commit_sha: str, profile: str):
+    tree, entries = root_tree(api, repository, commit_sha)
+    return tree, complete_tree(api, repository, tree) if profile == SET_PROFILE else entries
+
+
+def load_dependencies(api: GhApi, repository: str, commit_sha: str, profile: str, pairs):
+    tree, entries = dependency_tree(api, repository, commit_sha, profile)
+    selected = {}
+    for pair in pairs:
+        for path in (pair["manifest_path"], pair["lock_path"]):
+            require(path in entries, f"{path} is missing at {commit_sha}")
+            require_safe_blob(api, repository, entries[path])
+            selected[path] = entries[path]
+    return tree, selected
+
+
+def validate_dependencies(files, pre, post, pairs):
+    if tuple(pairs) == ROOT_PAIRS:
+        return validate_pair_diff(files, pre, post, "package.json", "package-lock.json")
+    allowed = {p[k] for p in pairs for k in ("manifest_path", "lock_path")}
+    names = []
+    for item in files:
+        path = item.get("filename")
+        require(path in allowed, f"security patch changed disallowed path {path!r}")
+        require(item.get("status") == "modified" and not item.get("previous_filename"), "security pair members must be modified without rename")
+        names.append(path)
+    changed = tuple(sorted(p for p in allowed if pre[p] != post[p]))
+    validate_changed_paths(changed, pairs)
+    require(len(names) == len(set(names)) and set(names) == set(changed), "pull-request files do not equal the exact blob delta")
+    return changed
+
+
+def complete_source_delta(api, repository, base, head, profile, pairs, files):
+    tree, pre = load_dependencies(api, repository, base, profile, pairs)
+    tree, post = load_dependencies(api, repository, head, profile, pairs)
+    changed = validate_dependencies(files, pre, post, pairs)
+    if profile == SET_PROFILE:
+        _, before = dependency_tree(api, repository, base, profile)
+        _, after = dependency_tree(api, repository, head, profile)
+        assert_root_tree_projection(before, after, changed, post)
+    return tree, pre, post, changed
 
 
 def load_pair(
@@ -508,6 +722,51 @@ def require_dependabot_commit(commit: dict[str, Any]) -> None:
     )
 
 
+def canonical_source_branch(api: GhApi, repository: str, expected: str | None = None) -> str:
+    repository = require_repository(repository)
+    metadata = api.get(f"repos/{repository}", fresh=True)
+    require(isinstance(metadata, dict), "canonical repository metadata must be an object")
+    require(metadata.get("full_name") == repository, "canonical repository identity mismatch")
+    branch = metadata.get("default_branch")
+    require(isinstance(branch, str) and branch in {"main", "dev"}, "canonical default branch must be main or dev")
+    require(expected is None or expected == branch, "source branch disagrees with canonical default")
+    return branch
+
+
+def open_source_pull(
+    api: GhApi,
+    repository: str,
+    pull_request: int,
+    source_branch: str,
+    expected_head: str | None = None,
+    expected_base: str | None = None,
+) -> tuple[dict[str, Any], str, str]:
+    pr = api.get(f"repos/{repository}/pulls/{pull_request}", fresh=True)
+    require(isinstance(pr, dict), "source pull-request response must be an object")
+    require(pr.get("number") == pull_request, "source pull-request number mismatch")
+    require(pr.get("state") == "open", "source pull request is not open")
+    require(pr.get("draft") is False, "source pull request is draft")
+    require(pr.get("user", {}).get("login") == "dependabot[bot]", "source pull request is not Dependabot-authored")
+    require(pr.get("base", {}).get("ref") == source_branch, "source pull-request base branch mismatch")
+    require(pr.get("base", {}).get("repo", {}).get("full_name") == repository, "source pull-request base repository mismatch")
+    require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "source pull-request head is not same-repository")
+    require(pr.get("auto_merge") is None, "source pull request retains stale native auto-merge state")
+    labels = pr.get("labels")
+    require(isinstance(labels, list), "source pull-request labels must be a list")
+    require(
+        not any(isinstance(label, dict) and label.get("name") == "security-autopromote" for label in labels),
+        "source pull request retains the retired security-autopromote label",
+    )
+    source_head = require_sha(str(pr.get("head", {}).get("sha")), "source head")
+    source_base = require_sha(str(pr.get("base", {}).get("sha")), "source base")
+    if expected_head is not None:
+        require(source_head == expected_head, "source pull-request head moved after preflight")
+    if expected_base is not None:
+        require(source_base == expected_base, "source pull-request base moved after preflight")
+    require(ref_sha(api, repository, source_branch, fresh=True) == source_base, "source branch moved after CI")
+    return pr, source_head, source_base
+
+
 def resolve_source_pointer(
     api: GhApi,
     repository: str,
@@ -518,6 +777,7 @@ def resolve_source_pointer(
     expected_base: str | None = None,
 ) -> tuple[dict[str, Any], int, str, str]:
     repository = require_repository(repository)
+    source_branch = canonical_source_branch(api, repository, source_branch)
     workflow_run = require_pr_number(workflow_run, "workflow run")
     run = api.get(f"repos/{repository}/actions/runs/{workflow_run}", fresh=True)
     require(isinstance(run, dict), "CI workflow-run response must be an object")
@@ -557,27 +817,9 @@ def resolve_source_pointer(
 
     if expected_pull_request is not None:
         require(pull_request == expected_pull_request, "source pull-request number moved after preflight")
-    pr = api.get(f"repos/{repository}/pulls/{pull_request}", fresh=True)
-    require(isinstance(pr, dict), "source pull-request response must be an object")
-    require(pr.get("number") == pull_request, "source pull-request number mismatch")
-    require(pr.get("state") == "open", "source pull request is not open")
-    require(pr.get("draft") is False, "source pull request is draft")
-    require(pr.get("user", {}).get("login") == "dependabot[bot]", "source pull request is not Dependabot-authored")
-    require(pr.get("base", {}).get("ref") == source_branch, "source pull-request base branch mismatch")
-    require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "source pull-request head is not same-repository")
-    require(pr.get("auto_merge") is None, "source pull request retains stale native auto-merge state")
-    labels = pr.get("labels")
-    require(isinstance(labels, list), "source pull-request labels must be a list")
-    require(
-        not any(isinstance(label, dict) and label.get("name") == "security-autopromote" for label in labels),
-        "source pull request retains the retired security-autopromote label",
+    pr, source_head, source_base = open_source_pull(
+        api, repository, pull_request, source_branch, expected_head, expected_base,
     )
-    source_head = require_sha(str(pr.get("head", {}).get("sha")), "source head")
-    source_base = require_sha(str(pr.get("base", {}).get("sha")), "source base")
-    if expected_head is not None:
-        require(source_head == expected_head, "source pull-request head moved after preflight")
-    if expected_base is not None:
-        require(source_base == expected_base, "source pull-request base moved after preflight")
     if pointers:
         require_quality_pointer(run, pull_request, source_base, source_head, source_branch, "CI workflow-run")
     merge_candidate = pr.get("merge_commit_sha")
@@ -704,13 +946,44 @@ def latest_source_codeql_result(
     return "neutral", run
 
 
+def source_structure(
+    api: GhApi, repository: str, pull_request: int, pr: dict[str, Any],
+    source_base: str, source_head: str, manifest_path: str, lock_path: str,
+) -> tuple[str, tuple[str, ...], str, int | None, tuple[dict[str, str], ...]]:
+    commits = flatten_pages(
+        api.pages(f"repos/{repository}/pulls/{pull_request}/commits?per_page=100", fresh=True),
+        "source commits",
+    )
+    require(bool(commits), "source pull request has no commits")
+    for commit in commits:
+        require(isinstance(commit, dict), "source commit entry must be an object")
+        require_dependabot_commit(commit)
+    files = pull_files(api, repository, pull_request)
+    profile, identity, pairs = select_dependencies(api, repository, files, manifest_path, lock_path)
+    if profile == SET_PROFILE:
+        require(type(pr.get("changed_files")) is int and len(files) == pr["changed_files"] < PULL_FILES_API_LIMIT, "source file enumeration is incomplete")
+        commit_ids = [require_sha(str(c.get("sha")), "source commit") for c in commits]
+        require(type(pr.get("commits")) is int and len(commit_ids) == pr["commits"] < 250
+                and len(commit_ids) == len(set(commit_ids)) and commit_ids[-1] == source_head,
+                "source commit enumeration is incomplete or inconsistent")
+    source_tree, _, _, changed_paths = complete_source_delta(api, repository, source_base, source_head, profile, pairs, files)
+    merge_candidate = require_sha(str(pr.get("merge_commit_sha")), "source test merge")
+    candidate = git_commit(api, repository, merge_candidate)
+    require(
+        [parent["sha"] for parent in candidate["parents"]] == [source_base, source_head],
+        "source test merge parents do not equal current source base and source head",
+    )
+    require(candidate["tree"]["sha"] == source_tree, "source test merge tree does not equal source head tree")
+    return source_tree, changed_paths, profile, identity, pairs
+
+
 def build_source_candidate(
     api: GhApi,
     repository: str,
     workflow_run: int,
     source_branch: str,
-    manifest_path: str,
-    lock_path: str,
+    manifest_path: str | None,
+    lock_path: str | None,
     expected_pull_request: int | None = None,
     expected_head: str | None = None,
     expected_base: str | None = None,
@@ -725,39 +998,27 @@ def build_source_candidate(
         expected_head,
         expected_base,
     )
-    commits = flatten_pages(
-        api.pages(f"repos/{repository}/pulls/{pull_request}/commits?per_page=100", fresh=True),
-        "source commits",
+    source_tree, changed_paths, profile, identity, pairs = source_structure(
+        api, repository, pull_request, pr, source_base, source_head, manifest_path, lock_path,
     )
-    require(bool(commits), "source pull request has no commits")
-    for commit in commits:
-        require(isinstance(commit, dict), "source commit entry must be an object")
-        require_dependabot_commit(commit)
-    _, pre = load_pair(api, repository, source_base, manifest_path, lock_path)
-    source_tree, post = load_pair(api, repository, source_head, manifest_path, lock_path)
-    changed_paths = validate_pair_diff(
-        pull_files(api, repository, pull_request),
-        pre,
-        post,
-        manifest_path,
-        lock_path,
-    )
-    merge_candidate = require_sha(str(pr.get("merge_commit_sha")), "source test merge")
-    candidate = git_commit(api, repository, merge_candidate)
-    require(
-        [parent["sha"] for parent in candidate["parents"]] == [source_base, source_head],
-        "source test merge parents do not equal current dev and source head",
-    )
-    require(candidate["tree"]["sha"] == source_tree, "source test merge tree does not equal source head tree")
+    ghsas = api.security_ghsas(repository, pull_request) if verify_alerts else ()
+    # Re-read mutable identity after structural/advisory reads, before any write.
+    canonical_source_branch(api, repository, source_branch)
+    final, _, _ = open_source_pull(api, repository, pull_request, source_branch, source_head, source_base)
+    require(final.get("merge_commit_sha") == pr.get("merge_commit_sha"), "source test merge moved during proof")
+    if profile == SET_PROFILE:
+        require(repository_identity(api, repository) == identity, "source repository identity moved")
     return SourceCandidate(
         repository=repository,
+        source_branch=source_branch,
         workflow_run=workflow_run,
         pull_request=pull_request,
         source_base=source_base,
         source_head=source_head,
         source_tree=source_tree,
-        ghsa_set=api.security_ghsas(repository, pull_request) if verify_alerts else (),
+        ghsa_set=ghsas,
         changed_paths=changed_paths,
+        profile=profile, repository_id=identity, dependency_pairs=pairs,
     )
 
 
@@ -765,7 +1026,7 @@ def wait_for_source_candidate(
     api: GhApi,
     repository: str,
     workflow_run: int,
-    source_branch: str,
+    source_branch: str | None,
     manifest_path: str,
     lock_path: str,
     wait_seconds: int,
@@ -775,6 +1036,7 @@ def wait_for_source_candidate(
     expected_base: str | None = None,
     verify_alerts: bool = True,
 ) -> SourceCandidate:
+    source_branch = canonical_source_branch(api, repository, source_branch)
     require(0 <= wait_seconds <= 300, "check wait must be between zero and 300 seconds")
     deadline = time.monotonic() + wait_seconds
     while True:
@@ -804,7 +1066,7 @@ def wait_for_source_candidate(
             )
             if codeql_state == "neutral":
                 require(
-                    candidate.changed_paths == (lock_path,),
+                    candidate.profile == PROFILE and candidate.changed_paths == ("package-lock.json",),
                     "neutral CodeQL is permitted only after an exact lockfile-only source classification",
                 )
                 require(
@@ -820,7 +1082,9 @@ def wait_for_source_candidate(
 
 def ensure_source_classification(api: GhApi, candidate: SourceCandidate) -> str:
     require(bool(candidate.ghsa_set), "source classification requires an official vulnerability-alert association")
-    external_id = f"{SOURCE_SCHEMA}:{candidate.pull_request}:{candidate.source_head}"
+    require(candidate.source_branch in {"main", "dev"}, "source classification branch is invalid")
+    prefix = SOURCE_SCHEMA if candidate.profile == PROFILE else "source-v3"
+    external_id = f"{prefix}:{candidate.source_branch}:{candidate.pull_request}:{candidate.source_head}"
     summary = canonical_json(candidate.attestation())
     create_payload = {
         "name": SOURCE_CHECK,
@@ -897,13 +1161,15 @@ def classify_source_candidate(
     api: GhApi,
     repository: str,
     workflow_run: int,
-    source_branch: str,
-    manifest_path: str,
-    lock_path: str,
+    source_branch: str | None,
+    manifest_path: str | None,
+    lock_path: str | None,
     expected_pull_request: int,
     expected_head: str,
     expected_base: str,
 ) -> SourceCandidate:
+    require(source_branch in {"main", "dev"}, "classification requires the preflight source branch (main or dev)")
+    source_branch = canonical_source_branch(api, repository, source_branch)
     candidate = wait_for_source_candidate(
         api, repository, workflow_run, source_branch, manifest_path, lock_path, 0,
         expected_pull_request=expected_pull_request,
@@ -1055,12 +1321,23 @@ def build_source_evidence_from_pull(
         TRUSTED_SECURITY_AUTOMATION_APP_ID,
         SOURCE_SCHEMA,
     )
+    require(source_branch in {"main", "dev"}, "expected source branch is invalid")
+    require(attestation.get("source_branch") == source_branch, "source attestation branch mismatch")
     require(attestation.get("repository") == repository, "source attestation repository mismatch")
     require(attestation.get("pull_request") == pull_number, "source attestation PR mismatch")
     require(attestation.get("source_head_sha") == source_head, "source attestation head mismatch")
-    require(attestation.get("profile") == PROFILE, "source attestation is not production-profile eligible")
+    files = pull_files(api, repository, pull_number)
+    profile, identity, pairs = select_dependencies(api, repository, files, manifest_path, lock_path)
+    expected_fields = {"schema", "repository", "pull_request", "source_branch", "source_base_sha", "source_head_sha", "ghsa_set", "profile"}
+    if profile == SET_PROFILE:
+        expected_fields |= {"repository_id", "dependency_pairs"}
+        require(type(pull.get("changed_files")) is int and len(files) == pull["changed_files"] < PULL_FILES_API_LIMIT, "source file enumeration is incomplete")
+        require(attestation.get("repository_id") == identity and attestation.get("dependency_pairs") == list(pairs), "source dependency set differs")
+    require(set(attestation) == expected_fields and attestation.get("profile") == profile and
+            attestation.get("schema") == (SOURCE_SCHEMA if profile == PROFILE else SET_SOURCE_SCHEMA), "source attestation profile/schema fields differ")
+    prefix = SOURCE_SCHEMA if profile == PROFILE else "source-v3"
     require(
-        classification.get("external_id") == f"{SOURCE_SCHEMA}:{pull_number}:{source_head}",
+        classification.get("external_id") == f"{prefix}:{source_branch}:{pull_number}:{source_head}",
         "source classification external identity mismatch",
     )
     classification_completed = github_timestamp(
@@ -1107,15 +1384,9 @@ def build_source_evidence_from_pull(
         alert_poll_seconds,
     )
 
-    _, pre = load_pair(api, repository, source_base, manifest_path, lock_path)
-    _, post = load_pair(api, repository, source_head, manifest_path, lock_path)
-    changed_paths = validate_pair_diff(
-        pull_files(api, repository, pull_number),
-        pre,
-        post,
-        manifest_path,
-        lock_path,
-    )
+    _, pre, post, changed_paths = complete_source_delta(api, repository, source_base, source_head, profile, pairs, files)
+    if profile == SET_PROFILE:
+        require(repository_identity(api, repository) == identity, "source repository identity moved")
     return SourceEvidence(
         repository=repository,
         pull_request=pull_number,
@@ -1130,6 +1401,7 @@ def build_source_evidence_from_pull(
         pre=pre,
         post=post,
         classification_app_slug=app_slug,
+        profile=profile, repository_id=identity, dependency_pairs=pairs,
     )
 
 
@@ -1220,7 +1492,7 @@ def open_lock_proposals(
             "open pull-request file enumeration is invalid or duplicate",
         )
         if any(
-            lock_path in (item.get("filename"), item.get("previous_filename"))
+            bool(set((lock_path,) if isinstance(lock_path, str) else lock_path).intersection((item.get("filename"), item.get("previous_filename"))))
             for item in files
         ):
             collisions.append(number)
@@ -1247,7 +1519,14 @@ def assert_root_tree_projection(
     expected = dict(main_entries)
     for path in changed_paths:
         expected[path] = post[path]
-    require(result_entries == expected, "projection result tree contains an extra or mismatched entry")
+    ancestors = {path[:i] for path in changed_paths for i, c in enumerate(path) if c == "/"}
+    require(set(result_entries) == set(expected), "projection result tree contains an extra or mismatched entry")
+    for path, entry in expected.items():
+        actual = result_entries[path]
+        if path in ancestors:
+            require(entry.kind == actual.kind == "tree" and entry.mode == actual.mode == "040000", "projection ancestor is not a regular tree")
+        else:
+            require(actual == entry, "projection result tree contains an extra or mismatched entry")
 
 
 def projection_branch(source: SourceEvidence, production_base: str) -> str:
@@ -1320,7 +1599,8 @@ def projection_check_payload(evidence: ProjectionEvidence) -> dict[str, Any]:
         "head_sha": evidence.projection_head,
         "status": "completed",
         "conclusion": "success",
-        "external_id": f"{PROJECTION_SCHEMA}:{digest}",
+        "external_id": (f"{PROJECTION_SCHEMA}:{digest}" if evidence.profile == PROFILE else
+                        f"projection-v3:{evidence.source_pull_request}:{evidence.source_head}:{evidence.production_base}"),
         "output": {
             "title": "Exact security projection verified",
             "summary": canonical_json(attestation),
@@ -1512,16 +1792,10 @@ def verify_recorded_projection(
         "recorded projection commit has the wrong parent",
     )
     require(commit["tree"]["sha"] == evidence.projection_tree, "recorded projection commit tree mismatch")
-    _, production_entries = root_tree(api, repository, evidence.production_base)
-    _, projected_entries = root_tree(api, repository, evidence.projection_head)
+    _, production_entries = dependency_tree(api, repository, evidence.production_base, evidence.profile)
+    _, projected_entries = dependency_tree(api, repository, evidence.projection_head, evidence.profile)
     assert_root_tree_projection(production_entries, projected_entries, source.changed_paths, source.post)
-    validate_pair_diff(
-        pull_files(api, repository, pull_request, fresh=True),
-        source.pre,
-        source.post,
-        evidence.manifest_path,
-        evidence.lock_path,
-    )
+    validate_dependencies(pull_files(api, repository, pull_request, fresh=True), source.pre, source.post, evidence.dependency_pairs)
     commits = flatten_pages(
         api.pages(f"repos/{repository}/pulls/{pull_request}/commits?per_page=100", fresh=True),
         "projection commits",
@@ -1530,7 +1804,7 @@ def verify_recorded_projection(
         len(commits) == 1 and commits[0].get("sha") == evidence.projection_head,
         "recorded projection PR must contain one exact commit",
     )
-    assert_only_lock_proposal(api, repository, target_branch, evidence.lock_path, pull_request)
+    assert_only_lock_proposal(api, repository, target_branch, tuple(p["lock_path"] for p in evidence.dependency_pairs), pull_request)
     return pr
 
 
@@ -1542,10 +1816,15 @@ def create_projection(
     lock_path: str,
 ) -> tuple[int, ProjectionEvidence]:
     repository = source.repository
+    if source.profile == SET_PROFILE:
+        require(repository_identity(api, repository) == source.repository_id, "source repository identity changed")
+        validate_profile(source.profile, source.dependency_pairs, repository, source.repository_id)
     production_base = ref_sha(api, repository, target_branch)
-    production_tree, production_entries = root_tree(api, repository, production_base)
-    _, production_pair = load_pair(api, repository, production_base, manifest_path, lock_path)
-    assert_pair_preimage(production_pair, source.pre, manifest_path, lock_path)
+    root_assertion(manifest_path, lock_path, source.profile)
+    manifest_path, lock_path = source.dependency_pairs[0]["manifest_path"], source.dependency_pairs[0]["lock_path"]
+    production_tree, production_entries = dependency_tree(api, repository, production_base, source.profile)
+    _, production_pair = load_dependencies(api, repository, production_base, source.profile, source.dependency_pairs)
+    require(production_pair == source.pre, "current production preimage differs from source base")
     branch = projection_branch(source, production_base)
     existing_pr = open_projection_pull_request(
         api,
@@ -1555,7 +1834,7 @@ def create_projection(
         None,
         fresh=True,
     )
-    collisions = open_lock_proposals(api, repository, target_branch, lock_path, fresh=True)
+    collisions = open_lock_proposals(api, repository, target_branch, tuple(p["lock_path"] for p in source.dependency_pairs), fresh=True)
     if existing_pr is None:
         require(not collisions, f"open production PRs already touch {lock_path}: {collisions}")
     else:
@@ -1573,10 +1852,12 @@ def create_projection(
     tree_result = api.post(f"repos/{repository}/git/trees", tree_payload)
     projection_tree = require_sha(str(tree_result.get("sha")), "projection tree")
     _, projected_entries = root_tree_from_tree(api, repository, projection_tree)
+    if source.profile == SET_PROFILE:
+        projected_entries = complete_tree(api, repository, projection_tree)
     assert_root_tree_projection(production_entries, projected_entries, source.changed_paths, source.post)
 
     message_data = {
-        "schema": PROJECTION_SCHEMA,
+        "schema": PROJECTION_SCHEMA if source.profile == PROFILE else SET_PROJECTION_SCHEMA,
         "source_pull_request": source.pull_request,
         "source_base_sha": source.source_base,
         "source_head_sha": source.source_head,
@@ -1586,6 +1867,9 @@ def create_projection(
         "production_base_sha": production_base,
         "ghsa_set": list(source.ghsa_set),
     }
+    if source.profile == SET_PROFILE:
+        message_data.update(profile=source.profile, repository_id=source.repository_id,
+                            dependency_pairs=list(source.dependency_pairs))
     source_commit = git_commit(api, repository, source.source_merge)
     timestamp = source_commit.get("committer", {}).get("date")
     require(isinstance(timestamp, str) and timestamp, "source merge committer date is missing")
@@ -1620,6 +1904,7 @@ def create_projection(
         changed_paths=source.changed_paths,
         manifest_path=manifest_path,
         lock_path=lock_path,
+        profile=source.profile, repository_id=source.repository_id, dependency_pairs=source.dependency_pairs,
     )
     recorded_checks = trusted_projection_checks(api, evidence, fresh=True)
     require(len(recorded_checks) <= 1, "multiple trusted projection checks already exist")
@@ -1637,6 +1922,8 @@ def create_projection(
     if recorded_checks:
         validate_projection_check(recorded_checks[0], evidence)
 
+    if source.profile == SET_PROFILE:
+        require(repository_identity(api, repository) == source.repository_id, "source repository identity changed before mutable writes")
     check_before_pr = None
     if existing_pr is None:
         if recorded_ref is None:
@@ -1667,7 +1954,7 @@ def create_projection(
             "production base moved before projection pull request",
         )
         require(
-            not open_lock_proposals(api, repository, target_branch, lock_path, fresh=True),
+            not open_lock_proposals(api, repository, target_branch, tuple(p["lock_path"] for p in source.dependency_pairs), fresh=True),
             f"an open production pull request began touching {lock_path}",
         )
         try:
@@ -1729,7 +2016,7 @@ def root_tree_from_tree(api: GhApi, repository: str, tree_sha: str) -> tuple[str
 
 
 def parse_projection_attestation(raw: dict[str, Any]) -> ProjectionEvidence:
-    require(raw.get("schema") == PROJECTION_SCHEMA, "projection attestation schema mismatch")
+    require(isinstance(raw, dict) and raw.get("schema") in (PROJECTION_SCHEMA, SET_PROJECTION_SCHEMA), "projection attestation schema mismatch")
     repository = require_repository(str(raw.get("repository")))
     source_pr = require_pr_number(raw.get("source_pull_request"), "source pull request")
     ghsa_set = raw.get("ghsa_set")
@@ -1747,14 +2034,23 @@ def parse_projection_attestation(raw: dict[str, Any]) -> ProjectionEvidence:
         and len(changed) == len(set(changed)),
         "projection changed_paths is invalid or duplicate",
     )
-    manifest = require_root_file(str(raw.get("manifest_path")), "manifest path")
-    lock = require_root_file(str(raw.get("lock_path")), "lock path")
-    require(raw.get("profile") == PROFILE, "projection profile is invalid")
-    require_profile_paths(manifest, lock)
-    require(lock in changed and set(changed) <= {manifest, lock}, "projection changed_paths must include only profile paths and the lockfile")
+    profile = raw.get("profile")
+    identity = raw.get("repository_id")
+    if raw["schema"] == PROJECTION_SCHEMA:
+        manifest = require_root_file(str(raw.get("manifest_path")), "manifest path")
+        lock = require_root_file(str(raw.get("lock_path")), "lock path")
+        require(profile == PROFILE and identity is None, "projection profile is invalid")
+        require_profile_paths(manifest, lock)
+        pairs = ROOT_PAIRS
+    else:
+        require(profile == SET_PROFILE, "projection profile is invalid")
+        pairs = validate_profile(profile, raw.get("dependency_pairs"), repository, identity)
+        require(changed == sorted(changed), "projection set paths must be sorted")
+        manifest, lock = pairs[0]["manifest_path"], pairs[0]["lock_path"]
+    validate_changed_paths(changed, pairs)
     require(isinstance(raw.get("source_merged_by"), str) and bool(raw["source_merged_by"]), "projection source merge actor is missing")
     github_timestamp(raw.get("source_merged_at"), "projection source merge time")
-    return ProjectionEvidence(
+    evidence = ProjectionEvidence(
         repository=repository,
         source_pull_request=source_pr,
         source_base=require_sha(str(raw.get("source_base_sha")), "projection source base"),
@@ -1769,7 +2065,56 @@ def parse_projection_attestation(raw: dict[str, Any]) -> ProjectionEvidence:
         changed_paths=tuple(changed),
         manifest_path=manifest,
         lock_path=lock,
+        profile=profile, repository_id=identity, dependency_pairs=pairs,
     )
+    require(evidence.attestation() == raw, "projection attestation fields differ")
+    return evidence
+
+
+def verify_ci_admission(
+    api: GhApi, repository: str, pull_request: int, target_branch: str,
+) -> SourceAdmission | ProjectionEvidence:
+    repository = require_repository(repository)
+    pull_request = require_pr_number(pull_request)
+    pr = api.get(f"repos/{repository}/pulls/{pull_request}", fresh=True)
+    require(isinstance(pr, dict), "admission pull request must be an object")
+    # Only canonical author metadata chooses the source proof. Projection proof
+    # remains mandatory for every other author, regardless of labels or arguments.
+    if pr.get("user", {}).get("login") != "dependabot[bot]":
+        return verify_projection_admission(api, repository, pull_request, target_branch)
+    branch = canonical_source_branch(api, repository, target_branch)
+    pr, head, base = open_source_pull(api, repository, pull_request, branch)
+    tree, changed, profile, identity, pairs = source_structure(api, repository, pull_request, pr, base, head, None, None)
+    canonical_source_branch(api, repository, branch)
+    final, _, _ = open_source_pull(api, repository, pull_request, branch, head, base)
+    require(final.get("merge_commit_sha") == pr.get("merge_commit_sha"), "source test merge moved during admission")
+    if profile == SET_PROFILE:
+        require(repository_identity(api, repository) == identity, "source repository identity moved during admission")
+    return SourceAdmission(repository, pull_request, branch, base, head, tree, changed, profile, pairs)
+
+
+def verify_source_post_merge(
+    api: GhApi, repository: str, event: Any, event_name: str, event_ref: str, event_sha: str,
+) -> SourceEvidence:
+    """Observe the actual current-main push using immutable pre-merge proof."""
+    repository = require_repository(repository)
+    require(event_name == "push", "source observation requires a push event")
+    require(isinstance(event, dict), "push event must be an object")
+    event_repository = event.get("repository")
+    require(isinstance(event_repository, dict) and event_repository.get("full_name") == repository, "push repository mismatch")
+    require(event.get("ref") == event_ref == "refs/heads/main", "push must identify refs/heads/main")
+    before_sha = require_sha(str(event.get("before")), "push before")
+    merge_sha = require_sha(str(event.get("after")), "push after")
+    require(merge_sha == require_sha(event_sha, "event SHA"), "push after disagrees with event SHA")
+    require(event.get("deleted") is False and event.get("forced") is False, "deleted or forced push is not source observation")
+    canonical_source_branch(api, repository, "main")
+    require(ref_sha(api, repository, "main", fresh=True) == merge_sha, "current main does not equal observed push")
+    evidence = build_source_evidence(api, repository, merge_sha, "main", None, None)
+    require(evidence.source_base == before_sha, "push before does not equal classified source base")
+    # Alert association reconciliation can wait; currentness must survive it.
+    canonical_source_branch(api, repository, "main")
+    require(ref_sha(api, repository, "main", fresh=True) == merge_sha, "current main moved during source observation")
+    return evidence
 
 
 def verify_projection_admission(
@@ -1800,10 +2145,12 @@ def verify_projection_admission(
     )
     evidence = parse_projection_attestation(raw_attestation)
     validate_projection_check(projection_check, evidence)
+    if evidence.profile == SET_PROFILE:
+        require(repository_identity(api, repository) == evidence.repository_id, "projection repository ID mismatch")
     require(evidence.repository == repository, "projection repository mismatch")
     require(evidence.projection_head == projection_head, "projection attestation head mismatch")
     require(pr.get("user", {}).get("login") == f"{projection_slug}[bot]", "projection PR was not opened by the projection App")
-    assert_only_lock_proposal(api, repository, target_branch, evidence.lock_path, pull_request)
+    assert_only_lock_proposal(api, repository, target_branch, tuple(p["lock_path"] for p in evidence.dependency_pairs), pull_request)
 
     current_production = ref_sha(api, repository, target_branch)
     require(current_production == evidence.production_base, "production base moved after projection")
@@ -1815,21 +2162,28 @@ def verify_projection_admission(
         "projection commit must have exactly the attested production parent",
     )
     require(commit["tree"]["sha"] == evidence.projection_tree, "projection tree mismatch")
-    _, production_entries = root_tree(api, repository, evidence.production_base)
-    _, projected_entries = root_tree(api, repository, projection_head)
+    _, production_entries = dependency_tree(api, repository, evidence.production_base, evidence.profile)
+    _, projected_entries = dependency_tree(api, repository, projection_head, evidence.profile)
     actual_changed = tuple(
         sorted(
             path
             for path in set(production_entries) | set(projected_entries)
             if production_entries.get(path) != projected_entries.get(path)
+            and not (production_entries.get(path) and projected_entries.get(path) and
+                     production_entries[path].kind == projected_entries[path].kind == "tree")
         )
     )
     require(actual_changed == tuple(sorted(evidence.changed_paths)), "projection root-tree delta does not match attestation")
-    require(evidence.lock_path in evidence.changed_paths, "projection must change the attested lockfile")
-    require(set(evidence.changed_paths) <= {evidence.manifest_path, evidence.lock_path}, "projection changes a disallowed path")
-    for path in evidence.changed_paths:
-        require(path in projected_entries, f"projection path {path} is missing")
-        require_safe_blob(api, repository, projected_entries[path])
+    validate_changed_paths(evidence.changed_paths, evidence.dependency_pairs)
+    for pair in evidence.dependency_pairs:
+        for path in (pair["manifest_path"], pair["lock_path"]):
+            if evidence.profile == PROFILE and path not in evidence.changed_paths:
+                continue
+            require(path in projected_entries and path in production_entries, f"projection pair member {path} is missing")
+            require_safe_blob(api, repository, projected_entries[path])
+            if evidence.profile == SET_PROFILE:
+                require_safe_blob(api, repository, production_entries[path])
+    assert_root_tree_projection(production_entries, projected_entries, evidence.changed_paths, projected_entries)
 
     files = pull_files(api, repository, pull_request)
     file_paths: list[str] = []
@@ -1848,6 +2202,30 @@ def verify_projection_admission(
     )
     require(len(commits) == 1 and commits[0].get("sha") == projection_head, "projection PR must contain one exact commit")
     return evidence
+
+
+def verify_projection_source(
+    api: GhApi, evidence: ProjectionEvidence, source_branch: str,
+) -> SourceEvidence:
+    """Re-prove the immutable classified source behind a projection."""
+    source = build_source_evidence(
+        api,
+        evidence.repository,
+        evidence.source_merge,
+        source_branch,
+        None if evidence.profile == SET_PROFILE else evidence.manifest_path,
+        None if evidence.profile == SET_PROFILE else evidence.lock_path,
+    )
+    require((source.profile, source.repository_id, source.dependency_pairs) == (evidence.profile, evidence.repository_id, evidence.dependency_pairs), "projection source profile differs")
+    require(source.pull_request == evidence.source_pull_request, "projection source PR mismatch")
+    require(source.source_base == evidence.source_base, "projection source base mismatch")
+    require(source.source_head == evidence.source_head, "projection source head mismatch")
+    require(source.source_merged_by == evidence.source_merged_by, "projection source merge actor mismatch")
+    require(source.source_merged_at == evidence.source_merged_at, "projection source merge time mismatch")
+    require(source.ghsa_set == evidence.ghsa_set, "projection GHSA set changed")
+    require(source.changed_paths == evidence.changed_paths, "projection changed path set changed")
+
+    return source
 
 
 def verify_projection(
@@ -1883,35 +2261,15 @@ def verify_projection(
     require(evidence.repository == repository, "projection repository mismatch")
     require(evidence.projection_head == projection_head, "projection attestation head mismatch")
     require(pr.get("user", {}).get("login") == f"{projection_slug}[bot]", "projection PR was not opened by the projection App")
-    assert_only_lock_proposal(api, repository, target_branch, evidence.lock_path, pull_request)
+    assert_only_lock_proposal(api, repository, target_branch, tuple(p["lock_path"] for p in evidence.dependency_pairs), pull_request)
 
-    source = build_source_evidence(
-        api,
-        repository,
-        evidence.source_merge,
-        source_branch,
-        evidence.manifest_path,
-        evidence.lock_path,
-    )
-    require(source.pull_request == evidence.source_pull_request, "projection source PR mismatch")
-    require(source.source_base == evidence.source_base, "projection source base mismatch")
-    require(source.source_head == evidence.source_head, "projection source head mismatch")
-    require(source.source_merged_by == evidence.source_merged_by, "projection source merge actor mismatch")
-    require(source.source_merged_at == evidence.source_merged_at, "projection source merge time mismatch")
-    require(source.ghsa_set == evidence.ghsa_set, "projection GHSA set changed")
-    require(source.changed_paths == evidence.changed_paths, "projection changed path set changed")
+    source = verify_projection_source(api, evidence, source_branch)
 
     current_production = ref_sha(api, repository, target_branch)
     require(current_production == evidence.production_base, "production base moved after projection")
     require(pr.get("base", {}).get("sha") == evidence.production_base, "projection PR base SHA mismatch")
-    _, production_pair = load_pair(
-        api,
-        repository,
-        evidence.production_base,
-        evidence.manifest_path,
-        evidence.lock_path,
-    )
-    assert_pair_preimage(production_pair, source.pre, evidence.manifest_path, evidence.lock_path)
+    _, production_pair = load_dependencies(api, repository, evidence.production_base, evidence.profile, evidence.dependency_pairs)
+    require(production_pair == source.pre, "current production preimage differs from source base")
 
     projection_commit = git_commit(api, repository, projection_head)
     require(
@@ -1919,16 +2277,10 @@ def verify_projection(
         "projection commit must have exactly the attested production parent",
     )
     require(projection_commit["tree"]["sha"] == evidence.projection_tree, "projection tree mismatch")
-    _, production_entries = root_tree(api, repository, evidence.production_base)
-    _, projected_entries = root_tree(api, repository, projection_head)
+    _, production_entries = dependency_tree(api, repository, evidence.production_base, evidence.profile)
+    _, projected_entries = dependency_tree(api, repository, projection_head, evidence.profile)
     assert_root_tree_projection(production_entries, projected_entries, source.changed_paths, source.post)
-    validate_pair_diff(
-        pull_files(api, repository, pull_request),
-        source.pre,
-        source.post,
-        evidence.manifest_path,
-        evidence.lock_path,
-    )
+    validate_dependencies(pull_files(api, repository, pull_request), source.pre, source.post, evidence.dependency_pairs)
     commits = flatten_pages(
         api.pages(f"repos/{repository}/pulls/{pull_request}/commits?per_page=100"),
         "projection commits",
@@ -2070,6 +2422,16 @@ def verify_post_merge(
     evidence = parse_projection_attestation(raw)
     require(evidence.repository == repository and evidence.projection_head == head, "merged projection attestation identity mismatch")
     validate_projection_check(check, evidence)
+    # Projection delivery retains its historical dev-to-main meaning. Current
+    # metadata cannot substitute for the source classification's branch proof.
+    source = verify_projection_source(api, evidence, "dev")
+    if evidence.profile == SET_PROFILE:
+        _, production_pair = load_dependencies(api, repository, evidence.production_base, evidence.profile, evidence.dependency_pairs)
+        require(production_pair == source.pre, "merged projection production preimage differs from source")
+        _, before = dependency_tree(api, repository, evidence.production_base, evidence.profile)
+        _, after = dependency_tree(api, repository, evidence.projection_head, evidence.profile)
+        assert_root_tree_projection(before, after, evidence.changed_paths, source.post)
+        validate_dependencies(pull_files(api, repository, pull_request, fresh=True), source.pre, source.post, evidence.dependency_pairs)
     require(pr.get("base", {}).get("sha") == evidence.production_base, "merged projection PR base mismatch")
     require(pr.get("user", {}).get("login") == f"{app_slug}[bot]", "projection PR was not opened by the projection App")
     observed_merge_actor(pr, app_slug)
@@ -2108,12 +2470,13 @@ def add_common_source_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--source-branch", default="dev")
     parser.add_argument("--target-branch", default="main")
-    parser.add_argument("--manifest-path", default="package.json")
-    parser.add_argument("--lock-path", default="package-lock.json")
+    parser.add_argument("--manifest-path")
+    parser.add_argument("--lock-path")
 
 
 def add_source_run_args(parser: argparse.ArgumentParser) -> None:
     add_common_source_args(parser)
+    parser.set_defaults(source_branch=None)
     parser.add_argument("--workflow-run-id", required=True)
 
 
@@ -2160,6 +2523,11 @@ def cli(argv: list[str] | None = None) -> int:
     post_parser.add_argument("--target-branch", default="main")
     post_parser.add_argument("--merge-sha", required=True)
     post_parser.add_argument("--pull-request", required=True)
+    post_parser.add_argument("--manifest-path")
+    post_parser.add_argument("--lock-path")
+
+    observation_parser = subparsers.add_parser("verify-source-post-merge")
+    observation_parser.add_argument("--repository", required=True)
 
     args = parser.parse_args(argv)
     api = GhApi()
@@ -2170,10 +2538,10 @@ def cli(argv: list[str] | None = None) -> int:
             "classify-source",
             "project",
             "verify-projection",
+            "verify-post-merge",
         }:
-            manifest_path = require_root_file(args.manifest_path, "manifest path")
-            lock_path = require_root_file(args.lock_path, "lock path")
-            require_profile_paths(manifest_path, lock_path)
+            manifest_path, lock_path = args.manifest_path, args.lock_path
+            root_assertion(manifest_path, lock_path)
 
         if args.command == "preflight-source":
             candidate = wait_for_source_candidate(
@@ -2191,6 +2559,7 @@ def cli(argv: list[str] | None = None) -> int:
             emit_output("source_base_sha", candidate.source_base)
             emit_output("source_head_sha", candidate.source_head)
             emit_output("source_tree_sha", candidate.source_tree)
+            emit_output("source_branch", candidate.source_branch)
         elif args.command == "classify-source":
             candidate = classify_source_candidate(
                 api,
@@ -2207,6 +2576,7 @@ def cli(argv: list[str] | None = None) -> int:
             emit_output("pull_request_number", candidate.pull_request)
             emit_output("source_base_sha", candidate.source_base)
             emit_output("source_head_sha", candidate.source_head)
+            emit_output("source_branch", candidate.source_branch)
         elif args.command == "verify-source":
             evidence = build_source_evidence(
                 api,
@@ -2252,6 +2622,7 @@ def cli(argv: list[str] | None = None) -> int:
                 args.target_branch,
                 args.require_ready == "true",
             )
+            root_assertion(manifest_path, lock_path, evidence.profile)
             if args.verify_checks == "true":
                 verify_checks(
                     api,
@@ -2270,14 +2641,49 @@ def cli(argv: list[str] | None = None) -> int:
             emit_output("production_base_sha", evidence.production_base)
             emit_output("projection_tree_sha", evidence.projection_tree)
         elif args.command == "verify-ci-admission":
-            evidence = verify_projection_admission(
+            evidence = verify_ci_admission(
                 api,
                 args.repository,
                 require_pr_number(args.pull_request),
                 args.target_branch,
             )
             emit_output("verified", True)
-            emit_output("projection_head_sha", evidence.projection_head)
+            if isinstance(evidence, SourceAdmission):
+                emit_output("admission_kind", "dependabot-source")
+                emit_output("repository", evidence.repository)
+                emit_output("pull_request_number", evidence.pull_request)
+                emit_output("source_branch", evidence.source_branch)
+                emit_output("source_base_sha", evidence.source_base)
+                emit_output("source_head_sha", evidence.source_head)
+                emit_output("source_tree_sha", evidence.source_tree)
+                emit_output("profile", evidence.profile)
+                emit_output("dependency_pairs", canonical_json(list(evidence.dependency_pairs)))
+                emit_output("changed_paths", canonical_json(list(evidence.changed_paths)))
+            else:
+                emit_output("projection_head_sha", evidence.projection_head)
+        elif args.command == "verify-source-post-merge":
+            try:
+                with open(os.environ.get("GITHUB_EVENT_PATH", ""), encoding="utf-8") as handle:
+                    event = json.load(handle)
+            except (OSError, ValueError) as error:
+                raise PolicyError("source observation requires a readable JSON push event") from error
+            evidence = verify_source_post_merge(
+                api, args.repository, event, os.environ.get("GITHUB_EVENT_NAME", ""),
+                os.environ.get("GITHUB_REF", ""), os.environ.get("GITHUB_SHA", ""),
+            )
+            emit_output("observed", True)
+            emit_output("observation_kind", "dependabot-source")
+            emit_output("repository", evidence.repository)
+            emit_output("source_branch", "main")
+            emit_output("push_ref", "refs/heads/main")
+            emit_output("source_merge_sha", evidence.source_merge)
+            emit_output("pull_request_number", evidence.pull_request)
+            emit_output("source_base_sha", evidence.source_base)
+            emit_output("source_head_sha", evidence.source_head)
+            emit_output("source_tree_sha", evidence.source_tree)
+            emit_output("source_merged_by", evidence.source_merged_by)
+            emit_output("source_merged_at", evidence.source_merged_at)
+            emit_output("ghsa_set", ",".join(evidence.ghsa_set))
         elif args.command == "verify-post-merge":
             evidence = verify_post_merge(
                 api,
@@ -2286,6 +2692,7 @@ def cli(argv: list[str] | None = None) -> int:
                 args.merge_sha,
                 require_pr_number(args.pull_request),
             )
+            root_assertion(manifest_path, lock_path, evidence.profile)
             emit_output("verified", True)
         return 0
     except PolicyError as error:
