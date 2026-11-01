@@ -268,7 +268,8 @@ class DependencySetTests(unittest.TestCase):
         self.assertEqual(sp.verify_post_merge(api, api.repo, "main", pr["merge_commit_sha"], 44), evidence)
         for argument in ([], ["--manifest-path", "package.json"], ["--lock-path", ""]):
             output = io.StringIO()
-            with patch.object(sp, "GhApi", return_value=api), redirect_stdout(output), redirect_stderr(io.StringIO()):
+            # This fixture owns stdout, not the enclosing Actions job's output file.
+            with patch.dict(os.environ, {"GITHUB_OUTPUT": ""}), patch.object(sp, "GhApi", return_value=api), redirect_stdout(output), redirect_stderr(io.StringIO()):
                 status=sp.cli(["verify-post-merge", "--repository", api.repo, "--pull-request", "44", "--merge-sha", pr["merge_commit_sha"], *argument])
             self.assertEqual(status, 1 if argument else 0)
             self.assertEqual(output.getvalue(), "" if argument else "verified=true\n")
