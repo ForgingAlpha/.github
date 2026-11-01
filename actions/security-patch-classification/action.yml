@@ -12,6 +12,9 @@ inputs:
     description: Either preflight or classify; preflight does not read official alert associations.
     required: false
     default: preflight
+  source-branch:
+    description: Expected protected default (main or dev). Optional for preflight, which resolves canonical metadata; required from the preceding preflight for classify.
+    required: false
   expected-pull-request:
     description: Pull request number emitted by the preceding read-only preflight.
     required: false
@@ -19,7 +22,7 @@ inputs:
     description: Exact source head emitted by the preceding read-only preflight.
     required: false
   expected-base-sha:
-    description: Exact protected dev base emitted by the preceding read-only preflight.
+    description: Exact protected default base emitted by the preceding read-only preflight.
     required: false
 
 outputs:
@@ -30,11 +33,14 @@ outputs:
     description: Exact Dependabot source pull request.
     value: ${{ steps.preflight.outputs.pull_request_number || steps.classify.outputs.pull_request_number }}
   source-base-sha:
-    description: Exact protected dev base proved by preflight.
+    description: Exact protected default base proved by preflight.
     value: ${{ steps.preflight.outputs.source_base_sha || steps.classify.outputs.source_base_sha }}
   source-head-sha:
     description: Exact Dependabot source head proved by preflight.
     value: ${{ steps.preflight.outputs.source_head_sha || steps.classify.outputs.source_head_sha }}
+  source-branch:
+    description: Canonical default branch bound by preflight or classification.
+    value: ${{ steps.preflight.outputs.source_branch || steps.classify.outputs.source_branch }}
   classified:
     description: True when the exact official alert association and trusted checks are classified.
     value: ${{ steps.classify.outputs.classified }}
@@ -46,6 +52,7 @@ runs:
       shell: bash
       env:
         OPERATION: ${{ inputs.operation }}
+        SOURCE_BRANCH: ${{ inputs.source-branch }}
         EXPECTED_PR: ${{ inputs.expected-pull-request }}
         EXPECTED_HEAD: ${{ inputs.expected-head-sha }}
         EXPECTED_BASE: ${{ inputs.expected-base-sha }}
@@ -54,6 +61,10 @@ runs:
         case "${OPERATION}" in
           preflight) ;;
           classify)
+            [[ "${SOURCE_BRANCH}" == main || "${SOURCE_BRANCH}" == dev ]] || {
+              echo "✗ classify requires the exact preflight source branch (main or dev)." >&2
+              exit 1
+            }
             [[ "${EXPECTED_PR}" =~ ^[1-9][0-9]*$ ]] || {
               echo "✗ classify requires the exact preflight pull-request number." >&2
               exit 1
@@ -79,11 +90,18 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        WORKFLOW_RUN_ID: ${{ inputs.workflow-run-id }}
+        SOURCE_BRANCH: ${{ inputs.source-branch }}
+        EXPECTED_PR: ${{ inputs.expected-pull-request }}
+        EXPECTED_HEAD: ${{ inputs.expected-head-sha }}
+        EXPECTED_BASE: ${{ inputs.expected-base-sha }}
       run: |
         set -euo pipefail
+        branch_args=()
+        if [[ -n "${SOURCE_BRANCH}" ]]; then branch_args=(--source-branch "${SOURCE_BRANCH}"); fi
         python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" preflight-source \
           --repository "${GITHUB_REPOSITORY}" \
-          --workflow-run-id "${{ inputs.workflow-run-id }}" \
+          --workflow-run-id "${WORKFLOW_RUN_ID}" "${branch_args[@]}" \
           --wait-seconds 300
 
     - name: Re-prove and classify exact source
@@ -92,11 +110,18 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        WORKFLOW_RUN_ID: ${{ inputs.workflow-run-id }}
+        SOURCE_BRANCH: ${{ inputs.source-branch }}
+        EXPECTED_PR: ${{ inputs.expected-pull-request }}
+        EXPECTED_HEAD: ${{ inputs.expected-head-sha }}
+        EXPECTED_BASE: ${{ inputs.expected-base-sha }}
       run: |
         set -euo pipefail
+        branch_args=()
+        if [[ -n "${SOURCE_BRANCH}" ]]; then branch_args=(--source-branch "${SOURCE_BRANCH}"); fi
         python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" classify-source \
           --repository "${GITHUB_REPOSITORY}" \
-          --workflow-run-id "${{ inputs.workflow-run-id }}" \
-          --pull-request "${{ inputs.expected-pull-request }}" \
-          --expected-head-sha "${{ inputs.expected-head-sha }}" \
-          --expected-base-sha "${{ inputs.expected-base-sha }}"
+          --workflow-run-id "${WORKFLOW_RUN_ID}" "${branch_args[@]}" \
+          --pull-request "${EXPECTED_PR}" \
+          --expected-head-sha "${EXPECTED_HEAD}" \
+          --expected-base-sha "${EXPECTED_BASE}"

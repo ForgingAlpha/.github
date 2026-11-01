@@ -1,8 +1,10 @@
 # Composite action: Enforce merge flow policy.
 #
 # Fails the `CI` job when a pull request targets `main` or `staging` with
-# a source other than the same-repository `dev` branch, except for a machine-attested exact
-# security projection admitted only to run required CI. Enforces:
+# a source other than the same-repository `dev` branch, except for a canonical
+# default-branch Dependabot source or fixed-App-attested exact projection admitted
+# only to run required CI. Structural source admission does not prove security
+# eligibility; the separate trusted classifier retains that obligation. Enforces:
 #
 #     feature → dev → {staging, main}
 #
@@ -28,7 +30,8 @@
 # `pull_request` via their callers' `ci.yml`.
 
 # Caller GITHUB_TOKEN permissions: contents: read, checks: read, pull-requests: read.
-# These read scopes support exact projection admission and grant no merge authority.
+# Source admission uses only repository/PR/commit/content reads; projection admission
+# also reads existing checks. Neither path grants merge authority.
 name: CI Merge Flow
 description: "Enforce governed admission into main and staging"
 

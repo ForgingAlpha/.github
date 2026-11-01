@@ -63,14 +63,17 @@ settings retain their own authority.
 
 - Resolve the protected security source target under REQ-013 and qualify its
   actual caller, proof and observation path before enrollment. The governing
-  direct-main path does not establish an implemented or qualified direct-source
-  wrapper/observer; unavailable prerequisites stop the affected security flow.
+  direct-main wrapper is `security-patch-source-observation`; source availability
+  does not qualify its installation. Unavailable prerequisites stop the affected flow.
 - Install the security App whose public ID is pinned by the released policy.
   Consumers cannot select a different trust identity. Give it no branch merge
   bypass. Keep its key out of general agent launchers and unrelated workflows.
 - Install the default-branch caller for `security-patch-classification`. Its
   unprivileged preflight binds the exact trusted CI workflow/run/repository and
-  Dependabot PR/base/head. It receives read access only, with no environment,
+  Dependabot PR/base/head and canonical default branch (main or dev). Pass those
+  exact preflight outputs, including the required `source-branch`, to classification.
+  Reconcile existing callers before shared-source merge. Preflight receives
+  read access only, with no environment,
   secret, checkout, cache or PR artifact. Preflight is not full GHSA classification.
 - In the separate branch-restricted security environment, grant classification
   only the required metadata, Actions, content, PR and alert reads plus check
@@ -78,6 +81,12 @@ settings retain their own authority.
   writing. Serialize by repository and source head without cancellation.
   Require classification before the human source merge; an identical retry
   preserves its completion time and cannot manufacture pre-merge evidence.
+- Require immutable source-v2 branch proof throughout classifiers, projectors and
+  verifiers, including projection post-merge observation. Inventory outstanding
+  source-v1 classifications/projections and mixed Action/script references before
+  release. Retain historical records; do not rewrite them, infer a historical
+  branch from current metadata, or classify an already merged head. Resolve each
+  affected flow with its owner before relying on the new reader.
 - The human source merge must have ordered parents `[classified base, head]`
   and the classified head tree. Record its observed actor and time; those fields
   alone do not prove authorization. Classification and required exact-head
@@ -114,7 +123,8 @@ These additional steps apply only when the classified source merges into dev.
   its source classification, exact-patch proof, strict current-base CI/CodeQL,
   exact human approval and human merge. Do not create a second source merge,
   projection PR or projection attestation.
-- Qualify a read-only observer that binds the actual main push, merged source PR
+- Qualify `security-patch-source-observation` in the trusted main `push` caller.
+  It binds the actual event repository/ref/before/after, merged source PR
   and current main ref, then re-proves the source classification and its time,
   classified base/head, human merge, ordered parents, source-head tree and official
   advisory association. Do not manufacture missing classification after merge or
