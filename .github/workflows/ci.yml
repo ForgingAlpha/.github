@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+  checks: read
 
 jobs:
   CI:
@@ -17,11 +19,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       # Dogfood: exercise the merge-flow guard against this PR itself.
       # Uses a local path so the PR validates the in-branch version of the
-      # action. Since `.github` has no `dev` branch, the guard should skip with
-      # "merge flow policy does not apply".
+      # action. Its checked named-control row requires task-to-main admission;
+      # branch absence is never a policy exemption.
       - name: Enforce merge flow (self)
         uses: ./actions/ci-merge-flow
 

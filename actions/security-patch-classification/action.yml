@@ -1,5 +1,5 @@
 name: Exact Security Patch Classification
-description: Preflight or classify one exact Dependabot security patch for human review and merge.
+description: Preflight or classify one canonical root or declared dependency-set Dependabot patch for human review and merge.
 
 inputs:
   github-token:

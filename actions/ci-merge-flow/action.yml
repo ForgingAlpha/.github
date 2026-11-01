@@ -1,50 +1,15 @@
-# Composite action: Enforce merge flow policy.
-#
-# Fails the `CI` job when a pull request targets `main` or `staging` with
-# a source other than the same-repository `dev` branch, except for a canonical
-# default-branch Dependabot source or fixed-App-attested exact projection admitted
-# only to run required CI. Structural source admission does not prove security
-# eligibility; the separate trusted classifier retains that obligation. Enforces:
-#
-#     feature → dev → {staging, main}
-#
-# All code lands in `dev` first. Hotfix and release branches must PR into
-# `dev`, not directly into `main`/`staging`. Closes a gap in GitHub Rulesets,
-# which have no native rule to restrict a PR's source branch.
-#
-# Automatically exempts repos that have no `dev` branch (main-only repos are
-# not subject to the gitflow merge policy). Detection uses the GitHub API,
-# so the guard runs correctly before `actions/checkout`.
-#
-# Wired as the first step inside each language composite (ci-astro,
-# ci-elixir, ci-rust, ci-shell, ci-typescript) so enforcement rides on the
-# existing `CI` required status check — no per-repo workflow changes needed.
-# A failure here fails the entire `CI` job, which the `release-branches`
-# org ruleset already blocks on.
-#
-# SECURITY: This action must be invoked from workflows triggered by the
-# `pull_request` event, NOT `pull_request_target`. The `pull_request_target`
-# trigger grants write permissions and secrets to workflows executed from
-# fork PRs, enabling the "pwn request" attack vector documented by the
-# GitHub Security Lab. All consuming `ci-*` composites already use
-# `pull_request` via their callers' `ci.yml`.
-
-# Caller GITHUB_TOKEN permissions: contents: read, checks: read, pull-requests: read.
-# Source admission uses only repository/PR/commit/content reads; projection admission
-# also reads existing checks. Neither path grants merge authority.
+# Read-only CI admission. Owner projection selects ordinary targets; the existing
+# security verifier supplies distinct structural-source/projection proof.
+# CI admission grants neither classification, proposal authority nor merge rights.
+# Required caller metadata scopes: contents: read, pull-requests: read, checks: read.
 name: CI Merge Flow
-description: "Enforce governed admission into main and staging"
-
+description: Enforce exact owner-bound proposal admission
 runs:
   using: composite
   steps:
     - name: Enforce merge flow policy
-      if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'staging') }}
+      if: ${{ github.event_name == 'pull_request' }}
       env:
         GH_TOKEN: ${{ github.token }}
-        HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-        BASE_REF: ${{ github.event.pull_request.base.ref }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
       shell: bash
-      run: bash "$GITHUB_ACTION_PATH/scripts/check_merge_flow.sh" legacy-observed
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_merge_flow.sh" admit

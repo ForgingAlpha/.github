@@ -2450,7 +2450,7 @@ class CliEffectsTest(unittest.TestCase):
             ("verify-ci-admission", admission_fixture, ["--pull-request", "44"],
              {"verified", "projection_head_sha"}),
             ("verify-ci-admission", lambda: DefaultSourceAcceptanceTest().source_api(), ["--pull-request", "17"],
-             {"verified", "admission_kind", "repository", "pull_request_number", "source_branch", "source_base_sha", "source_head_sha", "source_tree_sha"}),
+             {"verified", "admission_kind", "repository", "pull_request_number", "source_branch", "source_base_sha", "source_head_sha", "source_tree_sha", "profile", "dependency_pairs", "changed_paths"}),
             ("verify-projection", ready_projection_fixture, ["--pull-request", "44", "--verify-checks", "true", "--ci-app-id", "15368", "--codeql-app-id", "57789"],
              {"verified", "projection_head_sha", "production_base_sha", "projection_tree_sha"}),
             ("verify-post-merge", post_merge_fixture, ["--pull-request", "44", "--merge-sha", sha("7")], {"verified"}),
@@ -2671,7 +2671,11 @@ class ReviewRegressionTest(unittest.TestCase):
         permissions = workflow['jobs']['baseline'].get('permissions', workflow['permissions'])
         self.assertEqual(permissions, {'contents': 'read', 'pull-requests': 'read', 'checks': 'read'})
         for name, job in workflow['jobs'].items():
-            if name != 'baseline':
+            if name in ('baseline', 'result'):
+                # Both trusted metadata owners re-prove the immutable security
+                # evidence. Product lanes still receive no checks capability.
+                self.assertEqual(job.get('permissions', workflow['permissions']), permissions)
+            else:
                 self.assertNotIn('checks', job.get('permissions', workflow['permissions']))
         for invalid in (False, True):
             api = admission_fixture()
@@ -2934,12 +2938,13 @@ class ActionContractTest(unittest.TestCase):
 
     def test_merge_flow_admits_structural_source_or_app_attested_projection_to_ci(self):
         text = MERGE_FLOW_ACTION.read_text()
-        self.assertIn('bash "$GITHUB_ACTION_PATH/scripts/check_merge_flow.sh" legacy-observed', text)
+        self.assertIn('bash "$GITHUB_ACTION_PATH/scripts/check_merge_flow.sh" admit', text)
         text += (MERGE_FLOW_ACTION.parent / "scripts/check_merge_flow.sh").read_text()
+        text += (ROOT / "actions/ci-org-baseline/scripts/proposal_route.py").read_text()
         for fragment in (
-            "verify-ci-admission",
-            "github.event.pull_request.number",
-            "Exact source or projection admitted to required CI; security eligibility is separate",
+            "security.verify_ci_admission",
+            "security.SourceAdmission",
+            "security.ProjectionEvidence",
         ):
             self.assertIn(fragment, text)
         self.assertNotIn("vars.", text)
@@ -3021,6 +3026,8 @@ class DefaultSourceAcceptanceTest(unittest.TestCase):
                     "repository": "ForgingAlpha/alphaapps-site", "pull_request_number": "17",
                     "source_branch": branch, "source_base_sha": sha("a"),
                     "source_head_sha": sha("b"), "source_tree_sha": sha("e"),
+                    "profile": "root-npm-v1", "dependency_pairs": security_patch.canonical_json(list(security_patch.ROOT_PAIRS)),
+                    "changed_paths": '["package-lock.json"]',
                 })
                 for args, _ in requests:
                     self.assertNotIn(args[0], {"graphql", "--method"})
@@ -3550,53 +3557,19 @@ class SourceWrapperExecutionTest(unittest.TestCase):
         for forbidden in ("actions/checkout", "gh api", "private-key", "deployment-sha", "projection-head-sha"):
             self.assertNotIn(forbidden, text)
 
-    def test_both_guard_interfaces_execute_actual_source_admission(self):
-        import os
+    def test_published_guard_executes_actual_source_admission(self):
+        # The successor interface is a typed JSON record; both ambient output
+        # modes, adverse source/projection cases and actual S1 proof are exercised.
+        spec = importlib.util.spec_from_file_location("guard_contract", ROOT / "tests/test_proposal_route.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.ProposalTests("test_actual_wrapper_source_projection_and_output_isolation").test_actual_wrapper_source_projection_and_output_isolation()
         import subprocess
-        import tempfile
-        import textwrap
         helper = ROOT / "actions/ci-merge-flow/scripts/check_merge_flow.sh"
-        # Only GitHub data is simulated. Shell -> the candidate CLI -> all
-        # structural verification runs from this same worktree.
-        with tempfile.TemporaryDirectory() as directory:
-            tmp = Path(directory)
-            (tmp / "gh").write_text("#!/bin/sh\necho '{}'\n")
-            (tmp / "gh").chmod(0o755)
-            launcher = tmp / "python3"
-            launcher.write_text(f"#!{sys.executable}\n" + textwrap.dedent("""\
-                import importlib.util, os, sys
-                from pathlib import Path
-                path = Path(sys.argv[1]).resolve().parents[1] / "tests/test_security_patch.py"
-                spec = importlib.util.spec_from_file_location("fixtures", path)
-                fixtures = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(fixtures)
-                api = fixtures.DefaultSourceAcceptanceTest().source_api()
-                if os.environ.get("BAD_SOURCE") == "true":
-                    api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]["draft"] = True
-                fixtures.security_patch.GhApi = lambda: api
-                raise SystemExit(fixtures.security_patch.cli(sys.argv[2:]))
-                """))
-            launcher.chmod(0o755)
-            for mode in ("legacy-observed", "declared-route"):
-                for bad in (False, True):
-                    with self.subTest(mode=mode, bad=bad):
-                        env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}",
-                               "GITHUB_ACTION_PATH": str(helper.parents[1]), "GITHUB_REPOSITORY": "ForgingAlpha/alphaapps-site",
-                               "HEAD_REPOSITORY": "ForgingAlpha/alphaapps-site", "HEAD_REF": "dependabot/npm_and_yarn/security-test",
-                               "BASE_REF": "main", "PR_NUMBER": "17", "DECLARED_ROUTE": "direct", "BAD_SOURCE": str(bad).lower(), "GITHUB_OUTPUT": ""}
-                        result = subprocess.run(["bash", str(helper), mode], env=env, text=True, capture_output=True)
-                        self.assertEqual(result.returncode, 1 if bad else 0, result.stdout + result.stderr)
-                        if not bad:
-                            self.assertIn("admission_kind=dependabot-source", result.stdout)
-                            self.assertNotIn("eligible=", result.stdout)
-                        output = tmp / f"{mode}-{bad}-output"
-                        output.touch()
-                        file_result = subprocess.run(["bash", str(helper), mode], env={**env, "GITHUB_OUTPUT": str(output)}, text=True, capture_output=True)
-                        self.assertEqual(file_result.returncode, result.returncode, file_result.stdout + file_result.stderr)
-                        self.assertNotIn("admission_kind=", file_result.stdout)
-                        expected = "".join(line + "\n" for line in result.stdout.splitlines() if "=" in line)
-                        self.assertEqual(output.read_text(), expected)
-                        self.assertEqual(file_result.stderr, result.stderr)
+        for obsolete in ("legacy-observed", "declared-route"):
+            result = subprocess.run(["bash", str(helper), obsolete], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Unsupported admission interface", result.stderr)
 
 
     def test_observer_wrapper_executes_cli_and_preserves_every_declared_output(self):

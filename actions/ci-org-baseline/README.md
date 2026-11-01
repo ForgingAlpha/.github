@@ -38,29 +38,37 @@ reconciliation. Current legacy wrappers retain their existing repository-config 
 
 ## Enrollment successor and totality
 
-Schema 1 remains readable with exactly its existing keys and constraints; its only
-profile remains `documentation-bootstrap`. Normalization explicitly derives bootstrap
-producer, qualified-team policy, empty component list and non-applicable foundation
-from that historical schema contract. Schema-1 application records are refused. Its historic release-route non-applicability
-and result behavior stay unchanged; schema-2 route decisions cannot be backfilled into it.
-The live catalog remains byte-identical in this change; schema 2 is exercised by
-synthetic source fixtures. No public fixture ID represents an admitted real consumer.
+Schema 3 is the sole readable successor. Schemas 1 and 2 and the historical
+direct/staged route interfaces are refused; source publication requires the
+complete caller transition described below. The catalog is one checked projection,
+not a second authority or an enrollment inferred from repository class.
 
-Schema 2 has exactly `schema_version: 2` and `repositories` (1–32 records). Each
-record has exactly these required fields, with no nulls, implicit defaults or unknown
-keys:
+Each row has exactly `repository`, `repository_id`, `proposal` and
+`participation`. Names and positive integer IDs are unique. `proposal` has
+`task_target`, exact same-repository `promotions`, and `evidence`.
+Evidence records the adoption branch/commit, complete controlling-file SHA-256s,
+uniquely delimited region SHA-256s, governing and owner reconciliation receipt
+digests, the reconciled rule, and owner-declared persistent sources. Only adopted,
+owner-qualified source enters this shared projection. Receipt hashes identify
+provenance; they do not grant authority.
 
-| Field | Meaning and domain |
-| --- | --- |
-| `repository`, `repository_id` | Exact ForgingAlpha full name and positive integer ID; neither repeated; `.github` self-enrollment refused. Booleans are not integers. |
-| `branches` | Bootstrap/direct route: explicit `['dev']` or `['dev','main']`. Staged application route: exactly `['dev','staging','main']`. No glob, omission, duplicates or branch-presence inference. Source support changes no live selectors. |
-| `profile` | `documentation-bootstrap`, `rust`, `astro`, or `mixed`; actual component kinds must agree exactly. |
-| `producer` | Closed enum: `bootstrap` for docs; `central-product` or `qualification` for applications. Qualification is the bounded carrier below, never accepted product CI. No consumer override or inherited producer. |
-| `qualification_subject` | Exactly `{kind:'none'}` except for `qualification`, which requires the exact subject and legacy workflow binding below. No null or default. |
-| `release_route` | Docs: exactly `{kind:'not-applicable'}`. Applications: explicit direct/staged projection with exact adopted product-source binding below. No unknown route admitted. |
-| `review_policy` | Exactly `{kind:'qualified-team',team_id:positive-int,minimum_approvals:positive-int}` or `{kind:'codeowners'}`. Docs uses qualified-team. Team replacement for application CODEOWNERS needs separately retained actual protection qualification. |
-| `foundation` | `not-applicable` for docs; application `required` or `not-applicable` only from an explicit owner-established scope disposition described below. |
-| `components` | Docs: empty array. Application: 1–16 unique component records, sorted by root and kind; exact schema below. |
+The two named controls use task-to-main. Reconciled applications use task-to-dev
+and dev-to-main. Other classes use their exact adopted owner route. A repository's
+default branch, observed branch presence, caller argument, label or security
+classification cannot choose the ordinary target. Main, dev, staging, protected
+heads and owner-declared persistent sources are not ordinary task heads. This is
+bounded CI source correspondence: the control-plane proposal procedure and Action
+Enforcer retain authored-proposal and task-worktree/persistence responsibilities.
+
+Metadata-only participation is exactly `{"mode":"metadata-only"}`. It grants no
+central bootstrap or product enrollment. Central participation has exactly
+`mode`, `selected_targets`, `profile`, `producer`, `qualification_subject`,
+`review_policy`, `foundation` and `components`. Selected targets are an explicit
+subset of governed targets. Existing complete bootstrap, Astro, Rust and mixed
+profiles, producer restrictions, qualified-team/CODEOWNERS policies, runtime and
+foundation obligations remain mandatory. Self central enrollment is refused.
+Qualification remains a distinct non-CI producer; unknown owners cannot receive
+a smaller bootstrap profile.
 
 A Rust component has exactly `{kind:'rust',root:PATH,tests:['cargo-all']}`. An Astro
 component has exactly `{kind:'astro',root:PATH,tests:TEST_SELECTION,static_scripts:[SCRIPT_ID,...]}`. `PATH` is `.` or
@@ -84,7 +92,7 @@ product owner requires it. A missing selected script fails. Additional publicati
 checks, if required by the owner, are selected validation-only script IDs;
 this does not permit publication or deploy effects during CI.
 
-No schema-2 field can select a catalog, checkout, script path, shell command, runtime
+No schema-3 field can select a catalog, checkout, script path, shell command, runtime
 version, exclusion glob, CI job name, token or opt-out. Unknown is an error;
 `not-applicable` is an explicit decision with its own predicate, never missing evidence.
 
@@ -175,11 +183,9 @@ resolved repository archive through `GITHUB_ACTION_PATH` in legacy wrappers and 
 the separately verified trusted checkout in the central workflow. A missing sibling
 helper fails. Keep pinned external setup/cache Actions in wrappers, their current
 inputs/defaults/conditions, full common steps, command order, flags and failure
-semantics. This preserves observed legacy behavior for unknown/unmigrated callers,
-not a claim that its existing merge-route defect satisfies governing policy. The
-legacy guard permits dev-to-main for staged products and rejects staging-to-main;
-that drift remains explicitly unresolved until authoritative affected route bindings
-exist. Central schema-2 admission must not inherit that wrong behavior. Wrappers keep their existing changed/all Actions-safety choice and canonical literal
+semantics. Route admission uses the same source-owned resolver in published legacy wrappers
+and the central workflow. Unknown or unreconciled rows fail; no compatibility
+mode treats known old route drift as completion. Wrappers keep their existing changed/all Actions-safety choice and canonical literal
 `@main` common calls. Retain each job’s native resolved Action commit. Same-ref reuse
 is inferred for the normal inspected runner acquisition path; deployed cache modes
 remain unqualified, and local/SHA candidate parents with nested live main do not
@@ -200,9 +206,8 @@ The common job runs the following once, before product jobs, with exact head/bas
 1. Identity, enrollment, complete tracked inventory, producer-conflict and applicable
    foundation/runtime data validation. Rust workspace metadata verification is a
    mandatory static-job obligation after admitted setup; no Cargo runs in admission.
-2. Schema-2 declared release-route admission below, with its separate exact security
-   projection carveout; no changed event is passed to that guard. Bootstrap remains
-   unchanged. Do not use the legacy dev-only guard as central application admission.
+2. Schema-2 typed route admission below, before deriving any bootstrap or application
+   plan. All required product checks remain independent of the admission variant.
 3. Full source-truth policy script; full CODEOWNERS script for `codeowners`, or fresh
    complete effective-team rules for a qualified-team record. Team membership/bypass
    qualification remains external; a matching ID does not prove it.
@@ -284,101 +289,105 @@ configured Renovate ownership does not establish automation for those numeric to
 literals. The pre-existing coverage gap stays explicit; this change adds no manager,
 policy exception, downloaded tool or version and does not claim to repair that gap.
 
-## Existing release-route projection and migration
+## Proposal projection, currentness and security proof
 
-Control-plane ASR-AUTH-005 and [REQ-027](../../docs/requirements.md#req-027---uniform-proposal-admission)
-now require application task branches to target dev, followed by dev-to-main
-promotion, without staging. The two named control repositories use task-to-main;
-other classes retain their Current declared routes. The schema and helper below
-describe the existing implementation, including its legacy staged mode. They do
-not override that governing route or qualify a conflicting enrollment. The earlier
-2026-10-26 staging decision is superseded for these named and application routes.
-Retire obsolete representations only after reconciling their source provenance
-and preserving complete product, security, event and required-result coverage.
-No implementation, enrollment or hosted settings change follows from this text.
+The shared-CI owner admits exact owner reconciliation at catalog/source admission.
+Each row's reconciliation digest identifies its own source-projection provenance,
+including adopted owner sources and the derived shared rule. It is not an upstream
+approval, a runtime permission or proof of deployment. Generic Prepare review
+digests are lineage and cannot substitute for row-specific reconciliation.
+Runtime reads only the current consumer repository under existing read scopes.
+It verifies repository name/ID, actual canonical adoption ref, adopted-commit
+ancestry, full controlling-file contents and unique source regions. It also checks
+the PR's base/head controlling closure, current open PR identities and current
+base/head branch SHAs. The final read must still agree before admission is emitted.
+Central jobs additionally match committed local bytes at both revisions.
+Unrelated commits outside the controlling closure may pass. A changed controlling
+file, including prose outside a selected region, new precedence, missing source,
+diverged ancestry or ambiguous region requires owner reconciliation. The closure
+includes exact presence or absence of PROJECT.md, AGENTS.md and CLAUDE.md, regular
+file hashes, and literal symlink targets; redirects are never followed. An owner
+may qualify one exact directed predecessor-to-successor closure transition in the
+trusted projection. Both PR revisions must match that direction or the same current
+authority closure; reverse transitions and unknown third states refuse. An empty
+historical predecessor is subject-only and can never establish current authority.
+Predecessor and successor must cover the same controlling paths across their
+`files` and `context` entries. When the successor introduces a controlling file,
+record that path explicitly as `kind: absent` in the predecessor context; omitting
+it does not prove absence.
+No transition or fallback is inferred. No remote private control-plane adoption, current
+task-worktree origin or global real-time authority attestation is claimed.
 
-An application `release_route` has exactly `declarations`, `transition` and
-`reconciliation_sha256`. The digest identifies the retained attributable product-owner
-reconciliation receipt, including Current source revisions, the declared route meaning,
-permitted update and any exact authorized successor. It is provenance, not a claim that
-a digest grants authority. No new product-side file, JSON schema or globally fixed
-Architecture location is required.
+The fixed shell helper accepts only `admit`, and reads the actual PR event. Its
+schema-2 admission record binds repository/ID, PR, base/head refs and SHAs, head
+tree, the authority/base/head closure states, policy and enrollment digests,
+exact checking bundle fingerprints, and one
+of four disjoint proof variants:
 
-`declarations` contains one entry normally, or two during an explicitly owner-authorized
-route change. Each entry is exactly `{kind:'direct'|'staged',path,start,end,text}`.
-Path is the owner-selected existing regular Markdown source path, subject to the same
-safe relative-path rules; start/end are distinct complete existing delimiter lines,
-unique in that file, and text is the exact UTF-8 declaration region between them.
-Use at most 8 KiB for the region and 256 bytes per delimiter. This source-owned bounded
-selector projects an existing owner declaration; it does not require a new consumer
-representation. Unsupported/ambiguous source shapes require an owner reconciliation
-before enrollment rather than inventing a file or parsing arbitrary prose as authority.
-The owner receipt verifies that this region expresses the complete relevant route.
-Runtime matches the region, not the whole file: unrelated Architecture edits pass.
-Missing/duplicate delimiters or declaration mismatch fail. The exact original whole
-source commit/blob stays in retained provenance, not an immutable runtime head/base pin.
+- `ordinary-task`: exact governed target and an observed unprotected source
+  outside reserved and owner-declared persistent refs.
+- `ordinary-promotion`: the exact same-repository owner-declared promotion edge.
+- `dependabot-source`: the structural `SourceAdmission`, including exact profile/pairs, actual
+  default source branch, base/head/tree and structural changed paths. This grants
+  admission to checks only; no GHSA eligibility or classification is fabricated.
+- `security-projection`: the explicit root-v2 or set-v3 `ProjectionEvidence` attestation,
+  preserving the full machine/check/App/source/projection proof and its version.
 
-`transition` is `none` for one declaration and `owner-authorized` for two, ordered
-predecessor then successor. Stable same-entry matches and the forward predecessor-base
-to successor-head pair are allowed; reverse pairs require separately reconciled recovery. Admission
-matches base and head regions against this finite source-owned set. Stable runs require
-the same declaration; an authorized transition also permits the exact declared old/new
-pair. No unmerged commit must be an ancestor of the base. The shared-CI/product owners
-first authorize and retain the exact successor meaning, admit a source successor that
-recognizes both declaration regions, and qualify that source before the consumer
-route-change proposal. During the interval use the stricter staged promotion rule if
-either matched declaration requires staging; this cannot open a staged shortcut.
-Then human-merge the consumer declaration change through its permitted route, reconcile
-other affected branches and outstanding heads, and retire the predecessor declaration
-from a subsequent central source. Retain strict current-base/CI and old/new observations
-throughout; unknown outcome pauses the transition for reconciliation. Rollback uses
-that captured pair/producer state and cannot silently restore a forbidden shortcut.
-This bounded source/consumer ordering supports actual route changes without a whole-file
-edit deadlock. It authorizes no live change and adds no general route registry.
+The resolver calls the existing verifier directly; it does not reinterpret
+labels, issue a classification, merge, deploy, or write a check. Canonical
+Dependabot sources cannot fall through to ordinary task admission. The full
+original proof is conserved in the plan. Token-free product lanes validate it
+against the admitted record and local exact subject; privileged admission and
+finalization independently re-prove fresh evidence and compare the entire original
+plan. Obtaining new proof never excuses a changed original admission.
 
-Currentness, complete declaration meaning and the authority for an actual successor
-remain owner-qualified activation prerequisites. The source fixtures exercise matching
-and ordering only. An unresolved/superseded owner reconciliation blocks affected
-activation; branch presence or a matching declaration alone is not owner authority.
+The guard prints one bounded JSON record to stdout and never writes child fields
+into the caller's `GITHUB_OUTPUT`. The security CLI retains its own
+stdout/file-channel contract. Central updater child calls also remove only that
+child's inherited output path. No workflow-wide output suppression is used.
+The wrapper's checking identity is the exact Git source commit when a checkout is
+available, or the full fingerprint-bundle digest for a resolved action archive.
+Central schema-4 plans always bind the independently verified defining workflow commit.
+Admission schema 1 and plan schema 3 are refused; enrollment remains schema 3.
+The security profile declaration is included in every checking fingerprint.
 
-The common owner's fixed helper has two explicit internal interfaces:
-`legacy-observed` retains existing wrapper behavior and known drift;
-`declared-route` receives only the trusted decoded enrollment declaration set, validated exact
-consumer root and fresh PR event. Legacy wrappers expose no new route or bypass input.
-The central runner always chooses declared-route for schema-2 applications, including
-qualification; it cannot select legacy behavior because evidence is unavailable.
-Use the existing common-owner helper path and canonical security verifier, not a
-consumer JSON file, branch-existence API inference or a second route registry.
-The central helper validates the source binding above, same-repository PR identities,
-exact head/base and permitted pair before returning admission; no arbitrary branch
-or shell expression is accepted as a route. Extend this bounded helper's owned tests.
+The updater validates Renovate's target against this same owner projection.
+GitHub default-branch metadata does not choose the normal update target.
+Dependabot remains security-only and its actual-default security semantics remain
+unchanged. Both wrappers require complete event/identity/source metadata and
+read-only repository/PR/check access. Missing grants or older incomplete callers
+are release holds, never reasons for a weaker adapter.
+Security admission supports the existing root npm profile and the exact declared
+npm/Cargo pairs only. Dependabot GitHub Actions and mix updates remain outside
+those profiles and refuse through this guard, including this repository's own
+GitHub Actions updates. Existing Dependabot configuration does not confer profile
+support. Qualify each affected caller and reconcile its security update coverage
+with its owner before activation; this limitation does not change Renovate's
+normal-update ownership.
+All pull requests through this guard must target a governed branch. Task-to-task
+stacked proposals and unselected targets now refuse; this is a caller migration
+change, not a security classification or a claim about merge authority.
 
-For a matched direct route, ordinary promotion to main requires same-repository dev; staging is not
-an admitted target. For staged, ordinary promotion to staging requires same-repository
-dev and ordinary promotion to main requires same-repository staging. Staged dev-to-main
-is refused even if staging is absent, unused or has a failing check. Neither path
-creates or updates a branch. Normal authored PRs into dev remain under the existing
-nonpersistent-source/human proposal process. This helper retains the existing absence
-of a promotion-source restriction for targets named dev, including main/staging-to-dev;
-it does not invent a new prohibition. Passing the guard does not authorize such a
-proposal, and branch-name shape alone is not proof of nonpersistent authority.
-Source identity, exact revision, approved scope and human execution remain separate.
+The candidate has nine evidenced rows: two named controls and seven owner-bound
+application, shared-component and client-delivery rows. Only Laya's existing website
+central profile is represented as central; its selector transition and runtime qualification are not
+established by this source. Hosted Alpha and Laya application positive closure
+remain unresolved and receive no fabricated row. Foundation and Georgie scoped
+source adoption does not establish product runtime eligibility.
 
-The existing `security_patch.py verify-ci-admission` remains a separate exact
-machine-attested security-projection exception for main. It is not evidence of an
-ordinary staged promotion. For a same-repository non-ordinary main head, acceptance
-requires the unchanged verifier's complete proof; an unavailable verifier, permission
-or mismatched attestation fails. A staged dev-to-main ordinary shortcut does not fall
-through to an exemption based on branch name or CI success. No broadened security
-policy, new credentials, security enrollment or migration is introduced. Consumers
-whose security pipeline is bound to local CI remain excluded from central-product
-activation even though this admission carveout is preserved in source.
+Before publication, qualify every actual caller, including nested moving refs,
+the complete parent bundle and each prerequisite workflow permission/event shape.
+Existing S1 source-v1 records, consumer security workflow/result bindings, Laya
+selector/central producer transitions, actual required-check scopes and the
+B1/C3/Pi/R3 cutover/recovery evidence remain separate obligations. No live
+enrollment, catalog runtime assignment, selector, protection or security pipeline
+activation is authorized by this implementation.
 
 ## Plan, result identities and exact aggregation
 
 A trusted admission job derives a bounded JSON plan from validated enrollment and
 complete tree: schema, repository name/ID, PR number, base ref/SHA, head/tree SHA,
-checking-source SHA, enrollment digest, profile/producer, qualification subject, declared route/source binding,
+checking-source SHA, enrollment digest, profile/producer, qualification subject, complete typed admission/proof and policy/source binding,
 review/foundation dispositions,
 canonical ordered components and required lane IDs. Lane IDs are bounded source-generated
 indices tied to that ordered inventory, not consumer job-name expressions. Output
@@ -493,7 +502,7 @@ distinct. No consumer allowlist can waive a dual producer; only the exact centra
 qualification carrier below permits its existing sole legacy CI to coexist with a
 distinct qualification result.
 
-The supported qualification carrier is the same schema-2 source-owned record with
+The supported qualification carrier is the same schema-3 central participation record with
 `producer:'qualification'`. `qualification_subject` has exactly
 `{kind:'legacy-ci',branch,legacy_workflow:{path,blob,job_id}}`. Repository identity comes
 from the enclosing record and branch must be explicitly enrolled. Path is a normalized

@@ -17,13 +17,11 @@ inputs:
     required: false
     default: main
   manifest-path:
-    description: Root npm manifest path for the root npm profile.
+    description: Optional legacy-root assertion; omit for canonical dependency-set discovery.
     required: false
-    default: package.json
   lock-path:
-    description: Root npm lock path for the root npm profile.
+    description: Optional legacy-root assertion; omit for canonical dependency-set discovery.
     required: false
-    default: package-lock.json
 outputs:
   eligible:
     description: True only after the exact projection pull request and attestation exist.
@@ -46,12 +44,19 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        SECURITY_SOURCE_MERGE_SHA: ${{ inputs.source-merge-sha }}
+        SECURITY_SOURCE_BRANCH: ${{ inputs.source-branch }}
+        SECURITY_TARGET_BRANCH: ${{ inputs.target-branch }}
+        SECURITY_MANIFEST_PATH: ${{ inputs.manifest-path }}
+        SECURITY_LOCK_PATH: ${{ inputs.lock-path }}
       run: |
         set -euo pipefail
+        path_args=()
+        if [[ -n "${SECURITY_MANIFEST_PATH}" ]]; then path_args+=(--manifest-path "${SECURITY_MANIFEST_PATH}"); fi
+        if [[ -n "${SECURITY_LOCK_PATH}" ]]; then path_args+=(--lock-path "${SECURITY_LOCK_PATH}"); fi
         python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" project \
           --repository "${GITHUB_REPOSITORY}" \
-          --source-merge-sha "${{ inputs.source-merge-sha }}" \
-          --source-branch "${{ inputs.source-branch }}" \
-          --target-branch "${{ inputs.target-branch }}" \
-          --manifest-path "${{ inputs.manifest-path }}" \
-          --lock-path "${{ inputs.lock-path }}"
+          --source-merge-sha "${SECURITY_SOURCE_MERGE_SHA}" \
+          --source-branch "${SECURITY_SOURCE_BRANCH}" \
+          --target-branch "${SECURITY_TARGET_BRANCH}" \
+          "${path_args[@]}"

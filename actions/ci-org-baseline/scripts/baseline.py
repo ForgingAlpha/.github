@@ -48,6 +48,7 @@ def load_checking_module(name, path):
 # Existing bounded Git transport and strict JSON decoder; exact same source checkout.
 foundation = load_checking_module("org_baseline_git", "actions/ci-foundation/scripts/foundation_source.py")
 policy = load_checking_module("org_baseline_policy", "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")
+route = load_checking_module("org_proposal_route", "actions/ci-org-baseline/scripts/proposal_route.py")
 require = foundation.require
 git = foundation.git
 
@@ -63,27 +64,20 @@ def positive(value):
     return type(value) is int and value > 0
 
 
+def projection(entry):
+    return {k: entry[k] for k in ("repository", "repository_id", "proposal", "participation")}
+
+
 def catalog(data):
-    if isinstance(data, dict) and type(data.get("schema_version")) is int and data["schema_version"] == 2:
-        return application_catalog(data)
-    require(isinstance(data, dict) and set(data) == {"schema_version", "repositories"}, "invalid central enrollment fields")
-    require(type(data["schema_version"]) is int and data["schema_version"] == 1, "unsupported enrollment schema")
-    entries = data["repositories"]
-    require(isinstance(entries, list) and 0 < len(entries) <= 32, "invalid enrollment inventory")
-    names, ids = set(), set()
-    keys = {"repository", "repository_id", "branches", "profile", "team_id", "minimum_approvals"}
-    for entry in entries:
-        require(isinstance(entry, dict) and set(entry) == keys, "invalid enrollment record fields")
-        name = entry["repository"]
-        require(isinstance(name, str) and re.fullmatch(r"ForgingAlpha/[A-Za-z0-9_.-]+", name) and name != SOURCE_REPOSITORY,
-                "invalid consumer identity or source self-enrollment")
-        require(positive(entry["repository_id"]) and name not in names and entry["repository_id"] not in ids,
-                "ambiguous consumer enrollment")
-        require(entry["profile"] == "documentation-bootstrap", "unsupported profile; no bootstrap fallback")
-        require(entry["branches"] in (["dev"], ["dev", "main"]), "unsupported bootstrap branch selection")
-        require(positive(entry["team_id"]) and positive(entry["minimum_approvals"]), "invalid trusted team policy")
-        names.add(name)
-        ids.add(entry["repository_id"])
+    rows = route.catalog(data)
+    entries = []
+    for row in rows:
+        part = row["participation"]
+        entry = {**row, "branches": part.get("selected_targets", route.targets(row))}
+        if part["mode"] == "central":
+            entry.update({k: v for k, v in part.items() if k not in ("mode", "selected_targets")})
+            validate_profiles([entry])
+        entries.append(entry)
     return entries
 
 
@@ -91,7 +85,9 @@ def select(entries, name, repository_id, branch):
     require(positive(repository_id), "invalid consumer repository ID")
     matches = [e for e in entries if e["repository"] == name and e["repository_id"] == repository_id and branch in e["branches"]]
     require(len(matches) == 1, "unknown or changed consumer identity/profile/base branch")
-    return matches[0]
+    entry = matches[0]
+    require(entry.get("participation", {}).get("mode") == "central", "metadata-only is not central enrollment")
+    return entry
 
 
 def admit_tree(root, expected_head):
@@ -306,7 +302,7 @@ def public_receipt(root, event, entries, source_sha):
 
 
 
-# Schema 2 is a source capability. The live schema-1 catalog is deliberately unchanged.
+# Schema 3 retains complete central profile obligations beneath explicit participation.
 DIGEST = re.compile(r"[a-f0-9]{64}\Z")
 SCRIPT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_-]{0,63}\Z")
 
@@ -329,38 +325,8 @@ def script_ids(value, empty=False):
             all(isinstance(x, str) and SCRIPT_ID.fullmatch(x) for x in value) and len(set(value)) == len(value), "invalid required script IDs")
 
 
-def route_schema(value):
-    shape(value, "declarations transition reconciliation_sha256", "release route")
-    require(isinstance(value["reconciliation_sha256"], str) and DIGEST.fullmatch(value["reconciliation_sha256"]), "missing owner reconciliation")
-    declarations = value["declarations"]
-    require(isinstance(declarations, list) and len(declarations) in (1, 2) and
-            value["transition"] == ("none" if len(declarations) == 1 else "owner-authorized"), "unsupported route transition")
-    seen = set()
-    for row in declarations:
-        shape(row, "kind path start end text", "route declaration")
-        require(row["kind"] in ("direct", "staged"), "unknown declared route")
-        safe_path(row["path"])
-        require(row["path"].endswith((".md", ".markdown")), "route declaration must select existing Markdown")
-        for key in ("start", "end"):
-            require(isinstance(row[key], str) and row[key] and "\n" not in row[key] and "\r" not in row[key] and len(row[key].encode()) <= 256, "invalid route delimiter")
-        require(row["start"] != row["end"] and isinstance(row["text"], str) and 0 < len(row["text"].encode()) <= 8192, "invalid route declaration region")
-        encoded = json.dumps(row, sort_keys=True)
-        require(encoded not in seen, "duplicate route declaration")
-        seen.add(encoded)
-
-
-def application_catalog(data):
-    shape(data, "schema_version repositories", "enrollment")
-    entries = data["repositories"]
-    require(isinstance(entries, list) and 0 < len(entries) <= 32, "invalid enrollment inventory")
-    names, ids = set(), set()
+def validate_profiles(entries):
     for entry in entries:
-        shape(entry, "repository repository_id branches profile producer qualification_subject release_route review_policy foundation components", "schema-2 enrollment")
-        name = entry["repository"]
-        require(isinstance(name, str) and re.fullmatch(r"ForgingAlpha/[A-Za-z0-9_.-]+", name) and name != SOURCE_REPOSITORY, "invalid consumer identity")
-        require(positive(entry["repository_id"]) and name not in names and entry["repository_id"] not in ids, "ambiguous enrollment")
-        names.add(name)
-        ids.add(entry["repository_id"])
         review = entry["review_policy"]
         require(isinstance(review, dict), "missing review policy")
         if review.get("kind") == "codeowners":
@@ -370,14 +336,11 @@ def application_catalog(data):
             require(review["kind"] == "qualified-team" and positive(review["team_id"]) and positive(review["minimum_approvals"]), "invalid team policy")
         if entry["profile"] == "documentation-bootstrap":
             require(entry["producer"] == "bootstrap" and entry["components"] == [] and entry["foundation"] == "not-applicable" and
-                    entry["release_route"] == {"kind": "not-applicable"} and entry["qualification_subject"] == {"kind": "none"} and
-                    review["kind"] == "qualified-team" and entry["branches"] in (["dev"], ["dev", "main"]), "invalid schema-2 bootstrap")
+                    entry["qualification_subject"] == {"kind": "none"} and
+                    review["kind"] == "qualified-team", "invalid complete bootstrap")
             continue
         require(entry["profile"] in ("astro", "rust", "mixed") and entry["producer"] in ("central-product", "qualification"), "unsupported profile/producer")
         require(entry["foundation"] in ("required", "not-applicable"), "unknown foundation applicability")
-        route_schema(entry["release_route"])
-        staged = any(x["kind"] == "staged" for x in entry["release_route"]["declarations"])
-        require(entry["branches"] == ["dev", "staging", "main"] if staged else entry["branches"] in (["dev"], ["dev", "main"]), "invalid declared branch selection")
         qualification = entry["qualification_subject"]
         if entry["producer"] == "central-product":
             require(qualification == {"kind": "none"}, "unexpected qualification subject")
@@ -420,7 +383,7 @@ def application_catalog(data):
 def bootstrap_entry(entry):
     if "review_policy" not in entry:
         return entry
-    return {key: entry[key] for key in ("repository", "repository_id", "branches", "profile")} | {
+    return {key: entry[key] for key in ("repository", "repository_id", "branches", "profile", "proposal", "participation")} | {
         key: entry["review_policy"][key] for key in ("team_id", "minimum_approvals")}
 
 
@@ -580,32 +543,6 @@ def producer_check(root, inventory, entry, branch):
     require(found if legacy else not found, "qualified legacy producer missing")
 
 
-def declared_route(root, entry, base, head):
-    declarations = entry["release_route"]["declarations"]
-    matches = []
-    for revision in (base, head):
-        matching = []
-        for i, row in enumerate(declarations):
-            # Git reads committed data, not consumer-supplied executable/config code.
-            mode = git(root, "ls-tree", revision, "--", row["path"]).decode().split()
-            if not mode or mode[0] != "100644":
-                continue
-            text = git(root, "show", revision + ":" + row["path"], limit=512 * 1024).decode("utf-8")
-            lines = text.splitlines(keepends=True)
-            starts = [n for n, line in enumerate(lines) if line.rstrip("\r\n") == row["start"]]
-            ends = [n for n, line in enumerate(lines) if line.rstrip("\r\n") == row["end"]]
-            require(len(starts) <= 1 and len(ends) <= 1, "ambiguous route delimiters")
-            if not starts or not ends:
-                continue
-            require(starts[0] < ends[0], "invalid route delimiter order")
-            if "".join(lines[starts[0] + 1:ends[0]]) == row["text"]:
-                matching.append(i)
-        require(len(matching) == 1, "route declaration differs from owner reconciliation")
-        matches.append(matching[0])
-    require(matches[0] == matches[1] or (entry["release_route"]["transition"] == "owner-authorized" and matches == [0, 1]), "unsupported route declaration transition")
-    return "staged" if any(declarations[i]["kind"] == "staged" for i in matches) else "direct"
-
-
 def application_integrity(root, inventory, entry, runtime_data=None, foundation_data=None):
     pair = any(os.path.lexists(root / name) for name in ("foundation.lock", ".foundation", "tools/container-foundation"))
     if entry["foundation"] == "required":
@@ -628,22 +565,26 @@ def application_integrity(root, inventory, entry, runtime_data=None, foundation_
     return {"tuple": tuple_id, "tools": {key: value["version"] for key, value in tools.items()}}
 
 
-def app_plan(root, event, entry, source_sha, runtime_data=None, foundation_data=None):
+def app_plan(root, event, entry, source_sha, runtime_data=None, foundation_data=None, admission_record=None):
     pr = event["pull_request"]
     base, head, branch = pr["base"]["sha"], pr["head"]["sha"], pr["base"]["ref"]
     inventory = clean_inventory(root, head)
     manifests = classify(root, inventory, entry)
     producer_check(root, inventory, entry, branch)
-    route = declared_route(root, entry, base, head)
+    require(admission_record is not None, "missing admitted proof")
+    row = projection(entry)
+    route.local_correspondence(root, row, [base, head], admission_record["source_correspondence"])
+    route.validate_admission(admission_record, event, row, source_sha, git(root, "rev-parse", "HEAD^{tree}").decode().strip())
     runtime = application_integrity(root, inventory, entry, runtime_data, foundation_data)
-    return {"schema_version": 2, "consumer": entry["repository"], "repository_id": entry["repository_id"], "pr": event["number"],
+    return {"schema_version": 4, "consumer": entry["repository"], "repository_id": entry["repository_id"], "pr": event["number"],
             "branch": branch, "base": base, "head": head, "tree": git(root, "rev-parse", "HEAD^{tree}").decode().strip(),
             "source_sha": source_sha, "enrollment_sha256": hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-            "profile": entry["profile"], "producer": entry["producer"], "route": route, "runtime": runtime,
+            "profile": entry["profile"], "producer": entry["producer"], "admission": admission_record, "admission_sha256": route.digest(admission_record), "runtime": runtime,
+            "proposal": route.policy_record(row, source_sha),
             "components": entry["components"], "manifests": manifests,
             "review_policy": entry["review_policy"], "foundation": entry["foundation"],
             "checking_fingerprints": {name: hashlib.sha256((SOURCE / name).read_bytes()).hexdigest() for name in
-                                      ("actions/ci-org-baseline/enrollment.json", "runtime-profiles/catalog.json",
+                                      (*route.CHECKING_FILES, "runtime-profiles/catalog.json",
                                        "actions/ci-foundation/approved.json", "actions/ci-foundation/scripts/foundation_source.py")},
             "required_jobs": ["baseline", "static", "tests"]}
 
@@ -729,12 +670,9 @@ def application_common(root, event, entry, api, plan):
         checked(source_script("actions/ci-alphaapps-policy/scripts/validate_codeowners_contract.py"), root, safe)
     else:
         team_configuration(api.rules(entry["repository"], plan["branch"]), entry["review_policy"])
-    # This is a trusted metadata subprocess, not consumer execution. Token is scoped to this guard alone.
-    guard_env = clean_env()
-    guard_env.update(GH_TOKEN=os.environ.get("GITHUB_TOKEN", ""), GITHUB_ACTION_PATH=str(SOURCE / "actions/ci-merge-flow"),
-                     DECLARED_ROUTE=plan["route"], HEAD_REF=event["pull_request"]["head"]["ref"], HEAD_REPOSITORY=entry["repository"],
-                     BASE_REF=plan["branch"], GITHUB_REPOSITORY=entry["repository"], PR_NUMBER=str(event["number"]))
-    checked(["bash", str(SOURCE / "actions/ci-merge-flow/scripts/check_merge_flow.sh"), "declared-route"], root, guard_env)
+    # Admission was proven before plan construction. Never give a nested producer
+    # this step's GITHUB_OUTPUT; its typed record is already part of the plan.
+    route.validate_admission(plan["admission"], event, projection(entry), plan["source_sha"], plan["tree"])
     inventory = clean_inventory(root, plan["head"])
     texts, total = {}, 0
     for name in sorted(inventory):
@@ -771,9 +709,13 @@ def application_common(root, event, entry, api, plan):
             checker.validate_action(Path(name), errors, root=root, allowlists=allowlists)
         require(not errors, "additional tracked Action safety validation failed")
     checked(source_script("actions/ci-dependabot-coverage/scripts/check_dependabot_coverage.py", "--root", root), root)
+    update_env = clean_env()
+    update_env.update(GH_TOKEN=os.environ.get("GITHUB_TOKEN", ""), GITHUB_EVENT_NAME="pull_request",
+                      GITHUB_REPOSITORY=entry["repository"], GITHUB_REPOSITORY_ID=str(entry["repository_id"]))
+    update_env.pop("GITHUB_OUTPUT", None)
     checked(source_script("actions/ci-update-ownership/scripts/validate_update_ownership.py", "--repository-root", root,
-                          "--default-branch", event["repository"]["default_branch"], "--policy", ".github/update-policy.json",
-                          "--renovate", "renovate.json", "--dependabot", ".github/dependabot.yml"), root)
+                          "--policy", ".github/update-policy.json",
+                          "--renovate", "renovate.json", "--dependabot", ".github/dependabot.yml"), root, update_env)
     checked(source_script("actions/ci-foundation/scripts/foundation_source.py", "update-owner", "--root", root), root)
 
 
@@ -924,16 +866,30 @@ def current_checks(api, event, entry):
         team_configuration(api.rules(entry["repository"], branch), review)
 
 
-def make_plan(root, event, entry, source_sha):
+def make_plan(root, event, entry, source_sha, admission_record=None):
+    require(admission_record is not None, "missing admitted proof")
     if entry["profile"] != "documentation-bootstrap":
-        return app_plan(root, event, entry, source_sha)
+        return app_plan(root, event, entry, source_sha, admission_record=admission_record)
     admit_tree(root, event["pull_request"]["head"]["sha"])
-    return {**public_receipt(root, event, [bootstrap_entry(entry)], source_sha), "producer": "bootstrap", "components": [], "required_jobs": ["baseline"]}
+    tree = git(root, "rev-parse", "HEAD^{tree}").decode().strip()
+    route.local_correspondence(root, projection(entry), [event["pull_request"][s]["sha"] for s in ("base", "head")], admission_record["source_correspondence"])
+    route.validate_admission(admission_record, event, projection(entry), source_sha, tree)
+    return {**public_receipt(root, event, [entry], source_sha), "schema_version": 4,
+            "producer": "bootstrap", "components": [], "required_jobs": ["baseline"],
+            "admission": admission_record, "admission_sha256": route.digest(admission_record),
+            "proposal": route.policy_record(projection(entry), source_sha),
+            "enrollment_sha256": route.digest(entry), "checking_fingerprints": route.fingerprint()}
 
 
 def staged_main(args, root, event, entries, source_sha):
     entry = event_subject(root, event, entries)
-    plan = make_plan(root, event, entry, source_sha)
+    if args.stage in ("admit", "finalize"):
+        admission_record = route.admission(route.security.GhApi(), event, projection(entry), source_sha)
+    else:
+        frozen = decode(os.environ.get("BASELINE_PLAN", "").encode())
+        require(isinstance(frozen, dict) and frozen.get("schema_version") == 4, "unsupported admitted plan")
+        admission_record = frozen.get("admission")
+    plan = make_plan(root, event, entry, source_sha, admission_record)
     if args.stage in ("admit", "finalize"):
         api = Api(os.environ.get("GITHUB_TOKEN"))
         current_checks(api, event, entry)
@@ -943,16 +899,19 @@ def staged_main(args, root, event, entries, source_sha):
         else:
             application_common(root, event, entry, api, plan)
         current_checks(api, event, entry)
-        require(make_plan(root, event, entry, source_sha) == plan, "admission inputs changed")
+        require(make_plan(root, event, entry, source_sha, route.admission(route.security.GhApi(), event, projection(entry), source_sha)) == plan, "admission inputs changed")
         emit_outputs({"plan": plan, "profile": entry["profile"], "producer": plan["producer"],
                       "result_name": "Organization Profile Qualification" if plan["producer"] == "qualification" else "CI",
                       "mise_version": literal_values()["mise_version"]})
     elif args.stage == "finalize":
         aggregate(plan, decode(os.environ.get("BASELINE_NEEDS", "").encode()))
         current_checks(api, event, entry)
-        require(make_plan(root, event, entry, source_sha) == plan, "final inputs changed")
-        print(json.dumps(public_receipt(root, event, [bootstrap_entry(entry)], source_sha) if entry["profile"] == "documentation-bootstrap" else
-                         {"schema_version": 2, "plan_sha256": plan_digest(plan), "consumer": plan["consumer"], "head": plan["head"], "base": plan["base"], "source_sha": source_sha, "producer": plan["producer"], "checking_fingerprints": plan["checking_fingerprints"],
+        require(make_plan(root, event, entry, source_sha, route.admission(route.security.GhApi(), event, projection(entry), source_sha)) == plan, "final inputs changed")
+        print(json.dumps({"schema_version": 4, "plan_sha256": plan_digest(plan), "consumer": plan["consumer"], "head": plan["head"], "base": plan["base"], "source_sha": source_sha, "producer": plan["producer"], "checking_fingerprints": plan["checking_fingerprints"],
+                          "repository_id": plan["repository_id"], "pull_request_number": plan["admission"]["pull_request_number"],
+                          "base_ref": plan["admission"]["base_ref"], "head_ref": plan["admission"]["head_ref"], "head_tree_sha": plan["tree"],
+                          "policy_evidence_sha256": plan["admission"]["policy_evidence_sha256"],
+                          "admission_kind": plan["admission"]["kind"], "admission_sha256": plan["admission_sha256"],
                           "required_results": {job: "success" for job in plan["required_jobs"]}, "result": "success"}))
     else:
         expected = decode(os.environ.get("BASELINE_PLAN", "").encode())
@@ -979,20 +938,14 @@ def main():
     event = decode(event_path.read_bytes())
     require(isinstance(event, dict), "invalid event evidence")
     root = args.consumer_root.absolute()
-    if args.stage:
-        staged_main(args, root, event, entries, source_sha)
-        return
-    public_output = json.dumps(public_receipt(root, event, entries, source_sha))
-    api = Api(os.environ.get("GITHUB_TOKEN"))
-    run(root, event, entries, api)
-    # Discard the credential-bearing operation's return value. The logged receipt
-    # was frozen before authentication, and is emitted only after validation.
-    print(public_output)
+    require(args.stage is not None, "an explicit schema-3 stage is required")
+    staged_main(args, root, event, entries, source_sha)
+
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as error:
+    except (ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.SubprocessError, route.security.PolicyError) as error:
         print(f"WHAT: Organization baseline refused: {error}\nWHY: Required profile, identity and complete-input obligations must hold; no lighter fallback is permitted.\nHOW: Repair the input/evidence or request an explicit reviewed application-profile transition; do not bypass this check.", file=sys.stderr)
         raise SystemExit(1)

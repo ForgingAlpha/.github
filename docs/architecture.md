@@ -666,14 +666,19 @@ exact check. It also searches all pull-request history for the deterministic
 same-repository head; a closed, merged, wrong-base, or duplicate record is a
 fail-closed tombstone rather than permission to create a replacement.
 
-Projection is serialized by repository and lockfile. There may be at most one
-open production projection touching the root npm lock; a second candidate or
-any other concurrent lock proposal fails closed rather than batching or
+Projection writes use non-cancelling caller concurrency scoped by repository
+and target branch. A qualified single-lock writer may additionally scope its
+group by lock path. Every writer that can overlap a multi-lock projection uses
+the common repository-and-target group; keys based only on the selected lock
+set do not exclude unequal overlapping sets. Caller transitions account for
+existing, queued, and running writers before the new scope is used. There may
+be at most one open production projection touching any affected lock; a second
+candidate or any other concurrent lock proposal fails closed rather than batching or
 choosing an order. GitHub caps pull-request file enumeration at 3,000 entries,
 so the proof compares the detailed pull request's changed-file count with the
 complete paginated result and rejects the cap, a mismatch, or duplicates. The
-composite action cannot supply workflow concurrency itself: enrollment must add
-a non-cancelling caller group keyed by repository, target branch, and lock path.
+composite action cannot supply workflow concurrency itself: enrollment must
+install and qualify the caller groups and their overlap coverage.
 
 Normal pull-request CI and CodeQL then execute for the exact projected head in
 the current `main` context with no privileged credential. GitHub also exposes a

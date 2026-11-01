@@ -1,5 +1,5 @@
 name: Exact Security Source Observation
-description: Read-only observation of a current main push using existing pre-merge Dependabot classification and human merge proof.
+description: Read-only observation of a current main push using existing root-v2 or set-v3 pre-merge Dependabot classification and human merge proof.
 
 inputs:
   github-token:

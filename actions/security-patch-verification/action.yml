@@ -27,13 +27,11 @@ inputs:
     required: false
     default: main
   manifest-path:
-    description: Root npm manifest path for the root npm profile.
+    description: Optional legacy-root assertion; omit for canonical dependency-set discovery.
     required: false
-    default: package.json
   lock-path:
-    description: Root npm lock path for the root npm profile.
+    description: Optional legacy-root assertion; omit for canonical dependency-set discovery.
     required: false
-    default: package-lock.json
   operation:
     description: Verify before human merge, or verify the observed merged pull request after a main push.
     required: false
@@ -74,20 +72,30 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.proof-token }}
+        SECURITY_PULL_REQUEST_NUMBER: ${{ inputs.pull-request-number }}
+        SECURITY_SOURCE_BRANCH: ${{ inputs.source-branch }}
+        SECURITY_TARGET_BRANCH: ${{ inputs.target-branch }}
+        SECURITY_MANIFEST_PATH: ${{ inputs.manifest-path }}
+        SECURITY_LOCK_PATH: ${{ inputs.lock-path }}
+        SECURITY_CI_APP_ID: ${{ inputs.ci-app-id }}
+        SECURITY_CODEQL_APP_ID: ${{ inputs.codeql-app-id }}
+        SECURITY_CODEQL_CHECK_NAME: ${{ inputs.codeql-check-name }}
       run: |
         set -euo pipefail
+        path_args=()
+        if [[ -n "${SECURITY_MANIFEST_PATH}" ]]; then path_args+=(--manifest-path "${SECURITY_MANIFEST_PATH}"); fi
+        if [[ -n "${SECURITY_LOCK_PATH}" ]]; then path_args+=(--lock-path "${SECURITY_LOCK_PATH}"); fi
         python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-projection \
           --repository "${GITHUB_REPOSITORY}" \
-          --pull-request "${{ inputs.pull-request-number }}" \
-          --source-branch "${{ inputs.source-branch }}" \
-          --target-branch "${{ inputs.target-branch }}" \
-          --manifest-path "${{ inputs.manifest-path }}" \
-          --lock-path "${{ inputs.lock-path }}" \
+          --pull-request "${SECURITY_PULL_REQUEST_NUMBER}" \
+          --source-branch "${SECURITY_SOURCE_BRANCH}" \
+          --target-branch "${SECURITY_TARGET_BRANCH}" \
+          "${path_args[@]}" \
           --require-ready true \
           --verify-checks true \
-          --ci-app-id "${{ inputs.ci-app-id }}" \
-          --codeql-app-id "${{ inputs.codeql-app-id }}" \
-          --codeql-check-name "${{ inputs.codeql-check-name }}"
+          --ci-app-id "${SECURITY_CI_APP_ID}" \
+          --codeql-app-id "${SECURITY_CODEQL_APP_ID}" \
+          --codeql-check-name "${SECURITY_CODEQL_CHECK_NAME}"
 
     - name: Verify observed human merge against its attested projection
       id: post
@@ -95,10 +103,18 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.proof-token }}
+        SECURITY_TARGET_BRANCH: ${{ inputs.target-branch }}
+        SECURITY_PULL_REQUEST_NUMBER: ${{ inputs.pull-request-number }}
+        SECURITY_MERGE_SHA: ${{ inputs.merge-sha }}
+        SECURITY_MANIFEST_PATH: ${{ inputs.manifest-path }}
+        SECURITY_LOCK_PATH: ${{ inputs.lock-path }}
       run: |
         set -euo pipefail
+        path_args=()
+        if [[ -n "${SECURITY_MANIFEST_PATH}" ]]; then path_args+=(--manifest-path "${SECURITY_MANIFEST_PATH}"); fi
+        if [[ -n "${SECURITY_LOCK_PATH}" ]]; then path_args+=(--lock-path "${SECURITY_LOCK_PATH}"); fi
         python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-post-merge \
           --repository "${GITHUB_REPOSITORY}" \
-          --target-branch "${{ inputs.target-branch }}" \
-          --pull-request "${{ inputs.pull-request-number }}" \
-          --merge-sha "${{ inputs.merge-sha }}"
+          --target-branch "${SECURITY_TARGET_BRANCH}" \
+          --pull-request "${SECURITY_PULL_REQUEST_NUMBER}" \
+          --merge-sha "${SECURITY_MERGE_SHA}" "${path_args[@]}"

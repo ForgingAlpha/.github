@@ -43,6 +43,22 @@ settings retain their own authority.
 - Confirm dependency graph, dependency review and the required Code Security
   entitlement in private consumers. Qualify actual PR dependency output before
   requiring the gate. Unknown records and API failures refuse without tag fallback.
+- Assess Code Security and Secret Protection base licenses separately by eligible
+  unique active committers across the paying organization or enterprise. A
+  committer is active when one of their commits was pushed within the last 90 days,
+  regardless of author date; GitHub App bots are excluded. Additional repositories
+  containing only already-counted people add no base licenses for that product;
+  additional distinct active people can. It follows that a repository with no
+  qualifying pushes contributes no active committers, not that its bill is zero.
+  [GitHub license counting](https://docs.github.com/en/billing/concepts/product-billing/github-advanced-security)
+- Before expanding an existing shared security configuration, check incremental
+  enrollment estimates and the actual account plan, commitments and other usage
+  charges; do not promise an unchanged bill. Treat failed `Not purchased`
+  attachment as an unresolved entitlement, enterprise-policy and attachment
+  reconciliation; verify the cause, successful attachment, effective features and
+  scans. A display of unlimited licenses proves neither no cost nor current
+  entitlement and authorizes no purchase, new configuration or broader grants.
+  [GitHub enrollment estimate](https://docs.github.com/en/billing/how-tos/products/buy-advanced-security)
 - Recover shared source with a checked corrective or revert PR, exact-head human
   approval and human merge into main. Retain before/after commits, affected runs
   and outcomes. A whole-policy revert can restore withdrawn catalog approvals;
@@ -81,8 +97,10 @@ settings retain their own authority.
   writing. Serialize by repository and source head without cancellation.
   Require classification before the human source merge; an identical retry
   preserves its completion time and cannot manufacture pre-merge evidence.
-- Require immutable source-v2 branch proof throughout classifiers, projectors and
-  verifiers, including projection post-merge observation. Inventory outstanding
+- Require exact legacy root-v2 or declared-set-v3 branch proof throughout
+  classifiers, projectors and verifiers, including projection post-merge observation.
+  Conserve complete profile/pairs through admission schema 2 and plan schema 4.
+  Inventory outstanding
   source-v1 classifications/projections and mixed Action/script references before
   release. Retain historical records; do not rewrite them, infer a historical
   branch from current metadata, or classify an already merged head. Resolve each
@@ -98,9 +116,14 @@ settings retain their own authority.
 These additional steps apply only when the classified source merges into dev.
 
 - Enroll `security-patch-projection` with only the nonpersistent-branch, check and
-  draft-PR writes it needs. Serialize by repository, target and lock path.
-  Verify exact source preimages, approved manifest/lock paths, complete file
-  enumeration, fixed-App attestation and sole-lock ownership.
+  draft-PR writes it needs. Every writer that can overlap a set projection uses
+  non-cancelling repository-and-target serialization. Reconcile existing, queued
+  and running writers before activation; a set hash cannot exclude overlapping sets.
+  Qualified root-only writers may retain their lock-specific group only where
+  no set-capable writer overlaps. Verify every selected manifest/lock preimage,
+  complete actual file delta, fixed-App attestation, full tree conservation and
+  absence of any other open proposal touching any selected lock.
+  Omit path inputs for canonical discovery; explicit root literals constrain root proof.
 - Exercise lost-response retries for ref, check and draft-PR creation. Only
   exact existing state may be adopted. Wrong or missing objects, moved bases,
   duplicate/conflicting checks, tombstoned PRs and competing lock proposals
@@ -157,6 +180,12 @@ These additional steps apply only when the classified source merges into dev.
   does not prove daily execution; verify actual hosted runs.
 - Keep Dependabot security remediation enabled with normal-update capacity zero
   after Renovate enrollment. Verify every dependency surface has one owner.
+- Security admission supports only the existing root npm profile and exact
+  declared npm/Cargo pairs. Dependabot GitHub Actions and mix updates refuse
+  through the guard, including `.github`'s own GitHub Actions updates. Existing
+  configuration does not establish support. Record the affected caller and
+  unresolved coverage with its owner before activation; do not claim complete
+  security coverage from the admitted profiles or change normal-update ownership.
 - Runtime profile enrollment validates the exact central assignment and locked
   consumer projection. Do not claim automatic runtime projection writes until
   the constrained resolver, writer and rollout gates are qualified. Record
@@ -261,7 +290,7 @@ interfaces. Source qualification alone does not authorize a hosted change.
 
 1. Retain complete consumer tree/base, product-owned required static/test obligations
    (including an attributable explicit no-tests decision when applicable), actual
-   runtime assignment, foundation scope and complete current release-route declaration.
+   runtime assignment, foundation scope and complete reconciled proposal-source closure.
    Confirm all tracked Markdown meets the central rules and byte limits; retain any
    additional product rules as selected static checks. Unsupported workspaces, missing
    inputs or unknown scope block that consumer rather than select bootstrap.
