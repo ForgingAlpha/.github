@@ -683,3 +683,35 @@ Unknown or conflicting class/route evidence fails; missing staging does not.
 An invalid security claim does not acquire a verified classification or projection
 through ordinary admission. Retiring legacy route modes or callers preserves every
 still-applicable security, event, result and product-check obligation under REQ-025.
+
+### REQ-028 - Automatic Consumer Compatibility
+
+The shared-CI owner SHALL own exact-candidate consumer qualification and its
+derived result. Each consumer SHALL retain its product requirements, commands and
+tests. An independently admitted reporting App MAY publish a distinct
+`Consumer compatibility` check on the exact shared head. Existing CI, CodeQL,
+human review and human merge requirements remain mandatory for everyone.
+
+Private execution SHALL require a human-approved standing qualification policy,
+current scoped authority, an effective exact-head human approval and the
+reviewer's current access to the private consumer. The review is a prerequisite;
+it does not create an access grant. Candidate jobs SHALL receive only their
+existing read permissions and no controller credential. Write-capable orchestration
+SHALL execute adopted trusted source and treat candidate files and results as data.
+
+Plans SHALL bind the candidate, consumer input and checking source separately.
+Successful native qualification requires the selected workflows' latest complete
+results, required steps and post-job hooks on that exact fixture. Missing, pending,
+failed, ambiguous or known-stale evidence SHALL NOT satisfy the gate. The reporter
+SHALL recheck live inputs and approval before success, invalidate known-stale
+results before replacement work, and reconcile unknown writes before retrying.
+Unchanged valid evidence SHALL be reused without starting another qualification.
+
+Private source, commands, logs and artifact payloads SHALL stay in the consumer's
+custody. Public reporting SHALL disclose only the shared head, opaque plan,
+bounded outcome and access-controlled detail URL. Disposable fixtures SHALL never
+be merged. Source adoption alone grants no credentials, settings or execution
+authority. Required-check enforcement SHALL follow native qualification of the
+exact issuer, permissions, protection and ordinary operation. The owner SHALL
+disclose observation delays and outages; no cross-repository atomic freshness or
+zero-cost guarantee is implied.

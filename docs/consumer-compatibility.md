@@ -47,3 +47,73 @@ A successful fixture proves compatibility only for its exact recorded inputs and
 observed run. Automatic triggering, stale-result reconciliation and aggregation into
 shared CI require a separately qualified trusted integration. This generator alone
 does not provide those effects or merge authority.
+
+## Trusted controller
+
+`scripts/consumer_compatibility.py` and the reusable
+`.github/workflows/consumer-compatibility-controller.yml` prepare the Foundation
+connection. The workflow has only a reusable-call entrypoint. Its private caller,
+standing authority, environment, two App installations and mandatory result must
+be set up and qualified separately before use. This source does not activate a
+schedule or enroll additional repositories.
+
+The controller verifies existing exact-head human review, generates the original
+adapter's fixture, and observes both native workflows. It publishes one distinct
+`Consumer compatibility` result from the reporting App. It never replaces the
+existing `CI` check. Current passing plans reuse their existing runs; unknown
+publication outcomes are reconciled by exact native identities before another
+write. Obsolete fixtures are closed only after full custody checks and are never
+merged or force-pushed. Failed product tests are not automatically rerun.
+
+The original consumer source, proposed Action source and adopted checking source
+are different plan inputs. A rebase changes the plan even if file trees are equal.
+The current source permits at most two new fixture PRs per invocation; each starts
+normal CI plus compatibility CI. This is not an approved daily or dollar budget.
+Any unaffected-change exemption, daily allowance and private scheduling policy
+must have their own verified source and acceptance before rollout.
+
+## One-time setup and qualification
+
+The human operator must approve and retain the exact Resource Enrollment and
+Cross-Domain Grant, separate App installations and immutable dependency selection.
+The protected environment must exist and be restricted to adopted Foundation
+`dev` before a caller can invoke this workflow. It has no recurring reviewer gate.
+Both keys and the protected authorization projection belong only to that private
+environment; never put them in fixture source or candidate jobs.
+
+| Environment item | Meaning |
+| --- | --- |
+| `CC_REPORTING_APP_ID` | Public check writer installed only on `.github`. |
+| `CC_REPORTING_APP_PRIVATE_KEY` | Private environment secret for that App. |
+| `CC_FIXTURE_APP_ID` | Fixture writer installed only on Foundation. |
+| `CC_FIXTURE_APP_PRIVATE_KEY` | Separate private environment secret. |
+| `CC_AUTHORIZATION` | Protected, current projection of the human-owned records. |
+
+`CC_AUTHORIZATION` has schema 1; exact resource IDs; `reporting_app_id`,
+`fixture_app_id`, `fixture_bot_id`; grant/enrollment IDs and SHA256s; principal,
+trust domain, purpose, allowed actions, conditions and decision evidence; and
+UTC `not_before`/`expires_at`. The parser accepts only its fixed flow and closed
+fields. It provides no default grant. The protected publisher owns currentness,
+renewal and revocation; remove the projection and revoke the installation when
+authority is withdrawn.
+
+The proposed token Action is immutable-pinned with post-job revocation enabled.
+The existing PyYAML parser is pinned by version and wheel SHA256 in
+`scripts/requirements.txt`, with no dependency resolution or source builds. Its
+controller environment is isolated from the runner's other Python packages.
+Renovate owns normal updates and Dependabot retains security coverage. Runtime
+and dependency selection must be qualified before this uninvoked proposal is used.
+
+Before enforcement, observe actual App-created PR execution, successful reporting,
+failure/missing/pending/wrong-issuer blocking, stale-input invalidation, interrupted
+write recovery, denied callers and environment restrictions. Inspect every
+applicable protection layer and bypass actor; unavailable readback is not proof
+of protection. Add the exact reporting App as the required issuer while preserving
+all existing checks and human-only merges. Measure native runner usage and agree
+the operating allowance before activation.
+
+REQ-008 prohibits testing proposed controller code with write credentials before
+source adoption. Local synthetic tests and separate provider probes do not prove
+that privileged end-to-end path. Resolve any required premerge-evidence conflict
+through its governing owner; neither a pilot label nor a human review silently
+waives that requirement. Never merge source merely to obtain missing proof.
