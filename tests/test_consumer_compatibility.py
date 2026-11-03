@@ -167,6 +167,22 @@ class ProjectionTests(unittest.TestCase):
             with self.subTest(mutation=mutate), self.assertRaises(ValueError):
                 generate(value)
 
+    def test_checkout_scalar_types_refuse_boolean_integer_equivalence(self):
+        for key, invalid in (
+            ("fetch-depth", (False, True, "0", None)),
+            ("persist-credentials", (0, 1, "false", None)),
+        ):
+            for value in invalid:
+                source = synthetic()
+                source["jobs"]["CI"]["steps"][1]["with"][key] = value
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    generate(source)
+        steps = adapter.parse(generate())["jobs"]["compatibility"]["steps"]
+        checkout = next(step for step in steps if step.get("id") == "checkout")["with"]
+        self.assertIs(type(checkout["fetch-depth"]), int)
+        self.assertEqual(checkout["fetch-depth"], 0)
+        self.assertIs(checkout["persist-credentials"], False)
+
     def test_ambiguous_yaml_and_identity_injection_refuse(self):
         for text in ("x: 1\nx: 2\n", "x: &shared [1]\ny: *shared\n", "x: !!python/object {}", "x: 2026-01-01", "---\nx: 1\n---\ny: 2\n", "[" * 40 + "]" * 40, "x" * 131073):
             with self.subTest(text=text[:30]), self.assertRaises(ValueError):

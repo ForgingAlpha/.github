@@ -130,7 +130,13 @@ def workflow(source):
             require(re.search(r"uses: " + re.escape(step["uses"]) + r"\s+# [^\n]+", source), "missing reviewed external release comment")
             inputs = step.get("with")
             if key == "checkout":
-                require(inputs == {"ref": "${{ github.event.pull_request.head.sha }}", "fetch-depth": 0, "persist-credentials": False}, "changed exact consumer checkout")
+                require(
+                    isinstance(inputs, dict) and set(inputs) == {"ref", "fetch-depth", "persist-credentials"}
+                    and inputs["ref"] == "${{ github.event.pull_request.head.sha }}"
+                    and type(inputs["fetch-depth"]) is int and inputs["fetch-depth"] == 0
+                    and inputs["persist-credentials"] is False,
+                    "changed exact consumer checkout",
+                )
             else:
                 require(isinstance(inputs, dict) and set(inputs) == {"name", "path", "if-no-files-found", "retention-days"}, "changed upload inputs")
                 require(inputs["if-no-files-found"] == "error" and type(inputs["retention-days"]) is int and inputs["retention-days"] == 14, "changed evidence retention")
