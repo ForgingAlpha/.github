@@ -29,6 +29,7 @@ ORIGINAL = (
 CUSTODY = (
     "bootstrap_path", "bootstrap_checkout", "bootstrap_verify", "candidate_path",
     "candidate_checkout", "candidate_verify", "candidate_cleanup",
+    "post_path", "post_checkout", "post_verify",
 )
 CANDIDATE_PATH = "shared-ci-candidate"
 TITLE = "Shared candidate compatibility"
@@ -198,15 +199,15 @@ def generate(source, commit, tree, consumer_commit, consumer_tree, branch):
     def run_step(key, body, guard):
         return {"name": key.replace("_", " ").capitalize(), "id": key, "if": guard, "shell": "bash", "run": body}
 
-    def acquire(prefix, predecessor=None):
+    def acquire(prefix, predecessor=None, *, always=False):
         free = prefix + "_path"
         fetch = prefix + "_checkout"
         checked = prefix + "_verify"
         return [
-            run_step(free, f"set -euo pipefail\ntest ! -e '{CANDIDATE_PATH}' && test ! -L '{CANDIDATE_PATH}'\n", condition(*([predecessor] if predecessor else []))),
-            {"name": "Acquire exact shared candidate", "id": fetch, "if": condition(free), "uses": checkout,
+            run_step(free, f"set -euo pipefail\ntest ! -e '{CANDIDATE_PATH}' && test ! -L '{CANDIDATE_PATH}'\n", condition(*([predecessor] if predecessor else []), always=always)),
+            {"name": "Acquire exact shared candidate", "id": fetch, "if": condition(free, always=always), "uses": checkout,
              "with": {"repository": "ForgingAlpha/.github", "ref": commit, "path": CANDIDATE_PATH, "fetch-depth": 1, "persist-credentials": False}},
-            run_step(checked, source_command("prepare"), condition(fetch)),
+            run_step(checked, source_command("prepare"), condition(fetch, always=always)),
         ]
 
     def source_command(operation):
@@ -222,6 +223,10 @@ def generate(source, commit, tree, consumer_commit, consumer_tree, branch):
         if key == "unit":
             emitted.append(run_step("candidate_cleanup", source_command("cleanup"), condition("candidate_verify")))
             step["if"] = conjoin(step["if"], "candidate_cleanup")
+        if key == "outcomes":
+            # The runner reloads local composite manifests for nested Action post
+            # hooks. Restore them after clean-tree product checks, even on failure.
+            emitted.extend(acquire("post", "candidate_cleanup", always=True))
         emitted.append(step)
         if key == "checkout":
             emitted.extend(acquire("candidate", "checkout"))

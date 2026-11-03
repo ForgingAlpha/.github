@@ -35,7 +35,10 @@ The tool itself performs no network operations, publication or credential setup.
 
 Each acquisition verifies the shared commit, tree, actual files and repository.
 The candidate is reacquired after the consumer's root checkout and removed before
-product tests require a clean tree. Empty read-only Python cache directories prevent
+product tests require a clean tree. After those tests, the same candidate is restored
+and verified so GitHub can load composite Action files for its post-job hooks.
+The overall native job must succeed, including those hooks; the final evaluator
+alone is insufficient evidence. Empty read-only Python cache directories prevent
 isolated Python imports from changing the candidate. This is source hygiene, not
 an execution sandbox. Candidate jobs must remain read-only and receive no
 orchestration credentials.

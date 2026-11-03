@@ -97,7 +97,7 @@ class ProjectionTests(unittest.TestCase):
                     if key not in ("if", "uses"):
                         self.assertEqual(actual[key], value)
                 self.assertIn(expected["if"][4:-3], actual["if"])
-        self.assertEqual(text.count("# synthetic immutable fixture"), 4)
+        self.assertEqual(text.count("# synthetic immutable fixture"), 5)
         shared = [s for s in originals if s["id"] in SHARED]
         self.assertEqual(len(shared), 7)
         self.assertTrue(all(s["uses"].startswith("./shared-ci-candidate/actions/") for s in shared))
@@ -109,7 +109,7 @@ class ProjectionTests(unittest.TestCase):
         steps = adapter.parse(generate())["jobs"]["compatibility"]["steps"]
         evaluator = steps[-1]["run"]
         required = [s["id"] for s in steps if "id" in s]
-        self.assertEqual(len(required), 23)
+        self.assertEqual(len(required), 26)
         good = {key: {"outcome": "success", "conclusion": "success"} for key in required}
         def execute(value):
             return subprocess.run(["bash", "-c", evaluator], env={**os.environ, "STEP_RESULTS": json.dumps(value)}, text=True, capture_output=True)
@@ -135,10 +135,15 @@ class ProjectionTests(unittest.TestCase):
         self.assertLess(ids.index("candidate_verify"), ids.index("policy"))
         self.assertLess(ids.index("coverage"), ids.index("candidate_cleanup"))
         self.assertLess(ids.index("candidate_cleanup"), ids.index("unit"))
+        self.assertLess(ids.index("layout"), ids.index("post_path"))
+        self.assertLess(ids.index("post_verify"), ids.index("outcomes"))
         by_id = {s.get("id"): s for s in steps}
         self.assertIn("bootstrap_verify.outcome == 'success'", by_id["merge_flow"]["if"])
         self.assertIn("candidate_cleanup.outcome == 'success'", by_id["unit"]["if"])
-        for key in ("bootstrap_checkout", "candidate_checkout"):
+        self.assertEqual(by_id["post_path"]["if"], "${{ always() && steps.candidate_cleanup.outcome == 'success' }}")
+        self.assertEqual(by_id["post_checkout"]["if"], "${{ always() && steps.post_path.outcome == 'success' }}")
+        self.assertEqual(by_id["post_verify"]["if"], "${{ always() && steps.post_checkout.outcome == 'success' }}")
+        for key in ("bootstrap_checkout", "candidate_checkout", "post_checkout"):
             self.assertEqual(by_id[key]["with"]["ref"], "a" * 40)
             self.assertFalse(by_id[key]["with"]["persist-credentials"])
 
@@ -235,6 +240,26 @@ class SourceCustodyTests(unittest.TestCase):
         self.assertEqual(git(self.root, "status", "--porcelain"), "")
         with self.assertRaisesRegex(ValueError, "content differs"):
             self.operation("prepare")
+
+    def test_source_returns_for_post_hooks_after_clean_product_checks(self):
+        manifest = self.root / "actions/ci-markdown/action.yml"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text("name: synthetic local composite\n")
+        git(self.root, "add", "--", "actions/ci-markdown/action.yml")
+        git(self.root, "-c", "user.name=Synthetic Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "synthetic post-hook manifest")
+        self.commit, self.tree = git(self.root, "rev-parse", "HEAD"), git(self.root, "rev-parse", "HEAD^{tree}")
+        snapshot = Path(self.temporary.name) / "candidate-source"
+        shutil.copytree(self.root, snapshot)
+        self.operation("prepare")
+        self.operation("cleanup")
+        # This is the observed native post-hook failure, before restoration.
+        with self.assertRaises(FileNotFoundError):
+            manifest.read_text()
+        self.assertEqual(git(self.workspace, "status", "--porcelain", "--ignored"), "")
+        shutil.copytree(snapshot, self.root)
+        self.operation("prepare")
+        self.assertEqual(manifest.read_text(), "name: synthetic local composite\n")
+        self.assertEqual(git(self.root, "rev-parse", "HEAD"), self.commit)
 
     def test_cache_collision_and_replacement_refuse_without_cleanup(self):
         cache = self.root / "__pycache__"
