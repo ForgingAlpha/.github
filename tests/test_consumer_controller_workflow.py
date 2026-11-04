@@ -111,6 +111,15 @@ class WorkflowTests(unittest.TestCase):
         requirements = (ROOT / "scripts/requirements.txt").read_text()
         self.assertIn("PyYAML==6.0.3 --hash=sha256:ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc", requirements)
 
+    def test_completion_filter_precedes_environment_and_has_no_write_credentials(self):
+        jobs = self.workflow["jobs"]
+        wake = jobs["wake"]
+        self.assertNotIn("environment", wake)
+        self.assertTrue(all(value == "read" for value in wake["permissions"].values()))
+        self.assertNotIn("secrets.", json.dumps(wake))
+        self.assertEqual(jobs["reconcile"]["needs"], "wake")
+        self.assertIn("needs.wake.outputs.admitted == 'true'", jobs["reconcile"]["if"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -67,10 +67,33 @@ merged or force-pushed. Failed product tests are not automatically rerun.
 
 The original consumer source, proposed Action source and adopted checking source
 are different plan inputs. A rebase changes the plan even if file trees are equal.
-The current source permits at most two new fixture PRs per invocation; each starts
-normal CI plus compatibility CI. This is not an approved daily or dollar budget.
-Any unaffected-change exemption, daily allowance and private scheduling policy
-must have their own verified source and acceptance before rollout.
+The controller permits at most two new fixture PRs per invocation and per trailing
+24 hours. Each starts normal CI plus compatibility CI: at most four automatic
+product jobs from those new publications. It reads complete native PR inventories,
+counts the configured fixture App and exact branch family, and reserves capacity
+for refs whose PR creation outcome is unknown. Existing fixtures reuse their runs;
+excess work remains queued. Rebases, shared `main` changes and private `dev` changes
+create new plans, so a backlog can take multiple days. Human reruns or outside
+pushes are outside this automatic-publication limit; this is not a dollar cap.
+
+`scripts/consumer-compatibility-impact.json` owns the reviewed exemptions. A skip
+requires matching inspected shared source fingerprints on both sides, only listed
+unaffected paths changed, and the exact reviewed complete private source-tree
+family. New directories, unknown paths/modes, changes to either side of a rename,
+unavailable inventories or private configuration changes fall back to testing.
+Private family values are equality hashes, not encryption or published private
+source. Records change through ordinary source review and adoption, never because
+CI happened to pass. A successful exemption explicitly says product tests were not
+run and creates no fixture.
+
+The initial family predates the private caller and documentation. Those additions
+change the private tree, so initial rollout uses capped full tests until a new
+family is independently reviewed and adopted. No savings from exemptions are
+claimed for that rollout. The private caller proposes an hourly safety sweep,
+`dev` pushes and owned completion notifications. A read-only job verifies exact
+fixture ownership before the credentialed job can start; unrelated completions do
+not mint App tokens. These lightweight controller/filter jobs also consume runner
+time. They never fan out to other repositories.
 
 ## One-time setup and qualification
 
@@ -88,6 +111,10 @@ environment; never put them in fixture source or candidate jobs.
 | `CC_FIXTURE_APP_ID` | Fixture writer installed only on Foundation. |
 | `CC_FIXTURE_APP_PRIVATE_KEY` | Separate private environment secret. |
 | `CC_AUTHORIZATION` | Protected, current projection of the human-owned records. |
+
+The nonsecret repository variable `CC_FIXTURE_BOT_ID` is a wake-filter hint
+published by the same protected setup owner. The credentialed job compares it to
+`CC_AUTHORIZATION.fixture_bot_id` before minting tokens. It does not grant access.
 
 `CC_AUTHORIZATION` has schema 1; exact resource IDs; `reporting_app_id`,
 `fixture_app_id`, `fixture_bot_id`; grant/enrollment IDs and SHA256s; principal,

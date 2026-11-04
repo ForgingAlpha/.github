@@ -33,6 +33,9 @@ ACTIONS = ["read-approved-shared-candidate", "execute-private-fixture",
 CONDITIONS = ["exact-head-human-review", "foundation-read-entitlement",
               "no-controller-secret-in-fixture", "human-only-merge"]
 REVIEW_QUERY = "query($number:Int!){repository(owner:\"ForgingAlpha\",name:\".github\"){pullRequest(number:$number){headRefOid reviewDecision}}}"
+INSPECTED_ACTIONS = ("ci-merge-flow", "ci-alphaapps-policy", "ci-github-actions", "ci-markdown",
+                     "ci-dependency-review", "ci-update-ownership", "ci-dependabot-coverage",
+                     "ci-foundation", "ci-org-baseline", "security-patch")
 
 
 class Refusal(Exception):
@@ -94,6 +97,102 @@ def timestamp(value):
         raise Refusal("invalid authority time") from exc
 
 
+def source_family(tree):
+    return digest(canonical({"schema": "foundation-source-family/v1",
+                             "repository_id": CONSUMER_ID, "tree": sha(tree)}))
+
+
+def impact_catalog(raw):
+    value = decode(raw, 131072)
+    need(type(value) is dict and set(value) == {"schema", "records"} and
+         type(value["schema"]) is int and value["schema"] == 1 and
+         type(value["records"]) is list and 0 < len(value["records"]) <= 32, "invalid impact catalog")
+    required = {"source_fingerprint_sha256", "evidence_revision", "consumer_repository_id",
+                "consumer_source_family", "entrypoints", "inspected_paths", "unaffected_paths", "reachability_basis"}
+    inspected = {"actions/" + a + "/" for a in INSPECTED_ACTIONS} | {".github/workflows/org-baseline.yml"}
+    entrypoints = {"actions/" + a + "/action.yml" for a in INSPECTED_ACTIONS[:7]}
+    maximum_exempt = {"actions/ci-" + a + "/" for a in ("astro", "elixir", "rust", "shell", "typescript")} | {"README.md"}
+    seen = set()
+    for record in value["records"]:
+        need(type(record) is dict and set(record) == required, "unbound impact record")
+        for field in ("source_fingerprint_sha256", "consumer_source_family"):
+            need(isinstance(record[field], str) and re.fullmatch(HEX64, record[field]), "invalid impact identity")
+        sha(record["evidence_revision"])
+        need(type(record["consumer_repository_id"]) is int and record["consumer_repository_id"] == CONSUMER_ID,
+             "impact consumer mismatch")
+        for field, allowed, exact in (("inspected_paths", inspected, True), ("entrypoints", entrypoints, True),
+                                      ("unaffected_paths", maximum_exempt, False)):
+            values = record[field]
+            need(type(values) is list and values and all(isinstance(p, str) for p in values) and
+                 len(values) == len(set(values)) and set(values) <= allowed and
+                 (not exact or set(values) == allowed), "invalid or unbound impact paths")
+        need(isinstance(record["reachability_basis"], str) and 1 <= len(record["reachability_basis"]) <= 4096,
+             "impact evidence basis unavailable")
+        key = (record["source_fingerprint_sha256"], record["consumer_source_family"])
+        need(key not in seen, "ambiguous impact records")
+        seen.add(key)
+    return value["records"]
+
+
+def path_member(path, classes):
+    return any(path.startswith(item) if item.endswith("/") else path == item for item in classes)
+
+
+def no_impact(before, after, consumer_tree, records):
+    """A positive derivation for recorded complete source shapes, never a guess."""
+    for files in (before, after):
+        if not isinstance(files, dict) or not files:
+            return False
+        for path, entry in files.items():
+            if (not isinstance(path, str) or path.startswith("/") or
+                    any(p in ("", ".", "..") for p in path.split("/")) or
+                    any(ord(c) < 32 for c in path) or
+                    not isinstance(entry, (tuple, list)) or len(entry) != 3 or
+                    entry[0] not in ("100644", "100755") or entry[1] != "blob" or
+                    not isinstance(entry[2], str) or not re.fullmatch(HEX40, entry[2])):
+                return False
+    changed = {p for p in before.keys() | after.keys() if before.get(p) != after.get(p)}
+    if not changed:
+        return False
+    directories = {""}
+    for path in before:
+        pieces = path.split("/")
+        directories.update("/".join(pieces[:i]) for i in range(1, len(pieces)))
+    if any(p in after and p.rpartition("/")[0] not in directories for p in changed):
+        return False
+    family = source_family(consumer_tree)
+    for record in records:
+        if family != record["consumer_source_family"]:
+            continue
+        def fingerprint(files):
+            entries = [[p, *files[p]] for p in sorted(files) if path_member(p, record["inspected_paths"])]
+            return digest(canonical(entries))
+        if (fingerprint(before) == fingerprint(after) == record["source_fingerprint_sha256"] and
+                all(path_member(p, record["unaffected_paths"]) for p in changed)):
+            return True
+    return False
+
+
+def publication_capacity(prs, refs, bot_id, branch, now):
+    """Include unresolved refs as conservative reservations for unknown PR writes."""
+    cutoff = now - dt.timedelta(hours=24)
+    published, recent = set(), 0
+    for pr in prs:
+        name = pr.get("head", {}).get("ref", "")
+        if not re.fullmatch(BRANCH, name):
+            continue
+        need(pr.get("user", {}).get("id") == bot_id and pr["user"].get("type") == "Bot" and
+             pr["head"]["repo"]["id"] == CONSUMER_ID and pr["base"]["repo"]["id"] == CONSUMER_ID and
+             pr["base"]["ref"] == "dev" and name not in published, "ambiguous fixture publication ledger")
+        created = timestamp(pr.get("created_at"))
+        need(created <= now, "future fixture publication time")
+        recent += created >= cutoff
+        published.add(name)
+    pending = set(refs) - published
+    # The selected existing ref will become a PR, replacing its reservation.
+    return recent + len(pending - {branch}) < 2
+
+
 def authorization(raw, now=None):
     value = decode(raw, 16384)
     strings = {"grant_id", "enrollment_id", "principal", "trust_domain", "decision_evidence"}
@@ -133,7 +232,8 @@ class API:
         self.before_write = None
 
     def request(self, path, method="GET", body=None, absent=False):
-        need(path.startswith("/") and not path.startswith("//") and "#" not in path, "invalid API path")
+        need((path == "" or path.startswith("/")) and not path.startswith("//") and "#" not in path,
+             "invalid API path")
         graphql = path == "/graphql"
         if graphql:
             need(self.repo == SHARED and method == "POST" and body.get("query") == REVIEW_QUERY and
@@ -222,6 +322,20 @@ class API:
             files[path] = (item["mode"], item["type"], sha(item.get("sha")))
         return files
 
+    def fixture_refs(self):
+        value = self.request("/git/matching-refs/heads/test/shared-ci-")
+        need(type(value) is list and len(value) <= 1000, "incomplete fixture ref inventory")
+        result = {}
+        for item in value:
+            ref = item.get("ref", "")
+            need(isinstance(ref, str) and ref.startswith("refs/heads/test/shared-ci-"), "unexpected fixture ref")
+            branch = ref.removeprefix("refs/heads/")
+            if not re.fullmatch(BRANCH, branch):
+                continue
+            need(branch not in result and item.get("object", {}).get("type") == "commit", "ambiguous fixture refs")
+            result[branch] = sha(item["object"].get("sha"))
+        return result
+
 
 def run_git(root, *args, data=None, extra=None):
     # No ambient Git config, hooks, credential helpers, or candidate working tree.
@@ -289,7 +403,7 @@ def retained_plan(body):
     return value, identity, branch, record["workflow_sha256"]
 
 
-def check_payload(head, identity, status, conclusion=None, number=None):
+def check_payload(head, identity, status, conclusion=None, number=None, exempt=False):
     need(status in ("queued", "in_progress", "completed"), "invalid public state")
     need((status != "completed" and conclusion is None) or
          (status == "completed" and conclusion in ("success", "failure", "action_required", "cancelled", "timed_out")), "invalid public conclusion")
@@ -299,6 +413,9 @@ def check_payload(head, identity, status, conclusion=None, number=None):
                         "; " + (conclusion or status) + "."}}
     if conclusion is not None:
         value["conclusion"] = conclusion
+    if exempt:
+        need(status == "completed" and conclusion == "success" and number is None, "invalid impact result")
+        value["output"]["summary"] += " No Foundation runtime dependency changed for this plan; product tests were not run."
     if number is not None:
         need(integer(number), "invalid private detail identity")
         value["details_url"] = "https://github.com/" + CONSUMER + "/pull/" + str(number)
@@ -376,13 +493,30 @@ class Controller:
         self.shared, self.consumer = shared, consumer
         self.grant_raw, self.harness, self.temporary = grant_raw, sha(harness), Path(temporary)
         self.grant = authorization(grant_raw)
-        shared.before_write = consumer.before_write = lambda: authorization(self.grant_raw)
+        shared.before_write = lambda: self.mutation_authorized(shared, SHARED_ID)
+        consumer.before_write = lambda: self.mutation_authorized(consumer, CONSUMER_ID)
         self.generated = 0
         self.adapter = adapter()
         self.adapter.git = run_git
+        try:
+            self.impact = impact_catalog(Path(__file__).with_name("consumer-compatibility-impact.json").read_bytes())
+        except (OSError, Refusal, KeyError, TypeError, ValueError):
+            self.impact = []
+            print("Impact catalog unavailable; full qualification is required.")
+
+    def resource(self, api, identifier):
+        repository = api.request("")
+        need(type(repository.get("id")) is int and repository["id"] == identifier and
+             repository.get("full_name") == api.repo, "repository identity changed")
+
+    def mutation_authorized(self, api, identifier):
+        authorization(self.grant_raw)
+        self.resource(api, identifier)
 
     def current(self):
         authorization(self.grant_raw)
+        self.resource(self.shared, SHARED_ID)
+        self.resource(self.consumer, CONSUMER_ID)
         need(self.shared.branch("main") == self.harness, "checking source is no longer current")
         base = self.consumer.branch("dev")
         need(base is not None, "consumer branch is unavailable")
@@ -410,10 +544,10 @@ class Controller:
             return owned[0]
         return None
 
-    def report(self, head, identity, status, conclusion=None, number=None):
+    def report(self, head, identity, status, conclusion=None, number=None, exempt=False):
         authorization(self.grant_raw)
         owned = self.owned_check(head)
-        payload = check_payload(head, identity, status, conclusion, number)
+        payload = check_payload(head, identity, status, conclusion, number, exempt)
         def same_output(observed):
             output = observed.get("output") or {}
             return (all(output.get(k) == v for k, v in payload["output"].items()) and
@@ -445,6 +579,7 @@ class Controller:
         consumer_commit = self.consumer.commit(base)
         harness_commit = self.shared.commit(self.harness)
         candidate_files = self.shared.tree(shared_commit["tree"]["sha"])
+        harness_files = self.shared.tree(harness_commit["tree"]["sha"])
         need(all(mode in ("100644", "100755") for mode, _, _ in candidate_files.values()), "unsupported candidate source mode")
         self.consumer.tree(consumer_commit["tree"]["sha"])
         value, identity, branch = plan(number, head, shared_commit["tree"]["sha"], base,
@@ -462,7 +597,15 @@ class Controller:
         generated = self.adapter.generate(source, head, value["shared_tree"], base, value["consumer_tree"], branch)
         original = self.adapter.workflow(source)["jobs"]["CI"]
         projected = self.adapter.parse(generated)["jobs"]["compatibility"]
-        return value, identity, branch, generated, original, projected
+        return value, identity, branch, generated, original, projected, no_impact(
+            harness_files, candidate_files, value["consumer_tree"], self.impact)
+
+    def capacity(self, branch):
+        if self.generated >= 2:
+            return False
+        prs = self.consumer.listing("/pulls?state=all")
+        return publication_capacity(prs, self.consumer.fixture_refs(), self.grant["fixture_bot_id"],
+                                    branch, dt.datetime.now(dt.timezone.utc))
 
     def fixture(self, value, identity, branch, generated):
         """Publish at most one new immutable fixture. Read native state first."""
@@ -470,7 +613,7 @@ class Controller:
         prs = self.consumer.listing("/pulls?state=all&head=" + urllib.parse.quote("ForgingAlpha:" + branch))
         need(len(prs) <= 1, "ambiguous fixture PR")
         body = private_body(value, identity, generated)
-        if not prs and self.generated >= 2:
+        if not prs and not self.capacity(branch):
             return None
         if ref is None:
             need(not prs, "fixture PR exists without its ref")
@@ -498,6 +641,8 @@ class Controller:
         if not prs:
             need(self.current() == value["consumer_commit"], "consumer moved before PR creation")
             self.admit(value["pull_request"], value["shared_commit"])
+            if not self.capacity(branch):
+                return None
             # Count a recovered ref's PR too. An outcome-unknown publication
             # consumes this invocation's allowance until the next readback.
             self.generated += 1
@@ -612,12 +757,17 @@ class Controller:
             existing = self.owned_check(head)
             base = self.current()
             self.admit(number, head)
-            value, identity, branch, generated, original, projected = self.material(number, head, base)
+            value, identity, branch, generated, original, projected, exempt = self.material(number, head, base)
             # Preserve an unchanged success while re-observing it. A known changed
             # plan is invalidated before any replacement fixture is published.
             if not (existing and existing.get("external_id") == identity and
                     existing.get("status") == "completed" and existing.get("conclusion") == "success"):
                 self.report(head, identity, "in_progress")
+            if exempt:
+                need(self.current() == base, "consumer moved before impact result")
+                self.admit(number, head)
+                self.report(head, identity, "completed", "success", exempt=True)
+                return
             pr = self.fixture(value, identity, branch, generated)
             if pr is None:
                 self.report(head, identity, "queued")
@@ -681,7 +831,8 @@ def main():
         harness = runtime_context(os.environ)
         grant = authorization(os.environ.get("CC_AUTHORIZATION", ""))
         need(str(grant["reporting_app_id"]) == os.environ.get("CC_REPORTING_APP_ID") and
-             str(grant["fixture_app_id"]) == os.environ.get("CC_FIXTURE_APP_ID"), "configured App identity mismatch")
+             str(grant["fixture_app_id"]) == os.environ.get("CC_FIXTURE_APP_ID") and
+             str(grant["fixture_bot_id"]) == os.environ.get("CC_FIXTURE_BOT_ID"), "configured App identity mismatch")
         source = Path(__file__).resolve().parents[1]
         need(run_git(source, "rev-parse", "HEAD").decode().strip() == harness, "checking source checkout mismatch")
         if os.environ.get("CC_MODE") == "validate":

@@ -11,8 +11,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  reconcile:
+  wake:
     if: >-
+      github.repository == 'ForgingAlpha/container-foundation' &&
+      github.repository_id == '1428636846' && github.ref == 'refs/heads/dev' &&
+      github.event_name == 'workflow_run'
+    name: Filter owned completion
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      admitted: ${{ steps.filter.outputs.admitted }}
+    steps:
+      - name: Checkout adopted wake filter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ForgingAlpha/.github
+          ref: main
+          path: controller-source
+          persist-credentials: false
+      - name: Check native completion ownership
+        id: filter
+        env:
+          CC_READ_TOKEN: ${{ github.token }}
+          CC_FIXTURE_BOT_ID: ${{ vars.CC_FIXTURE_BOT_ID }}
+        run: /usr/bin/python3 -B controller-source/scripts/consumer_wake.py
+
+  reconcile:
+    needs: wake
+    if: >-
+      always() && !cancelled() &&
+      (github.event_name != 'workflow_run' || needs.wake.outputs.admitted == 'true') &&
       github.repository == 'ForgingAlpha/container-foundation' &&
       github.repository_id == '1428636846' && github.ref == 'refs/heads/dev' &&
       contains(fromJSON('["schedule","push","workflow_run","workflow_dispatch"]'), github.event_name)
@@ -24,6 +56,7 @@ jobs:
       CC_AUTHORIZATION: ${{ vars.CC_AUTHORIZATION }}
       CC_REPORTING_APP_ID: ${{ vars.CC_REPORTING_APP_ID }}
       CC_FIXTURE_APP_ID: ${{ vars.CC_FIXTURE_APP_ID }}
+      CC_FIXTURE_BOT_ID: ${{ vars.CC_FIXTURE_BOT_ID }}
     steps:
       - name: Bind trusted defining source and caller
         id: source

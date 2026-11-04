@@ -4,6 +4,7 @@ import copy
 import datetime as dt
 import importlib.util
 import json
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -297,7 +298,7 @@ class ReconciliationTests(unittest.TestCase):
         pr = {"number": 8, "state": "open", "head": {"sha": "1" * 40}}
         c.current = Mock(return_value=value["consumer_commit"])
         c.admit = Mock(return_value=public_pr())
-        c.material = Mock(return_value=(value, identity, branch, "synthetic workflow", {}, {}))
+        c.material = Mock(return_value=(value, identity, branch, "synthetic workflow", {}, {}, False))
         c.fixture = Mock(return_value=pr)
         c.verify_pr = Mock()
         c.observe = Mock(return_value=True)
@@ -374,6 +375,126 @@ class ReconciliationTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(controller.Refusal):
                 c.report(HEAD, identity, "completed", "success", 8)
 
+    def test_recreated_repository_name_does_not_reuse_old_resource_authority(self):
+        c, _ = self.state()
+        del c.current
+        c.harness = "e" * 40
+        c.shared.repo, c.consumer.repo = controller.SHARED, controller.CONSUMER
+        c.shared.request.return_value = {"id": 1137664016, "full_name": controller.SHARED}
+        c.consumer.request.return_value = {"id": 1428636846, "full_name": controller.CONSUMER}
+        c.shared.branch.return_value = c.harness
+        c.consumer.branch.return_value = "c" * 40
+        self.assertEqual(c.current(), "c" * 40)
+        for api in (c.shared, c.consumer):
+            original = copy.deepcopy(api.request.return_value)
+            api.request.return_value["id"] = 99
+            with self.assertRaises(controller.Refusal):
+                c.current()
+            with self.assertRaises(controller.Refusal):
+                c.mutation_authorized(api, 1137664016 if api is c.shared else 1428636846)
+            api.request.return_value = original
+
+
+class WakeFilterTests(unittest.TestCase):
+    def test_only_native_owned_fixture_completion_wakes_privileged_job(self):
+        spec = importlib.util.spec_from_file_location("consumer_wake", ROOT / "scripts/consumer_wake.py")
+        wake = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"consumer_compatibility": controller}):
+            spec.loader.exec_module(wake)
+        run, _, _, pr, *_ = native()
+        run["actor"] = {"id": 456, "type": "Bot"}
+        pr.update(state="open", user={"id": 456, "type": "Bot"})
+        self.assertTrue(wake.owned(run, [pr], 456))
+        mutations = [lambda r, p: r.update(head_branch="test/shared-ci-pr91-20261103"),
+                     lambda r, p: r.update(path=".github/workflows/consumer-compatibility.yml"),
+                     lambda r, p: r.update(event="push"),
+                     lambda r, p: r["actor"].update(id=999),
+                     lambda r, p: p["user"].update(id=999),
+                     lambda r, p: p["head"].update(sha=TREE),
+                     lambda r, p: p["head"]["repo"].update(id=999),
+                     lambda r, p: p.update(state="closed")]
+        for change in mutations:
+            r, p = copy.deepcopy(run), copy.deepcopy(pr)
+            change(r, p)
+            self.assertFalse(wake.owned(r, [p], 456))
+        self.assertFalse(wake.owned(run, [], 456))
+        self.assertFalse(wake.owned(run, [pr, pr], 456))
+
+
+class ImpactAndBudgetTests(unittest.TestCase):
+    def impact(self):
+        records = controller.impact_catalog((ROOT / "scripts/consumer-compatibility-impact.json").read_text())
+        before = {"README.md": ("100644", "blob", HEAD),
+                  "actions/ci-rust/action.yml": ("100644", "blob", HEAD),
+                  "actions/ci-markdown/action.yml": ("100644", "blob", HEAD)}
+        record = copy.deepcopy(records[0])
+        record["consumer_source_family"] = controller.source_family(TREE)
+        record["source_fingerprint_sha256"] = controller.digest(controller.canonical([
+            ["actions/ci-markdown/action.yml", "100644", "blob", HEAD]]))
+        after = {**before, "README.md": ("100644", "blob", TREE)}
+        return before, after, [record]
+
+    def test_reviewed_unaffected_path_skips_only_on_exact_private_family(self):
+        before, after, records = self.impact()
+        self.assertTrue(controller.no_impact(before, after, TREE, records))
+        self.assertFalse(controller.no_impact(before, after, HEAD, records))
+        # Private config, modules, symlinks and callers all change the Git tree.
+        self.assertNotEqual(controller.source_family(TREE), controller.source_family(HEAD))
+
+    def test_unknown_changed_reachable_rename_and_new_directory_require_tests(self):
+        before, after, records = self.impact()
+        for path in (".markdownlint-cli2.yaml", "actions/ci-markdown/action.yml",
+                     "actions/ci-rust/new-directory/file.py", "unknown.py"):
+            changed = {**after, path: ("100644", "blob", TREE)}
+            with self.subTest(path=path):
+                self.assertFalse(controller.no_impact(before, changed, TREE, records))
+        moved = dict(after)
+        moved.pop("actions/ci-markdown/action.yml")
+        moved["actions/ci-rust/moved.py"] = ("100644", "blob", HEAD)
+        self.assertFalse(controller.no_impact(before, moved, TREE, records))
+        after["actions/ci-rust/existing-directory-file.py"] = ("100644", "blob", HEAD)
+        self.assertTrue(controller.no_impact(before, after, TREE, records))
+
+    def test_unknown_modes_and_unreviewed_catalog_fail_closed(self):
+        before, after, records = self.impact()
+        after["README.md"] = ("120000", "blob", TREE)
+        self.assertFalse(controller.no_impact(before, after, TREE, records))
+        records[0]["unaffected_paths"].append("scripts/")
+        with self.assertRaises(controller.Refusal):
+            controller.impact_catalog(json.dumps({"schema": 1, "records": records}))
+        self.assertFalse(controller.no_impact(before, before, TREE, []))
+
+    def publication(self, suffix, age=0):
+        return {"head": {"ref": "test/shared-ci-" + suffix * 48, "repo": {"id": controller.CONSUMER_ID}},
+                "base": {"ref": "dev", "repo": {"id": controller.CONSUMER_ID}},
+                "user": {"id": 456, "type": "Bot"},
+                "created_at": (NOW - dt.timedelta(hours=age)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    def test_rolling_cap_counts_closed_recent_prs_and_unknown_ref_reservations(self):
+        branch = "test/shared-ci-" + "c" * 48
+        recent = [self.publication("a"), self.publication("b", 23)]
+        self.assertFalse(controller.publication_capacity(recent, {}, 456, branch, NOW))
+        recent[1] = self.publication("b", 25)
+        self.assertTrue(controller.publication_capacity(recent, {}, 456, branch, NOW))
+        pending = {"test/shared-ci-" + "d" * 48: HEAD}
+        self.assertFalse(controller.publication_capacity(recent, pending, 456, branch, NOW))
+        # Converting this selected reservation into its PR spends only one slot.
+        self.assertTrue(controller.publication_capacity(recent, {branch: HEAD}, 456, branch, NOW))
+        recent[0]["user"]["id"] = 999
+        with self.assertRaises(controller.Refusal):
+            controller.publication_capacity(recent, {}, 456, branch, NOW)
+
+    def test_exemption_rechecks_admission_and_does_not_publish_fixture(self):
+        c, identity = ReconciliationTests().state()
+        c.material.return_value = (*c.material.return_value[:-1], True)
+        c.reconcile(public_pr())
+        c.fixture.assert_not_called()
+        c.observe.assert_not_called()
+        self.assertEqual(c.admit.call_count, 2)
+        c.report.assert_called_once_with(HEAD, identity, "completed", "success", exempt=True)
+        payload = controller.check_payload(HEAD, identity, "completed", "success", exempt=True)
+        self.assertIn("product tests were not run", payload["output"]["summary"])
+
 
 class FixtureRecoveryTests(unittest.TestCase):
     """Controller decisions after unknown provider outcomes, not provider proof."""
@@ -383,6 +504,7 @@ class FixtureRecoveryTests(unittest.TestCase):
         c.grant = grant()
         c.grant_raw = json.dumps({**grant(), "not_before": "1970-01-01T00:00:00Z", "expires_at": "2999-01-01T00:00:00Z"})
         c.generated = 0
+        c.capacity = Mock(side_effect=lambda _: c.generated < 2)
         value, identity, branch = controller.plan(7, HEAD, TREE, "c" * 40, "d" * 40, "e" * 40, "f" * 40)
         generated, ref = "synthetic generated workflow\n", "1" * 40
         private = {"id": 80, "number": 8, "state": "open", "draft": True,
