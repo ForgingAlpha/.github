@@ -395,6 +395,52 @@ class ReconciliationTests(unittest.TestCase):
             api.request.return_value = original
 
 
+class ReviewRecoveryTests(unittest.TestCase):
+    def test_second_run_id_cannot_erase_earlier_failed_execution(self):
+        c, _ = ReconciliationTests().state()
+        del c.observe
+        c.consumer.listing.return_value = [{"id": 1, "conclusion": "failure"},
+                                           {"id": 2, "run_attempt": 1, "conclusion": "success"}]
+        with self.assertRaises(controller.Refusal):
+            c.observe(c.fixture.return_value, "test/shared-ci-" + "a" * 48, controller.WORKFLOW, {})
+        c.consumer.request.assert_not_called()
+
+    def test_local_io_failure_after_input_movement_writes_blocker(self):
+        c, _ = ReconciliationTests().state()
+        c.current.return_value = "9" * 40
+        c.material.side_effect = OSError(28, "synthetic disk full")
+        with self.assertRaises(OSError):
+            c.reconcile(public_pr())
+        self.assertEqual(c.report.call_args.args[2:], ("completed", "action_required"))
+        c.fixture.assert_not_called()
+
+    def test_duplicate_owned_successes_are_both_invalidated(self):
+        c, identity = ReconciliationTests().state()
+        del c.owned_check
+        checks = [{**controller.check_payload(HEAD, identity, "completed", "success"),
+                   "id": i, "app": {"id": 123}} for i in (71, 72)]
+        c.shared.listing.side_effect = lambda *a: copy.deepcopy(checks)
+        def request(path, method="GET", payload=None):
+            check = next(x for x in checks if path.endswith("/" + str(x["id"])))
+            if method == "PATCH": check.update(payload)
+            return copy.deepcopy(check)
+        c.shared.request.side_effect = request
+        with self.assertRaises(controller.Refusal): c.owned_check(HEAD)
+        self.assertEqual([x["conclusion"] for x in checks], ["action_required"] * 2)
+        count = c.shared.request.call_count
+        with self.assertRaises(controller.Refusal): c.owned_check(HEAD)
+        self.assertEqual(c.shared.request.call_count, count)
+
+    def test_unknown_check_create_is_not_retried_within_invocation(self):
+        c, identity = ReconciliationTests().state()
+        del c.report
+        c.owned_check.return_value = None
+        c.shared.request.side_effect = controller.Refusal("synthetic lost acknowledgement")
+        with self.assertRaises(controller.Refusal): c.report(HEAD, identity, "in_progress")
+        with self.assertRaises(controller.Refusal): c.report(HEAD, identity, "completed", "action_required")
+        self.assertEqual(c.shared.request.call_count, 1)
+
+
 class WakeFilterTests(unittest.TestCase):
     def test_only_native_owned_fixture_completion_wakes_privileged_job(self):
         spec = importlib.util.spec_from_file_location("consumer_wake", ROOT / "scripts/consumer_wake.py")

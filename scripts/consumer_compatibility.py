@@ -538,6 +538,23 @@ class Controller:
         checks = self.shared.listing("/commits/" + sha(head) + "/check-runs?filter=all&check_name=" +
                                      urllib.parse.quote(CHECK), "check_runs")
         owned = [c for c in checks if c.get("name") == CHECK and c.get("app", {}).get("id") == self.grant["reporting_app_id"]]
+        need(all(integer(c.get("id")) and c.get("head_sha") == head for c in owned), "public check subject mismatch")
+        if len(owned) > 1:
+            # Ambiguity must not leave this App's previous successes intact.
+            identity = digest("ambiguous-public-checks:" + head)
+            payload = check_payload(head, identity, "completed", "action_required")
+            payload.pop("head_sha")
+            for check in owned:
+                if (check.get("external_id") == identity and check.get("status") == "completed" and
+                        check.get("conclusion") == "action_required"):
+                    continue
+                path = "/check-runs/" + str(check["id"])
+                self.shared.request(path, "PATCH", payload)
+                observed = self.shared.request(path)
+                need(observed.get("head_sha") == head and observed.get("name") == CHECK and
+                     observed.get("app", {}).get("id") == self.grant["reporting_app_id"] and
+                     observed.get("external_id") == identity and observed.get("status") == "completed" and
+                     observed.get("conclusion") == "action_required", "ambiguous check invalidation unconfirmed")
         need(len(owned) <= 1, "ambiguous public check ownership")
         if owned:
             need(integer(owned[0].get("id")) and owned[0].get("head_sha") == head, "public check subject mismatch")
@@ -564,6 +581,9 @@ class Controller:
                 payload.update(conclusion=None, completed_at=None)
             result = self.shared.request(path, "PATCH", payload)
         else:
+            attempted = self.__dict__.setdefault("check_create_attempted", set())
+            need(head not in attempted, "public check creation outcome remains unknown")
+            attempted.add(head)
             result = self.shared.request("/check-runs", "POST", payload)
         need(integer(result.get("id")), "public write acknowledgement missing")
         observed = self.shared.request("/check-runs/" + str(result["id"]))
@@ -737,8 +757,9 @@ class Controller:
                                      "&branch=" + urllib.parse.quote(branch, safe=""), "workflow_runs", limit=100)
         if not runs:
             return False
+        need(len(runs) == 1, "additional workflow execution lacks diagnostic authorization")
         need(all(integer(r.get("id")) for r in runs), "invalid run inventory")
-        run = max(runs, key=lambda r: r["id"])
+        run = runs[0]
         run = self.consumer.request("/actions/runs/" + str(run["id"]))
         # Re-read exact latest attempt; callbacks never supply authority or results.
         jobs = self.consumer.listing(f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", "jobs", limit=100)
@@ -792,7 +813,7 @@ class Controller:
             self.report(head, identity, "queued")
         except NativeFailure:
             self.report(head, identity, "completed", "failure")
-        except (Refusal, KeyError, TypeError, ValueError):
+        except (Refusal, KeyError, TypeError, ValueError, OSError):
             self.report(head, identity, "completed", "action_required")
             raise
 
