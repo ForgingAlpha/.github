@@ -423,6 +423,38 @@ class ReconciliationTests(unittest.TestCase):
 
 
 class ReviewRecoveryTests(unittest.TestCase):
+    def test_exhausted_normal_budget_uses_reserve_to_block_known_success(self):
+        c, identity = ReconciliationTests().state()
+        del c.owned_check
+        api = TransportTests().fake_api(controller.SHARED)
+        c.shared = api
+        api.requests = 1400
+        check = {**controller.check_payload(HEAD, identity, "completed", "success"),
+                 "id": 71, "app": {"id": 123}}
+        def open_response(request, timeout):
+            if request.method == "PATCH": check.update(json.loads(request.data))
+            value = {"check_runs": [check], "total_count": 1} if "/commits/" in request.full_url else check
+            response = Mock()
+            response.__enter__ = Mock(return_value=response)
+            response.__exit__ = Mock(return_value=False)
+            response.read.return_value = json.dumps(value).encode()
+            return response
+        api.opener.open.side_effect = open_response
+        with self.assertRaises(controller.IncompleteInventory): c.owned_check(HEAD)
+        self.assertEqual(check["conclusion"], "action_required")
+        self.assertEqual(api.requests, 1403)
+        self.assertFalse(api.blocking)
+        self.assertEqual([x.args[0].method for x in api.opener.open.call_args_list], ["GET", "PATCH", "GET"])
+
+    def test_null_fork_repository_does_not_hide_valid_shared_candidate(self):
+        c, _ = ReconciliationTests().state()
+        c.shared.listing.return_value = [public_pr(), {"head": {"repo": None}}, {"head": None}]
+        c.reconcile = Mock()
+        c.retire = Mock()
+        c.sweep()
+        c.reconcile.assert_called_once_with(public_pr())
+        c.retire.assert_called_once()
+
     def test_partial_pr_inventory_blocks_observed_heads_without_creating_checks(self):
         c, _ = ReconciliationTests().state()
         other = copy.deepcopy(public_pr())
@@ -452,7 +484,8 @@ class ReviewRecoveryTests(unittest.TestCase):
         self.assertEqual(checks[1]["conclusion"], "action_required")
         self.assertEqual(foreign["conclusion"], "success")
         self.assertEqual([x.args[:2] for x in c.shared.request.call_args_list],
-                         [("/check-runs/71", "PATCH"), ("/check-runs/72", "PATCH"), ("/check-runs/72",)])
+                         [("/check-runs/71", "PATCH"), ("/check-runs/72", "PATCH"), ("/check-runs/72",),
+                          ("/check-runs/71", "PATCH")])
 
     def test_incomplete_check_list_never_claims_complete_blocking(self):
         c, _ = ReconciliationTests().state()
@@ -564,6 +597,46 @@ class ImpactAndBudgetTests(unittest.TestCase):
         self.assertFalse(controller.no_impact(before, after, HEAD, records))
         # Private config, modules, symlinks and callers all change the Git tree.
         self.assertNotEqual(controller.source_family(TREE), controller.source_family(HEAD))
+
+    def test_actual_private_git_mutations_disable_reviewed_exemption(self):
+        before, after, records = self.impact()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git = lambda *args, **kwargs: controller.run_git(root, *args, **kwargs)
+            git("init", "--bare", "--quiet")
+            def blob(data):
+                return git("hash-object", "-w", "--stdin", data=data).decode().strip()
+            original, changed = blob(b"original\n"), blob(b"changed\n")
+            def tree(files):
+                grouped = {}
+                for path, value in files.items():
+                    first, separator, rest = path.partition("/")
+                    if separator: grouped.setdefault(first, {})[rest] = value
+                    else: grouped[first] = value
+                entries = []
+                for name, value in grouped.items():
+                    mode, kind, oid = ("040000", "tree", tree(value)) if isinstance(value, dict) else value
+                    entries.append(f"{mode} {kind} {oid}\t{name}\n")
+                return git("mktree", data="".join(entries).encode()).decode().strip()
+            files = {path: ("100644", "blob", original) for path in
+                     (".markdownlint-cli2.yaml", "formatter.py", ".github/workflows/ci.yml", "product.txt")}
+            initial = tree(files)
+            records[0]["consumer_source_family"] = controller.source_family(initial)
+            self.assertTrue(controller.no_impact(before, after, initial, records))
+            mutations = [("lint config", ".markdownlint-cli2.yaml", ("100644", "blob", changed)),
+                         ("formatter module", "formatter.py", ("100644", "blob", changed)),
+                         ("new file", "added.txt", ("100644", "blob", original)),
+                         ("mode", "product.txt", ("100755", "blob", original)),
+                         ("symlink", "product.txt", ("120000", "blob", blob(b"formatter.py"))),
+                         ("CI", ".github/workflows/ci.yml", ("100644", "blob", changed))]
+            for label, path, value in mutations:
+                mutated = {**files, path: value}
+                with self.subTest(mutation=label):
+                    derived = tree(mutated)
+                    self.assertNotEqual(derived, initial)
+                    if label != "CI":
+                        self.assertEqual(mutated[".github/workflows/ci.yml"], files[".github/workflows/ci.yml"])
+                    self.assertFalse(controller.no_impact(before, after, derived, records))
 
     def test_unknown_changed_reachable_rename_and_new_directory_require_tests(self):
         before, after, records = self.impact()

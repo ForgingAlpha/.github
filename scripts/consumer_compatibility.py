@@ -553,6 +553,12 @@ class Controller:
                                          urllib.parse.quote(CHECK), "check_runs")
         except IncompleteInventory as error:
             self.invalidate_checks(head, error.items)
+            # Normal-budget exhaustion can hide an existing green result. One
+            # read using the reserve can recover its ID without creating a check.
+            try:
+                self.block_known(head)
+            except (Refusal, KeyError, TypeError, ValueError, OSError):
+                pass
             raise
         owned = [c for c in checks if c.get("name") == CHECK and c.get("app", {}).get("id") == self.grant["reporting_app_id"]]
         need(all(integer(c.get("id")) and c.get("head_sha") == head for c in owned), "public check subject mismatch")
@@ -894,8 +900,15 @@ class Controller:
         except IncompleteInventory as error:
             self.block_inventory(error.items)
             raise
-        same_repo = [p for p in prs if p.get("head", {}).get("repo", {}).get("id") == SHARED_ID]
-        heads = [sha(p["head"]["sha"]) for p in same_repo]
+        # GitHub can return a null head repository for a deleted fork. It is
+        # ineligible, but must not prevent processing positively bound subjects.
+        same_repo = [p for p in prs if type(p.get("head")) is dict and
+                     type(p["head"].get("repo")) is dict and p["head"]["repo"].get("id") == SHARED_ID]
+        try:
+            heads = [sha(p["head"]["sha"]) for p in same_repo]
+        except (Refusal, KeyError, TypeError, ValueError):
+            self.block_inventory(prs)
+            raise Refusal("invalid same-repository PR subject") from None
         if len(prs) > 20 or len(heads) != len(set(heads)):
             self.block_inventory(prs)
             raise Refusal("unsupported PR inventory; no successful assertion")
