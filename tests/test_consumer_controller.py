@@ -285,6 +285,33 @@ class TransportTests(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaises(controller.Refusal):
                 controller.decode(raw)
 
+    def test_incomplete_inventory_preserves_only_validated_prefix(self):
+        api = controller.API(controller.SHARED, "synthetic")
+        first = [{"id": n} for n in range(1, 101)]
+        for following in (controller.Refusal("lost page"), [{"id": 101}, {"id": 101}], [{"id": 101}, None]):
+            api.request = Mock(side_effect=[first, following])
+            with self.subTest(following=following), self.assertRaises(controller.IncompleteInventory) as error:
+                api.listing("/pulls")
+            self.assertEqual(error.exception.items[:100], tuple(first))
+            self.assertEqual(len(error.exception.items), 100 if isinstance(following, Exception) else 101)
+        api.request = Mock(return_value=[])
+        with self.assertRaises(controller.IncompleteInventory) as error:
+            api.listing("/commits/synthetic/check-runs", "check_runs")
+        self.assertEqual(error.exception.items, ())
+
+    def test_request_reserve_is_available_only_for_blocking(self):
+        api = self.fake_api(controller.SHARED)
+        api.requests = 1400
+        with self.assertRaises(controller.Refusal): api.request("/pulls")
+        self.assertEqual(api.requests, 1400)
+        api.opener.open.assert_not_called()
+        api.blocking = True
+        self.assertEqual(api.request("/check-runs/1"), {"id": 1})
+        self.assertEqual(api.requests, 1401)
+        api.requests = 1600
+        with self.assertRaises(controller.Refusal): api.request("/check-runs/1")
+        self.assertEqual(api.requests, 1600)
+
 
 class ReconciliationTests(unittest.TestCase):
     """State transitions; these fakes establish no hosted API behavior."""
@@ -396,6 +423,57 @@ class ReconciliationTests(unittest.TestCase):
 
 
 class ReviewRecoveryTests(unittest.TestCase):
+    def test_partial_pr_inventory_blocks_observed_heads_without_creating_checks(self):
+        c, _ = ReconciliationTests().state()
+        other = copy.deepcopy(public_pr())
+        other["head"]["sha"] = TREE
+        c.shared.listing.side_effect = controller.IncompleteInventory([public_pr(), other, {"head": None}])
+        c.block_known = Mock(side_effect=[controller.Refusal("one unavailable"), True])
+        c.reconcile = Mock()
+        with self.assertRaises(controller.IncompleteInventory): c.sweep()
+        self.assertEqual({x.args[0] for x in c.block_known.call_args_list}, {HEAD, TREE})
+        c.reconcile.assert_not_called()
+        c.shared.request.assert_not_called()
+
+    def test_partial_check_inventory_blocks_known_owned_ids_and_keeps_failure(self):
+        c, identity = ReconciliationTests().state()
+        del c.owned_check
+        checks = [{**controller.check_payload(HEAD, identity, "completed", "success"),
+                   "id": n, "app": {"id": 123}} for n in (71, 72)]
+        foreign = {**checks[0], "id": 73, "app": {"id": 999}}
+        c.shared.listing.side_effect = controller.IncompleteInventory([*checks, foreign])
+        def request(path, method="GET", payload=None):
+            if path.endswith("/71"): raise controller.Refusal("synthetic write failure")
+            check = checks[1]
+            if method == "PATCH": check.update(payload)
+            return copy.deepcopy(check)
+        c.shared.request.side_effect = request
+        with self.assertRaises(controller.IncompleteInventory): c.owned_check(HEAD)
+        self.assertEqual(checks[1]["conclusion"], "action_required")
+        self.assertEqual(foreign["conclusion"], "success")
+        self.assertEqual([x.args[:2] for x in c.shared.request.call_args_list],
+                         [("/check-runs/71", "PATCH"), ("/check-runs/72", "PATCH"), ("/check-runs/72",)])
+
+    def test_incomplete_check_list_never_claims_complete_blocking(self):
+        c, _ = ReconciliationTests().state()
+        c.shared.blocking = False
+        c.shared.listing.side_effect = controller.IncompleteInventory([])
+        self.assertFalse(c.block_known(HEAD))
+        self.assertFalse(c.shared.blocking)
+        c.shared.request.assert_not_called()
+
+    def test_one_local_io_failure_does_not_leave_other_heads_unobserved(self):
+        c, _ = ReconciliationTests().state()
+        other = copy.deepcopy(public_pr())
+        other["number"], other["head"]["sha"] = 9, TREE
+        c.shared.listing.return_value = [public_pr(), other]
+        c.reconcile = Mock(side_effect=[OSError(28, "synthetic disk full"), None])
+        c.retire = Mock()
+        with self.assertRaises(controller.Refusal):
+            c.sweep()
+        self.assertEqual([call.args[0]["number"] for call in c.reconcile.call_args_list], [7, 9])
+        c.retire.assert_called_once()
+
     def test_second_run_id_cannot_erase_earlier_failed_execution(self):
         c, _ = ReconciliationTests().state()
         del c.observe

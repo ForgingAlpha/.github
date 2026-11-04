@@ -42,6 +42,14 @@ class Refusal(Exception):
     """Bounded, nonsecret diagnostic; never includes provider bodies or stderr."""
 
 
+class IncompleteInventory(Refusal):
+    """Validated observations may be used to block, never to admit new work."""
+
+    def __init__(self, items):
+        super().__init__("provider inventory is incomplete")
+        self.items = tuple(items)
+
+
 class Pending(Refusal):
     """An ordinary prerequisite is not ready; this is not a controller error."""
 
@@ -250,8 +258,9 @@ class API:
                 need(re.fullmatch("refs/heads/" + BRANCH, body.get("ref", "")), "persistent ref refused")
             if self.before_write is not None:
                 self.before_write()
+        # Leave capacity for invalidating known results after normal work fails.
+        need(self.requests < (1600 if getattr(self, "blocking", False) else 1400), "API operation bound exhausted")
         self.requests += 1
-        need(self.requests <= 1600, "API operation bound exhausted")
         headers = {"Accept": "application/vnd.github+json", "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28",
                    "User-Agent": "forgingalpha-consumer-compatibility"}
         if self.token:
@@ -273,20 +282,24 @@ class API:
     def listing(self, path, key=None, limit=1000):
         result = []
         seen = set()
-        for page in range(1, 12):
-            response = self.request(path + ("&" if "?" in path else "?") + f"per_page=100&page={page}")
-            items = response.get(key) if key else response
-            need(type(items) is list, "incomplete provider list")
-            for item in items:
-                need(type(item) is dict and integer(item.get("id")) and item["id"] not in seen, "ambiguous provider inventory")
-                seen.add(item["id"])
-            result.extend(items)
-            need(len(result) <= limit, "provider inventory exceeds supported bound")
-            if len(items) < 100:
-                if key:
-                    need(type(response.get("total_count")) is int and response["total_count"] == len(result), "partial provider inventory")
-                return result
-        raise Refusal("pagination bound exhausted")
+        try:
+            for page in range(1, 12):
+                response = self.request(path + ("&" if "?" in path else "?") + f"per_page=100&page={page}")
+                need(not key or type(response) is dict, "invalid provider list envelope")
+                items = response.get(key) if key else response
+                need(type(items) is list, "incomplete provider list")
+                for item in items:
+                    need(type(item) is dict and integer(item.get("id")) and item["id"] not in seen, "ambiguous provider inventory")
+                    seen.add(item["id"])
+                    result.append(item)
+                    need(len(result) <= limit, "provider inventory exceeds supported bound")
+                if len(items) < 100:
+                    if key:
+                        need(type(response.get("total_count")) is int and response["total_count"] == len(result), "partial provider inventory")
+                    return result
+            raise Refusal("pagination bound exhausted")
+        except (Refusal, KeyError, TypeError, ValueError, OSError):
+            raise IncompleteInventory(result) from None
 
     def commit(self, revision):
         value = self.request("/git/commits/" + sha(revision))
@@ -535,31 +548,88 @@ class Controller:
         return pr
 
     def owned_check(self, head):
-        checks = self.shared.listing("/commits/" + sha(head) + "/check-runs?filter=all&check_name=" +
-                                     urllib.parse.quote(CHECK), "check_runs")
+        try:
+            checks = self.shared.listing("/commits/" + sha(head) + "/check-runs?filter=all&check_name=" +
+                                         urllib.parse.quote(CHECK), "check_runs")
+        except IncompleteInventory as error:
+            self.invalidate_checks(head, error.items)
+            raise
         owned = [c for c in checks if c.get("name") == CHECK and c.get("app", {}).get("id") == self.grant["reporting_app_id"]]
         need(all(integer(c.get("id")) and c.get("head_sha") == head for c in owned), "public check subject mismatch")
         if len(owned) > 1:
             # Ambiguity must not leave this App's previous successes intact.
-            identity = digest("ambiguous-public-checks:" + head)
-            payload = check_payload(head, identity, "completed", "action_required")
-            payload.pop("head_sha")
-            for check in owned:
-                if (check.get("external_id") == identity and check.get("status") == "completed" and
-                        check.get("conclusion") == "action_required"):
-                    continue
-                path = "/check-runs/" + str(check["id"])
-                self.shared.request(path, "PATCH", payload)
-                observed = self.shared.request(path)
-                need(observed.get("head_sha") == head and observed.get("name") == CHECK and
-                     observed.get("app", {}).get("id") == self.grant["reporting_app_id"] and
-                     observed.get("external_id") == identity and observed.get("status") == "completed" and
-                     observed.get("conclusion") == "action_required", "ambiguous check invalidation unconfirmed")
+            self.invalidate_checks(head, owned)
         need(len(owned) <= 1, "ambiguous public check ownership")
         if owned:
             need(integer(owned[0].get("id")) and owned[0].get("head_sha") == head, "public check subject mismatch")
             return owned[0]
         return None
+
+    def invalidate_checks(self, head, checks):
+        """PATCH only positively bound owned IDs; preserve failures and continue."""
+        sha(head)
+        prior = getattr(self.shared, "blocking", False)
+        self.shared.blocking = True
+        verified = True
+        try:
+            for check in checks:
+                if type(check) is not dict or type(check.get("app")) is not dict:
+                    verified = False
+                    continue
+                if check.get("name") != CHECK or check["app"].get("id") != self.grant["reporting_app_id"]:
+                    continue
+                try:
+                    need(integer(check.get("id")) and check.get("head_sha") == head, "blocker subject mismatch")
+                    payload = check_payload(head, digest("inventory-refused:" + head), "completed", "action_required")
+                    payload.pop("head_sha")
+                    payload["details_url"] = None
+                    if (all(check.get(k) == v for k, v in payload.items() if k != "output") and
+                            type(check.get("output")) is dict and
+                            all(check["output"].get(k) == v for k, v in payload["output"].items())):
+                        continue
+                    path = "/check-runs/" + str(check["id"])
+                    self.shared.request(path, "PATCH", payload)
+                    observed = self.shared.request(path)
+                    need(type(observed) is dict and type(observed.get("app")) is dict and
+                         type(observed.get("output")) is dict, "invalid blocker readback")
+                    need(observed.get("head_sha") == head and observed.get("app", {}).get("id") == self.grant["reporting_app_id"] and
+                         all(observed.get(k) == v for k, v in payload.items() if k != "output") and
+                         all((observed.get("output") or {}).get(k) == v for k, v in payload["output"].items()),
+                         "blocker readback unconfirmed")
+                except (Refusal, KeyError, TypeError, ValueError, OSError):
+                    verified = False
+            return verified
+        finally:
+            self.shared.blocking = prior
+
+    def block_known(self, head):
+        prior = getattr(self.shared, "blocking", False)
+        self.shared.blocking = True
+        complete = True
+        try:
+            try:
+                checks = self.shared.listing("/commits/" + sha(head) + "/check-runs?filter=all&check_name=" +
+                                             urllib.parse.quote(CHECK), "check_runs")
+            except IncompleteInventory as error:
+                checks, complete = error.items, False
+            return self.invalidate_checks(head, checks) and complete
+        finally:
+            self.shared.blocking = prior
+
+    def block_inventory(self, prs):
+        heads = set()
+        for pr in prs:
+            head = pr.get("head") if type(pr) is dict else None
+            if (type(head) is dict and type(head.get("repo")) is dict and
+                    head["repo"].get("id") == SHARED_ID and isinstance(head.get("sha"), str) and re.fullmatch(HEX40, head["sha"])):
+                heads.add(head["sha"])
+        unverified = 0
+        for head in heads:
+            try:
+                unverified += not self.block_known(head)
+            except (Refusal, KeyError, TypeError, ValueError, OSError):
+                unverified += 1
+        print(f"Inventory refused; observed heads: {len(heads)}; unverified blocking: {unverified}. Unseen heads remain unverified.")
 
     def report(self, head, identity, status, conclusion=None, number=None, exempt=False):
         authorization(self.grant_raw)
@@ -819,18 +889,21 @@ class Controller:
 
     def sweep(self):
         # Complete inventory first: never silently qualify a truncated selection.
-        prs = self.shared.listing("/pulls?state=open&base=main", limit=1000)
+        try:
+            prs = self.shared.listing("/pulls?state=open&base=main", limit=1000)
+        except IncompleteInventory as error:
+            self.block_inventory(error.items)
+            raise
         same_repo = [p for p in prs if p.get("head", {}).get("repo", {}).get("id") == SHARED_ID]
         heads = [sha(p["head"]["sha"]) for p in same_repo]
         if len(prs) > 20 or len(heads) != len(set(heads)):
-            for head in set(heads):
-                self.report(head, digest("inventory-refused:" + head), "completed", "action_required")
+            self.block_inventory(prs)
             raise Refusal("unsupported PR inventory; no successful assertion")
         failed = False
         for pr in same_repo:
             try:
                 self.reconcile(pr)
-            except (Refusal, KeyError, TypeError, ValueError):
+            except (Refusal, KeyError, TypeError, ValueError, OSError):
                 failed = True
                 # Public/provider text and private evidence are never printed.
                 print("Qualification remains blocked for an observed shared candidate.")
