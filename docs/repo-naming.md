@@ -27,7 +27,6 @@ Surface examples:
 - turnkeyleads-web
 - turnkeyleads-whatismyhomeworth-web
 - analyzingalpha-data
-- analyzingalpha-vault
 - forge-cli
 - alphaapps-infra
 
