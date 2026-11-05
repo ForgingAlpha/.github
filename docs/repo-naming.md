@@ -6,7 +6,9 @@ Use kebab-case and name repos by identity, not hosting.
 
 Format:
 
-<product-or-company>-<subbrand-or-service>-<surface>
+`<product-or-company>-<subbrand-or-service>-<surface>`
+
+Illustrative example: `example-product-api`.
 
 Surface examples:
 
@@ -21,19 +23,12 @@ Surface examples:
 - landing
 - legacy
 
-## Examples
-
-- turnkeyleads-app
-- turnkeyleads-web
-- turnkeyleads-whatismyhomeworth-web
-- analyzingalpha-data
-- forge-cli
-- alphaapps-infra
+Find current repositories in the [ForgingAlpha repository directory](https://github.com/orgs/ForgingAlpha/repositories).
 
 ## What goes where
 
 App-specific deploy config (for example, `fly.toml`, `Dockerfile`) lives in the app repo.
-Shared infrastructure and runbooks live in `alphaapps-infra` (for example, DNS IaC, shared DB/Redis, alerts, incident playbooks).
+For shared infrastructure and runbooks (for example, DNS IaC, shared DB/Redis, alerts, incident playbooks), consult the accountable owning project's documentation to find the responsible repository and operating guidance.
 
 ## Rationale
 
