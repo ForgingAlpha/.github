@@ -287,15 +287,17 @@ policy exception, downloaded tool or version and does not claim to repair that g
 ## Existing release-route projection and migration
 
 Control-plane ASR-AUTH-005 and [REQ-027](../../docs/requirements.md#req-027---uniform-proposal-admission)
-now require application task branches to target dev, followed by dev-to-main
-promotion, without staging. The two named control repositories use task-to-main;
-other classes retain their Current declared routes. The schema and helper below
-describe the existing implementation, including its legacy staged mode. They do
-not override that governing route or qualify a conflicting enrollment. The earlier
-2026-10-26 staging decision is superseded for these named and application routes.
-Retire obsolete representations only after reconciling their source provenance
-and preserving complete product, security, event and required-result coverage.
-No implementation, enrollment or hosted settings change follows from this text.
+require one repository-level dev/staging/main route with selected release-task
+assembly and reviewed reconciliation. The schema and helper below describe the
+existing implementation; its `staged` mode is dev-to-staging and does not implement
+selected staging-based release-task admission. Neither that label nor a green
+constituent result proves the successor route. Existing owner-bound prior routes
+remain available during qualified migration. Exact-subject selected-release,
+repair and reconciliation evidence, compatible plan consumers and actual checking
+sources must qualify before successor enrollment or predecessor retirement.
+Preserve complete product, security, event and result coverage and unsupported
+profile refusals. No implementation, enrollment or hosted settings change follows
+from this source amendment; use the existing owner transition record.
 
 An application `release_route` has exactly `declarations`, `transition` and
 `reconciliation_sha256`. The digest identifies the retained attributable product-owner

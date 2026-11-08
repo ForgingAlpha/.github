@@ -149,14 +149,14 @@ Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
 of three days for patches, seven days for minors, and thirty days for majors.
 
 **Fit:** Eligible patch, minor, and major proposals follow REQ-027's ordinary
-route: `main` for `.github` and `control-plane`, and `dev` for applications,
-followed by a separate human-merged promotion to `main`. Other classes retain
-their Current declared route. An authorized human merges each proposal
+route: task proposals to `dev`, selected release-task proposals to `staging`,
+then a separate `staging` to `main` promotion. The bounded migration preserves
+each repository's prior route until qualified replacement. An authorized human merges each proposal
 after exact-head `CI` and
 applicable approval. Renovate and platform auto-merge are disabled, including
 policy overrides. Runtime and tool changes use the same path after their exact generated
-locks and integrity data pass CI. Main-only control-plane updates merge through
-protected `main` only after their complete control-plane gates pass. The existing
+locks and integrity data pass CI. Shared automation becomes active only on
+protected `main`, after its complete gates pass. The existing
 updater/default-branch coupling SHALL be reconciled and qualified wherever its
 configured target conflicts with that route; no default-branch or settings change
 is authorized by this requirement alone.
@@ -343,7 +343,7 @@ vulnerable revision.
 
 ### REQ-015 - Protected Branches And Refs
 
-Every repository's protected `main` and any protected `dev` SHALL require
+Every repository's protected `main`, `dev` and `staging` SHALL require
 pull requests and applicable complete `CI`. Those branches, deployment refs,
 and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
@@ -354,6 +354,8 @@ applicable authorized human executes PR merges. Automation has no bypass
 authorizing persistent-branch updates, including after human approval.
 Repository auto-merge and merge queues are disabled. Separately scoped tag
 rollout and deployment permissions do not confer branch or merge authority.
+Missing migration branches confer no creation authority; qualify these protections
+before admitting their new integration or release paths under REQ-027.
 
 ### REQ-016 - Operator Boundary
 
@@ -642,44 +644,65 @@ profile requires explicit enrollment and its meaningful product checks.
 
 ### REQ-027 - Uniform Proposal Admission
 
-Shared admission SHALL follow control-plane ASR-AUTH-005. Authored changes use
-nonpersistent branches in assigned Task Worktrees. `ForgingAlpha/.github` and
-`ForgingAlpha/control-plane` use task-branch proposals to protected `main`.
-Application task branches SHALL target protected `dev`, followed by a separate
-same-repository `dev` to `main` promotion PR. Ordinary application task-to-main
-proposals SHALL be refused, including when `dev` is missing. A missing branch
-SHALL NOT authorize its creation. Neither route SHALL require staging.
+Shared admission SHALL implement control-plane ASR-AUTH-005's repository-level
+route for every repository, including `.github`, control-plane, shared components,
+applications, websites and their documentation. Reviewed disposable exploration
+and whole-unit refactoring precede a nonpersistent task-branch PR to protected
+`dev`. Selected, dependency-complete release assembly and combined refactoring
+start on a nonpersistent task branch from exact current `staging`; its PR targets
+protected `staging`. Qualification covers the integrated staging result and
+intended main integration before a separate same-repository `staging` to `main`
+PR. Reviewed task-branch reconciliation returns release refinements to current
+`dev` without overwriting newer work. Every persistent merge remains human.
 
-Repository class and route SHALL resolve from the Current owning governing
-definition, using PROJECT context where available, not from branch existence.
-Other classes retain their Current declared routes; missing or conflicting
-evidence stops the affected proposal. This contract creates no classification
-registry or new route exception. Admission SHALL preserve complete applicable checks, current-base
-protection, exact-revision human approval and human execution of every merge;
-admitting a proposal to checks SHALL NOT confer merge or persistent-branch-write
-authority.
+Admission SHALL bind the exact repository, task/release purpose, head, target,
+checking source and applicable evidence. A selected completed dev unit binds its
+accepted integrated revision and base, acceptance and scope. Release selection
+SHALL account for implicit base and shared-file dependencies, dependency closure,
+exclusions and refactored composition. Branch names, cherry-pick lists, self-asserted
+PR text and passing constituent checks alone SHALL NOT prove release eligibility.
+One existing shared repository/project record owns the active release claim;
+conflicting claims stop assembly. Release and bounded repair tasks belong to that
+serialized release; repair admits no unrelated feature work and renews affected
+review/checks. Before selecting the next release, verify reconciliation of the
+actual main result with staging and refinements with current dev. Verified
+no-change evidence requires no empty PR. Shared admission consumes exact owner
+evidence; it does not acquire ownership of semantic selection or review decisions.
 
-Central enrollment SHALL support the named main-only route and required
-application `dev` integration without
-requiring a staging declaration, branch or environment. Target selection SHALL
-remain explicit and centrally owned, preserving repository identity, complete
-profile, result-producer, review, runtime and foundation obligations. An absent
-application input SHALL NOT select a lighter profile. An ordinary proposal on
-its permitted route does not require security-projection proof. A disallowed
-ordinary application task-to-main proposal SHALL NOT use security admission to
-bypass `dev`. Actual security classifications and projections retain
-REQ-013/014's separate eligibility, proof and credential boundaries.
+Each repository's adopted PROJECT or owning route definition supplies its initial
+migration binding. Its responsible owner retains the prior route, enabling and
+in-flight scope, dependencies, qualification evidence and retirement condition
+in existing project/task custody. Preserve that prior route until replacement
+workspace, admission, CI, protection and actual consumers are qualified. Missing
+migration paperwork alone SHALL NOT halt work on a known adopted prior route;
+missing or conflicting route evidence stops the dependent operation. Missing
+branches SHALL NOT authorize branch creation, unprotected fallback or ordinary
+direct-main delivery outside the retained prior route. No repository class has a
+permanent exemption. Source adoption alone changes no branches, settings or grants.
 
-Obsolete staging requirements and legacy route representations SHALL be retired
-through a qualified replacement preserving required application `dev` integration,
-REQ-022 and REQ-025. Existing enforcement that
-contradicts this admission contract remains an unresolved implementation
-obligation until replaced; adoption of this source alone does not resolve it.
+Central enrollment SHALL explicitly select the repository, supported complete
+profile and protected targets. Universal topology SHALL NOT force a repository
+into an unsupported application or bootstrap profile. The owner SHALL qualify
+complete applicable checks, unique result production, security/event consumers,
+review, runtime and foundation obligations on every selected target before
+retiring predecessor admission. Actual source, enrollment and checking-source
+identity remain separate. Staging qualification follows actual repository
+consumers; it need not require a permanently running environment.
 
-**Fit:** A task PR to `main` in either named control repository, an application
-task PR to `dev`, and its `dev` to `main` promotion run their complete applicable
-checks. An ordinary application task PR to `main` fails with or without `dev`.
-Unknown or conflicting class/route evidence fails; missing staging does not.
-An invalid security claim does not acquire a verified classification or projection
-through ordinary admission. Retiring legacy route modes or callers preserves every
-still-applicable security, event, result and product-check obligation under REQ-025.
+Ordinary admission grants neither merge nor persistent-branch-write authority.
+Preserve current-base protection, exact-revision human approval and human execution.
+Separately governed security classifications and exact projections retain
+REQ-013/014's source, reconstruction, proof and credential boundaries until their
+owner adopts a compatible successor. Ordinary releases SHALL NOT claim that path
+to bypass dev/staging. Retire obsolete route representations only after qualified
+replacement preserves every surviving obligation under REQ-022 and REQ-025.
+
+**Fit:** Qualify valid task-to-dev, selected release-task-to-staging, active-release
+repair-to-staging, staging-to-main and reconciliation-task-to-dev paths. Refuse
+forged release names/evidence, stale subjects, omitted dependencies, unrelated dev
+work, conflicting releases, persistent dev-to-staging and ordinary dev-to-main
+shortcuts after migration and
+unsupported profiles. Preserve authorized predecessor paths during transition;
+unknown or conflicting evidence fails rather than inventing a route. Invalid
+security claims remain invalid. New source alone proves neither hosted admission
+nor protection, consumer execution or complete repository migration.

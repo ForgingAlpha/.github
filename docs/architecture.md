@@ -8,13 +8,15 @@ tags:
 
 ## Control Plane
 
-`.github` and `control-plane` are main-only control planes. Every change lands
-through a pull request with required `CI` and authorized-human
-approval of the exact current revision. Authoring uses nonpersistent branches in
-assigned task worktrees. Application task branches target protected `dev`, then a
-separate human-approved `dev` to `main` promotion delivers to main. Staging is not
-required. Other repository classes retain their Current declared routes. Active shared
-source, actual product deployment and runtime qualification remain distinct facts.
+All repositories follow REQ-027 and the shared control-plane development route:
+reviewed disposable exploration and unit refactoring, task PR to dev, selected
+staging-based release task and combined refactoring, PR to staging, integrated
+qualification, then staging-to-main PR and reviewed reconciliation to dev. Each
+persistent merge requires complete checks and authorized-human approval/execution.
+Main alone is active shared automation source; dev/staging candidates remain
+isolated evaluation inputs. The bounded migration below preserves prior routes
+until qualified replacement. Source adoption, deployment and runtime qualification
+remain distinct facts.
 
 The shared policy action uses the runner-provisioned Python 3/PyYAML parser for
 bounded YAML frontmatter, rejecting malformed syntax and duplicate keys. It
@@ -61,33 +63,73 @@ credentials are verified separately from this source contract.
 
 ### Uniform proposal targets
 
-Under REQ-027, ordinary caller and central admission enforce the same route:
-task-to-main for ForgingAlpha/.github and ForgingAlpha/control-plane;
-task-to-dev followed by dev-to-main for applications. Ordinary application
-task-to-main is refused even when dev is missing. Class and route resolve from
-the Current owning definition, with PROJECT context where available; unknown or
-conflicting evidence stops admission. Other classes retain their Current declared
-route without reclassification or a new exception. Branch existence does not
-select a route or authorize branch creation. A same-repository dev-to-main promotion binds its complete
-candidate and current source/target revisions; admission performs no branch write.
-The control-plane proposal procedure owns agent-openable proposal sources and
-the human approval/merge boundary.
+The shared control-plane owns the route, review and human-merge authority.
+REQ-027 binds this repository's ordinary caller and central admission. Workspace
+identity and release-owner evidence supply exact baselines, selected integrated
+revisions/bases, dependency closure, exclusions, resulting head and active release
+claim. Shared CI validates its consumed identities and evidence against the exact
+PR and current target; it does not infer semantic acceptance from branch names or
+self-asserted PR text. The existing admission-plan owner carries the release
+subject and checking-source binding consistently through plan consumers. Changed
+head, base, constituent, release claim or checking source invalidates affected
+proof. Implementation must qualify those producer/consumer bindings before using
+them as admission; this source does not invent a trusted attestation service.
 
-The existing central enrollment owner selects repository identity and protected
-targets consistently with that governing route. Named main-only enrollment
-includes main without inventing dev; application enrollment covers dev and main.
-The enrollment schema, admission
-plan and all plan consumers change coherently. An integration-only qualification
-target is an incomplete migration, not proof of final main coverage. The transition
-preserves profile completeness, unique result ownership, review policy,
-runtime/foundation integrity and the exact
-resolved checking source. No consumer-side route registry or branch-presence
-heuristic substitutes for this source-owned selection. Retired staged/direct route
-representations are removed after their surviving provenance and product obligations
-are reconciled at the existing owners; a compatibility mode is not the final state.
+Feature/reconciliation tasks start at current dev. Assembly/repair tasks start at
+current staging under its single active release owner. Staging-to-main is proposal
+metadata on existing branches; agents cannot advance them. The release owner
+verifies prior-release reconciliation before the next selection, preserving newer
+dev work and recording no-change evidence where appropriate.
+
+Chief Improvements owns this repository's enabling transition in existing task
+unified-development-implementation-20261108. The exact predecessor is `.github`
+main source c5d74b7b5de9e0414df007cc81409cb5a90342c5, REQ-027 and this section
+(the exact prior-route source, not a claim about the eventual PR base):
+task-to-main for this repository; existing application routes remain bound by
+their own owners. This bridge covers compatible governing/admission/enrollment,
+updater, candidate-source and caller work, not arbitrary operational effects.
+Retire it only after qualified workspace identity, selected-release/repair and
+reconciliation admission, complete actual CI/callers, protected human merges and
+candidate isolation. Record installed versions and representative actual consumer
+readback in that existing task; no second migration registry is introduced.
+In-flight and unmigrated work retain their known adopted predecessor route.
+Missing branches or conflicting route evidence stops dependent work without
+creating branches or bypasses. This bridge is not the target topology.
+Its retirement changes governing source and retains independent governing review
+and exact human adoption; a transition owner cannot retire it by changing task status.
+
+Qualify the compatible self-CI guard before any authorized creation of dev in this
+repository. The current self-CI calls the legacy merge-flow wrapper, which skips
+when dev is absent but rejects ordinary task-to-main once dev exists. Creating dev
+first would break the enabling bridge while still admitting legacy dev-to-main.
+Deliver and test compatible admission under the existing route first, verify that
+task-to-main remains available throughout the bridge, then let the authorized
+branch/protection owner perform the separately approved setup. Only after complete
+successor qualification may the new route replace the bridge. Exercise both
+branch-present and branch-absent intermediate states; branch existence never
+supplies migration authority or selects semantic release evidence.
+Apply this ordering to every consumer that still invokes the branch-presence-based
+legacy wrapper, not only this repository.
+
+The central enrollment owner retains repository identity, explicit supported
+profiles and targets, unique results, review, runtime/foundation integrity and
+exact checking sources. Expand schema and every plan consumer coherently;
+unsupported application or document-bootstrap enrollment must refuse. Equivalent
+repo-owned complete CI can retain its producer while it is qualified for the new
+route. Qualification includes dev, staging and main; integration-only evidence
+cannot establish release coverage. Retire legacy modes/callers only after all
+surviving obligations and evidence are reconciled at their existing owners.
+The current enrollment selects only layas-learning-lab-site's astro/central-product
+profile on dev/main with its retained direct-route declaration. Its product owner
+must reconcile that exact declaration and adopted product-source binding in the
+existing repository transition record before migrating it; this amendment changes
+neither that enrollment nor its qualification. Documentation-bootstrap currently
+supports no staging target, and the source repository is not self-enrolled. Those
+are concrete implementation/consumer prerequisites, not reasons to choose a
+lighter profile or claim universal admission from this source amendment.
 
 Security classification and projection remain separate claims under REQ-013/014;
-ordinary application delivery cannot claim them to bypass required dev integration.
+ordinary delivery cannot claim them to bypass the qualified dev/staging route.
 Their trusted metadata workflows retain the exact source, App, attestation, patch,
 current-base and human-merge evidence. Ordinary candidate build/test execution
 receives no privileged security credential. Before a route guard or local caller
@@ -532,15 +574,19 @@ digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
 after three, seven, and thirty days respectively. Renovate proposes a pull
-request to the ordinary target required by REQ-027: main for .github and
-control-plane, dev for applications, or the Current declared target for another
-class. Applications subsequently promote dev to main through a separate PR.
-A human merges each PR after exact-head
-`CI` and applicable approval. Root bot and platform auto-merge are explicitly
-disabled. The central validator admits only the defined policy shapes, and
-consumer configurations cannot override them. Main-only control-plane updates target
-protected `main`; `.github` source becomes active at the human merge after its
-required coherent candidate and affected-consumer validation.
+request to dev under REQ-027, followed by selected release-task integration into
+staging and staging-to-main promotion. Unmigrated repositories retain their
+owner-bound prior route until replacement qualifies. A human merges every PR
+after exact-head CI and applicable approval. Root bot and platform auto-merge
+remain disabled. The validator admits only defined policy shapes; consumer
+configuration cannot override them. `.github` becomes active at its main merge
+after coherent candidate and affected-consumer validation. The receiving repository's
+change owner accounts for the updater's disposable exploration, whole-unit review
+and refactoring before integration; its release owner accounts for selection,
+composition and reconciliation. Those owners consume the shared control-plane's
+exploration procedure, including its disposable-code duty; this downstream source
+defines no exception. A bot PR or green CI alone does not discharge these duties.
+Automation identity supplies no exemption.
 
 The existing update-ownership validator couples the policy base branch and
 Renovate target to the hosted default branch. That observed coupling does not
@@ -743,8 +789,10 @@ proven inactive are deleted rather than enrolled in Renovate. The
 updater-coverage gate rejects new unmanaged version literals and stale
 exceptions.
 
-Advisory audits run daily against the applicable integration and deployed refs;
-main-only repositories need no invented dev ref or duplicate audit of the same revision.
+Advisory audits run daily against the applicable integration and deployed refs.
+During a retained main-only predecessor route, do not invent missing dev/staging
+refs or duplicate an audit of the same revision. Qualify the actual successor
+integration/release audit subjects when that repository migrates.
 Turnkey retains one weekly Ubuntu sentinel for independent runner and timing
 diversity; it is diagnostic and never a merge requirement.
 

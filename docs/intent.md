@@ -30,12 +30,15 @@ automation without copying workflow logic between repositories.
   Required checks and exact-revision human review precede the merge; no later tag
   promotion, source acceptance or recurring ruleset repin makes it active.
 - Authored changes use nonpersistent branches in assigned task worktrees.
-  `.github` and `control-plane` use task pull requests to protected `main`.
-  Applications use task pull requests to protected `dev`, followed by a separate
-  `dev` to `main` promotion pull request. Neither route requires staging.
-  Other repository classes retain their Current declared route under their owning
-  governing definitions. Complete product checks and human approval and merge
-  apply on every supported path; missing branches do not create route exceptions.
+  Every repository uses reviewed disposable exploration and whole-unit refactoring,
+  task pull requests to protected `dev`, selected release assembly and combined
+  refactoring on a staging-based task branch, a pull request to protected `staging`,
+  integrated qualification and a separate `staging` to `main` promotion pull request.
+  Reviewed reconciliation preserves newer dev work while returning release refinements.
+  The shared control-plane owns this route and its bounded migration; repository
+  content does not create exceptions. Complete applicable checks and human approval
+  and merge apply on every supported path. Existing adopted routes remain available
+  until their replacements are qualified; missing branches grant no creation authority.
 - Every shared execution retains its exact resolved source revision and consumer
   revision. Recovery uses the protected human-reviewed source-change path and
   preserves earlier execution evidence.
@@ -105,7 +108,8 @@ automation never executes untrusted pull-request code.
   run records retain historical provenance; they are not another active channel.
 - The control plane publishes one strict current contract. Obsolete rollout
   exceptions, incremental Markdown enforcement, and compatibility entrypoints
-  are removed rather than carried forward.
+  are removed after qualified replacement preserves required consumers and evidence.
+  Bounded migration is not a permanent alternate development route.
 - Every control-plane change lands through a reviewed pull request with green
   `CI`, authorized-human approval of the exact current revision, and human
   execution of the merge. Coherent candidate and affected-consumer validation
