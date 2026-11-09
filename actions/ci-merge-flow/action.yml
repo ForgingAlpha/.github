@@ -1,16 +1,21 @@
 # Composite action: Enforce merge flow policy.
 #
-# Fails the `CI` job when a pull request targets `main` or `staging` with
+# ForgingAlpha/.github retains its adopted task-to-main enabling route, bound
+# to exact runtime and PR base identity regardless of whether dev exists. Task
+# heads may come from this repository or a fork; main/dev/staging heads refuse.
+# This admits required CI only, not semantic release acceptance or a merge.
+#
+# Other legacy consumers fail `CI` when a PR targets `main` or `staging` with
 # a source other than the same-repository `dev` branch, except for a machine-attested exact
 # security projection admitted only to run required CI. Enforces:
 #
 #     feature → dev → {staging, main}
 #
-# All code lands in `dev` first. Hotfix and release branches must PR into
+# On that legacy route, hotfix and release branches must PR into
 # `dev`, not directly into `main`/`staging`. Closes a gap in GitHub Rulesets,
 # which have no native rule to restrict a PR's source branch.
 #
-# Automatically exempts repos that have no `dev` branch (main-only repos are
+# That legacy route exempts repos that have no `dev` branch (main-only repos are
 # not subject to the gitflow merge policy). Detection uses the GitHub API,
 # so the guard runs correctly before `actions/checkout`.
 #
@@ -36,11 +41,21 @@ runs:
   using: composite
   steps:
     - name: Enforce merge flow policy
-      if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'staging') }}
+      if: >-
+        ${{ github.event_name == 'pull_request' &&
+            (github.event.pull_request.base.ref == 'main' ||
+             github.event.pull_request.base.ref == 'staging' ||
+             github.repository == 'ForgingAlpha/.github' ||
+             github.repository_id == '1137664016' ||
+             github.event.pull_request.base.repo.full_name == 'ForgingAlpha/.github' ||
+             github.event.pull_request.base.repo.id == 1137664016) }}
       env:
         GH_TOKEN: ${{ github.token }}
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
         HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
+        BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+        BASE_REPOSITORY_ID: ${{ github.event.pull_request.base.repo.id }}
         BASE_REF: ${{ github.event.pull_request.base.ref }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       shell: bash

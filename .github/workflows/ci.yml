@@ -20,8 +20,8 @@ jobs:
 
       # Dogfood: exercise the merge-flow guard against this PR itself.
       # Uses a local path so the PR validates the in-branch version of the
-      # action. Since `.github` has no `dev` branch, the guard should skip with
-      # "merge flow policy does not apply".
+      # action. Exact repository identity retains the adopted task-to-main
+      # bridge independently of whether dev exists.
       - name: Enforce merge flow (self)
         uses: ./actions/ci-merge-flow
 
