@@ -32,15 +32,21 @@ jobs:
       - uses: ForgingAlpha/.github/actions/ci-elixir@main
 ```
 
-`ForgingAlpha/.github` and `ForgingAlpha/control-plane` use task-worktree branches
-and pull requests to `main`, with `push` and `pull_request` checks on `main`.
-Application repositories use task-worktree branch pull requests into protected
-`dev`, then a release pull request into protected `main`. Every merge is performed
-by an authorized human. These routes require no staging. Other repository classes
-retain their Current declared route; resolve class and route from the owning
-governing definition, with PROJECT context where available. Missing or conflicting
-evidence stops the affected proposal. Missing `dev` grants no application
-task-to-main fallback. See [REQ-027](docs/requirements.md#req-027---uniform-proposal-admission).
+Every repository follows the shared route: reviewed disposable exploration and
+unit refactoring; task PR to `dev`; selected release assembly/refactoring on a
+staging-based task branch; PR to `staging`; integrated qualification; then a
+`staging` to `main` PR and reviewed reconciliation to dev. Every persistent merge
+is human. Main remains the active shared automation source. See
+[REQ-027](docs/requirements.md#req-027---uniform-proposal-admission).
+
+This source is an enabling amendment, not completed route migration. Each
+repository retains its known adopted predecessor route until replacement tools,
+CI, protections and actual consumers qualify. This repository's transition owner
+and retirement conditions are in
+[Uniform proposal targets](docs/architecture.md#uniform-proposal-targets).
+Missing branches do not authorize creation or fallback; unknown/conflicting route
+evidence stops the dependent proposal. The caller example above describes an
+existing dev/main consumer, not the final unified route's complete trigger set.
 The legacy merge-flow wrapper still has
 its known dev-only promotion behavior; central schema-2 admission uses the explicit
 owner-declared route and does not infer it from branch existence. Security remediation
@@ -54,10 +60,12 @@ read-only token scopes shown above.
 
 The organization-required entrypoint is
 [org-baseline.yml](.github/workflows/org-baseline.yml). Its trusted
-[enrollment](actions/ci-org-baseline/enrollment.json) initially selects only
+[enrollment](actions/ci-org-baseline/enrollment.json) selects only
 `ForgingAlpha/layas-learning-lab-site`, repository ID `1420939261`, on `dev` and `main`.
-This documentation profile supplies `CI` without a consumer workflow. Unknown
-identities and application content fail; missing manifests never select bootstrap.
+Its current profile is `astro` with the `central-product` producer. The documentation
+bootstrap described in this section is the earlier qualification profile, not that
+consumer's current enrollment. Bootstrap rejects unknown identities and application
+content; missing manifests never select bootstrap.
 The defining `.github` repository is outside this consumer pilot. Its baseline
 workflow excludes source-repository jobs, whose names remain distinct from `CI`
 even when skipped. Actual target result naming requires hosted qualification. The existing required `CI`
@@ -163,7 +171,7 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
 | `ci-foundation` | Approved exact foundation export and actual working-file integrity before its adapter |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central approved-license policy |
-| `ci-merge-flow` | Feature → `dev` and tested `dev` → `main` flow |
+| `ci-merge-flow` | Existing dev/main guard; successor release-task/staging admission remains unqualified |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
 | `ci-rust` | Format, Clippy, dead code, tests, and audit |
 | `ci-astro` | Format, lint, Astro type checking, and build |
@@ -246,7 +254,9 @@ auto-merge are disabled; classification or a green check does not authorize a me
 | Major | 30 days | Human-merged PR to the ordinary target under REQ-027 |
 | Security | No cooldown | Human-merged classified source PR; separate-dev sources additionally require an exact, human-merged production projection |
 
-Main-only control-plane proposals target protected `main`. Runtime projections
+During their retained predecessor route, control-plane proposals target protected
+`main`; after migration ordinary proposals follow REQ-027's dev/staging/main route.
+Runtime projections
 remain governed by their central assignments and exact locks; the current
 preset disables direct mise, Node-engine and generic lock-maintenance writes.
 Runtime update automation requires a qualified constrained writer.

@@ -50,14 +50,17 @@ settings retain their own authority.
 - Retired v1 promotion/rollback workflows do not write tags or select fallback
   source. Preserve historical refs and evidence; source retirement grants no tag
   deletion/movement, credential change or protection write authority.
-- Follow [REQ-027](requirements.md#req-027---uniform-proposal-admission): `.github`
-  and `control-plane` use task-worktree branch -> PR -> main; applications use
-  task-worktree branch -> PR -> dev -> promotion PR -> main. Every merge is human.
-  These routes require no staging. Resolve other classes from their Current owning
-  definitions; unknown or conflicting route evidence stops the affected proposal.
-  Missing dev grants neither a direct-main fallback nor branch-creation authority.
-  Qualify actual admission and updater targets before relying on the corrected
-  contract; source adoption alone does not change branches or saved settings.
+- Follow [REQ-027](requirements.md#req-027---uniform-proposal-admission): reviewed
+  disposable exploration and refactoring, task PR to dev, selected staging-based
+  release task and combined refactoring, PR to staging, integrated qualification,
+  staging-to-main PR and reviewed reconciliation to current dev. Every merge is
+  human. Verify exact integrated constituent revisions/bases, dependencies,
+  exclusions, release claim and current subjects; a branch name is not evidence.
+  Preserve each repository's adopted prior route until workspace, actual CI/callers,
+  protection, updater and consumer prerequisites qualify. Update its existing
+  transition record and retire the bridge only after that proof. Missing branches
+  grant neither fallback nor branch-creation authority. Source adoption alone
+  changes no branches, grants, saved settings or deployment.
 
 ## Security Classification And Projection
 
