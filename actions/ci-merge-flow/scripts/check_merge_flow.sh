@@ -24,6 +24,58 @@ case "${1:-}" in
   *) echo 'WHAT: Unsupported merge-flow interface. WHY: An explicit owned mode is required. HOW: Use the published wrapper.' >&2; exit 1 ;;
 esac
 
+# The owning Architecture retains task-to-main for this source repository until
+# its successor is qualified. Any runtime OR base claim must enter strict
+# validation, even when the other fields conflict. Match name claims without
+# case sensitivity, as the action's GitHub expression comparisons do.
+claims_source_repository() {
+  [[ "${1,,}" = forgingalpha/.github || "$2" = 1137664016 ]]
+}
+
+if claims_source_repository "${GITHUB_REPOSITORY:-}" "${GITHUB_REPOSITORY_ID:-}" ||
+   claims_source_repository "${BASE_REPOSITORY:-}" "${BASE_REPOSITORY_ID:-}"; then
+  if [[ "${GITHUB_REPOSITORY:-}" != ForgingAlpha/.github ||
+        "${GITHUB_REPOSITORY_ID:-}" != 1137664016 ||
+        "${BASE_REPOSITORY:-}" != ForgingAlpha/.github ||
+        "${BASE_REPOSITORY_ID:-}" != 1137664016 ||
+        "${BASE_REF:-}" != main ]]; then
+    echo 'WHAT: Source bridge identity or target mismatch. WHY: Runtime and PR base must identify ForgingAlpha/.github and main. HOW: Repair the caller context.' >&2
+    exit 1
+  fi
+
+  # A fork task is permitted, but its owner and repository must be real name
+  # components, not empty/dot/path fragments. Preserve names such as .github.
+  source_head_name=${HEAD_REPOSITORY:-}
+  head_owner=${source_head_name%%/*}
+  head_repo=${source_head_name#*/}
+  if [[ ! "$head_owner" =~ ^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$ ||
+        ! "$head_repo" =~ ^[A-Za-z0-9_.-]+$ ||
+        "$head_repo" = . || "$head_repo" = .. ||
+        "${HEAD_REPOSITORY:-}" != */* ||
+        ! "${HEAD_REPOSITORY_ID:-}" =~ ^[1-9][0-9]*$ ||
+        ! "${PR_NUMBER:-}" =~ ^[1-9][0-9]*$ ]]; then
+    echo 'WHAT: Invalid task PR identity. WHY: Complete repository and PR identities are required. HOW: Repair the caller context.' >&2
+    exit 1
+  fi
+  if claims_source_repository "$HEAD_REPOSITORY" "$HEAD_REPOSITORY_ID" &&
+     [[ "$HEAD_REPOSITORY" != ForgingAlpha/.github || "$HEAD_REPOSITORY_ID" != 1137664016 ]]; then
+    echo 'WHAT: Conflicting head repository identity. WHY: Source name and ID must agree. HOW: Repair the caller context.' >&2
+    exit 1
+  fi
+  case "${HEAD_REF:-}" in
+    ''|main|dev|staging)
+      echo 'WHAT: Source bridge requires a task branch. WHY: Persistent sources are not admitted. HOW: Use the adopted task-to-main route.' >&2
+      exit 1 ;;
+  esac
+  # Prefix the ref so Git never treats it as checkout shorthand or an option.
+  if ! git check-ref-format "refs/heads/${HEAD_REF}"; then
+    echo 'WHAT: Invalid task ref. WHY: Head must be a branch ref. HOW: Repair the caller context.' >&2
+    exit 1
+  fi
+  echo '✓ Source-repository task-to-main bridge admitted to required CI'
+  exit 0
+fi
+
 # Main-only repos are exempt: skip if no `dev` branch exists.
 # Differentiate 404 (no dev) from other failures (auth, rate-limit)
 # so transient errors fail closed instead of silently disabling the gate.
