@@ -3,6 +3,9 @@
 The wrapper and generated evaluator execute. GitHub's exit-to-step and
 evaluator-to-run mappings, grants and API responses are synthetic; reports are
 captured. These tests establish no native execution or protected permission.
+The wrapper performs an actual locked npm installation, requiring Node/npm and
+either registry access or a complete package cache. Offline execution must supply
+that cache and npm's offline configuration.
 """
 
 import copy
@@ -132,7 +135,7 @@ class ComposedStandardsTests(unittest.TestCase):
                 "head": {"sha": ref, "ref": branch, "repo": {"id": controller.CONSUMER_ID}},
                 "base": {"sha": value["consumer_commit"], "ref": "dev", "repo": {"id": controller.CONSUMER_ID}}}
 
-    def reconcile(self, material, fixture, records, previous=None):
+    def reconcile(self, material, fixture, records, previous=None, *, expected_refusal=None):
         c = controller.Controller.__new__(controller.Controller)
         c.grant = providers.grant()
         c.current = Mock(return_value=material[0]["consumer_commit"])
@@ -155,6 +158,8 @@ class ComposedStandardsTests(unittest.TestCase):
 
         def listing(path, key=None, limit=None):
             if key == "workflow_runs":
+                # Deliberately ignore head/branch query filters: actual native
+                # binding checks must reject supplied stale or wrong identities.
                 name = path.split("/workflows/", 1)[1].split("/runs", 1)[0]
                 return [r[0] for p, r in records.items() if p.rsplit("/", 1)[1] == name]
             return by_id[int(path.split("/")[3])][1]
@@ -168,12 +173,15 @@ class ComposedStandardsTests(unittest.TestCase):
 
         c.consumer.listing.side_effect = listing
         c.consumer.request.side_effect = request
+        refusal = None
         try:
             c.reconcile(providers.public_pr())
-        except controller.Refusal:
-            # Actual refusal is preserved in the captured final report.
+        except controller.Refusal as error:
+            refusal = str(error)
+        self.observations.append({"reports": reports, "events": events, "refusal": refusal})
+        self.assertEqual(refusal, expected_refusal)
+        if refusal is not None:
             self.assertEqual(reports[-1]["conclusion"], "action_required")
-        self.observations.append({"reports": reports, "events": events})
         return reports, events
 
     def test_rule_rejection_remediation_and_fresh_plan(self):
@@ -201,10 +209,16 @@ class ComposedStandardsTests(unittest.TestCase):
         good_fixture = self.fixture(good)
         good_records = self.native(good, markdown, evaluator, good_fixture)
 
-        stale, events = self.reconcile(good, bad_fixture, bad_records, retained_failure)
+        stale, events = self.reconcile(
+            good, bad_fixture, bad_records, retained_failure,
+            expected_refusal="native run binding mismatch",
+        )
         self.assertEqual(stale[-1]["conclusion"], "action_required")
         self.assertEqual(events[:2], [("report", "in_progress"), ("fixture", None)])
-        wrong, _ = self.reconcile(good, good_fixture, bad_records, retained_failure)
+        wrong, _ = self.reconcile(
+            good, good_fixture, bad_records, retained_failure,
+            expected_refusal="native run binding mismatch",
+        )
         self.assertEqual(wrong[-1]["conclusion"], "action_required")
         self.assertTrue(controller.native_success(*good_records[controller.WORKFLOW]))
         fresh, _ = self.reconcile(good, good_fixture, good_records, retained_failure)
