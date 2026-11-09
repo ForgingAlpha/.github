@@ -959,10 +959,18 @@ def _unified_subject(context, event, entry, source_sha):
 
 def _owner_observations(context, api, records):
     subject = context.request().subject
+    expected = subject.value()
     result = {}
-    live = api.get(f'/repos/{subject.value()["repository"]}/pulls/{subject.value()["pr"]}')
-    require(isinstance(live, dict) and live.get("head", {}).get("ref") == subject.value()["source_ref"] and
-            live.get("base", {}).get("ref") == subject.value()["target_ref"], "current proposal refs differ from admission subject")
+    live = api.get(f'/repos/{expected["repository"]}/pulls/{expected["pr"]}')
+    require(isinstance(live, dict) and live.get("state") == "open" and
+            type(live.get("number")) is int and live["number"] == expected["pr"], "current proposal identity/state differs from admission subject")
+    for side, ref, sha in (("head", "source_ref", "head"), ("base", "target_ref", "target")):
+        value = live.get(side)
+        require(isinstance(value, dict) and value.get("ref") == expected[ref], "current proposal refs differ from admission subject")
+        repository = value.get("repo")
+        require(value.get("sha") == expected[sha] and isinstance(repository, dict) and
+                type(repository.get("id")) is int and repository["id"] == expected["repository_id"] and
+                repository.get("full_name") == expected["repository"], "current proposal subject differs from admission subject")
     for branch in admission.required_branches(subject, records):
         value = api.get(f'/repos/{subject.value()["repository"]}/branches/{branch}')
         require(isinstance(value, dict) and isinstance(value.get("commit"), dict), "branch observation unavailable")
@@ -992,6 +1000,20 @@ def staged_main(args, root, event, entries, source_sha, *, unified=None):
     callers with Python execution rights, and cannot be selected by plan bytes.
     """
     require(args.stage in ("admit", "preflight", "install", "static", "tests", "finalize"), "unsupported stage")
+    needs = None
+    if unified is not None:
+        require(type(unified) is admission.UnifiedContext, "unsupported unified interface")
+        require(os.environ.get("GITHUB_EVENT_NAME") == "pull_request", "read-only pull_request context required")
+        if args.stage == "finalize":
+            # Bound the transport before passing the environment to any child.
+            needs = admission.decode(os.environ.get("BASELINE_NEEDS", ""), limit=1024 * 1024)
+            require(isinstance(needs, dict), "invalid job results transport")
+            for job in needs.values():
+                if isinstance(job, dict) and isinstance(job.get("outputs"), dict):
+                    for key in ("plan", "receipt"):
+                        if key in job["outputs"]:
+                            admission.decode(job["outputs"][key])
+        source_identity(source_sha)
     entry = event_subject(root, event, entries)
     # Preserve the legacy pre-authentication public-data freeze.
     plan = make_plan(root, event, entry, source_sha) if unified is None else None
@@ -999,14 +1021,11 @@ def staged_main(args, root, event, entries, source_sha, *, unified=None):
         api = Api(os.environ.get("GITHUB_TOKEN"))
         current_checks(api, event, entry)
     frozen_admission = None
-    needs = None
     if unified is not None:
-        require(type(unified) is admission.UnifiedContext, "unsupported unified interface")
         _unified_subject(unified, event, entry, source_sha)
         if args.stage == "admit":
             frozen_admission = _acquire_unified(unified, api)
         else:
-            needs = admission.decode(os.environ.get("BASELINE_NEEDS", "")) if args.stage == "finalize" else None
             original = _admitted_plan(needs) if needs is not None else admission.decode(os.environ.get("BASELINE_PLAN", ""))
             require(isinstance(original, dict) and type(original.get("schema_version")) is int and original["schema_version"] == 5,
                     "unified stage requires exact schema5 admitted plan")
@@ -1026,6 +1045,8 @@ def staged_main(args, root, event, entries, source_sha, *, unified=None):
         expected = make_plan(root, event, entry, source_sha) if unified is None else make_plan(
             root, event, entry, source_sha, frozen_admission=frozen_admission)
         require(expected == plan, message)
+        if unified is not None:
+            source_identity(source_sha)
 
     if args.stage == "admit":
         if entry["profile"] == "documentation-bootstrap":

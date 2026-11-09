@@ -70,9 +70,10 @@ def digest(value):
     return hashlib.sha256(encoded(value)).hexdigest()
 
 
-def decode(raw):
+def decode(raw, *, limit=LIMIT):
     require(type(raw) in (bytes, str), 'invalid admission encoding')
-    require(len(raw.encode() if isinstance(raw, str) else raw) <= LIMIT, 'admission exceeds bounded complete input')
+    require(type(limit) is int and limit in (LIMIT, 1024 * 1024), 'unsupported admission transport bound')
+    require(len(raw.encode() if isinstance(raw, str) else raw) <= limit, 'admission exceeds bounded complete input')
     def pairs(items):
         result = {}
         for key, value in items:
@@ -170,7 +171,8 @@ class UnifiedContext:
 
 
 def required_roles(subject):
-    return tuple(sorted(COMMON)) + (() if subject.value()['purpose'] == 'feature' else ('release',))
+    purpose = subject.value()['purpose']
+    return tuple(sorted(role for role in COMMON if role != 'workspace' or purpose != 'staging-main')) + (() if purpose == 'feature' else ('release',))
 
 
 def required_branches(subject, records=None):
@@ -195,7 +197,7 @@ def _propositions(values, names, required):
 
 
 def _members(rows, *, allow_empty=False):
-    require(type(rows) is list and (0 if allow_empty else 1) <= len(rows) <= 128, 'invalid whole batch')
+    require(type(rows) is list and len(rows) >= (0 if allow_empty else 1), 'invalid whole batch')
     result = []
     for row in rows:
         shape(row, 'task revision integrated')
@@ -244,17 +246,20 @@ def evaluate(request, available, observations):
     require(observations.get(subject['target_ref']) == subject['target'], 'observed target moved')
     bodies = {role: _record(records[role], role, record, subject) for role, record in configured.bindings}
     for role, names in COMMON.items():
-        if role != 'scheduling':
+        if role != 'scheduling' and role in bodies:
             _propositions(bodies[role]['predicates'], names, names)
     task = bodies['task']['data']
     shape(task, 'task revision subject_sha256')
     revision(task['revision'])
     require(task == {'task': subject['task'], 'revision': subject['task_revision'], 'subject_sha256': digest(subject)}, 'task eligibility subject mismatch')
-    workspace = bodies['workspace']['data']
-    shape(workspace, 'task creation_ref creation_base')
-    require(subject['creation_base'] is not None and workspace['task'] == subject['task'] and workspace['creation_base'] == subject['creation_base'], 'original creation baseline unavailable/mismatched')
-    expected_creation = 'staging' if subject['purpose'] in ('repair', 'staging-main') else 'dev'
-    require(workspace['creation_ref'] == expected_creation, 'wrong original creation route')
+    if subject['purpose'] == 'staging-main':
+        require(subject['creation_base'] is None, 'persistent staging source has no task creation baseline')
+    else:
+        workspace = bodies['workspace']['data']
+        shape(workspace, 'task creation_ref creation_base')
+        require(subject['creation_base'] is not None and workspace['task'] == subject['task'] and workspace['creation_base'] == subject['creation_base'], 'original creation baseline unavailable/mismatched')
+        expected_creation = 'staging' if subject['purpose'] == 'repair' else 'dev'
+        require(workspace['creation_ref'] == expected_creation, 'wrong original creation route')
     shape(bodies['migration']['data'], 'profile')
     require(bodies['migration']['data']['profile'] == subject['profile'], 'unqualified application profile')
     schedule = bodies['scheduling']['data']
@@ -262,7 +267,7 @@ def evaluate(request, available, observations):
     for branch in ('dev', 'staging', 'main'):
         if schedule['resolved_' + branch] is not None:
             sha(schedule['resolved_' + branch])
-    require(schedule['hold'] in ('clear', 'held', 'released') and schedule['lifecycle'] in ('none', 'continuing', 'cancelled', 'suspended') and schedule['effects'] in ('none', 'staging', 'main'), 'invalid scheduling state')
+    require(schedule['hold'] in ('clear', 'held', 'released') and schedule['lifecycle'] in ('none', 'continuing', 'cancelled', 'suspended', 'recovering') and schedule['effects'] in ('none', 'staging', 'main'), 'invalid scheduling state')
     if schedule['claim'] is not None:
         identity(schedule['claim'])
     require((schedule['claim'] is None) == (schedule['lifecycle'] == 'none'), 'incoherent release claim')
@@ -270,9 +275,9 @@ def evaluate(request, available, observations):
     if schedule['hold'] == 'held':
         require(schedule['claim'] is not None, 'held repository lacks accountable claim')
         required.append('hold_communicated')
-    if schedule['hold'] == 'released' and schedule['lifecycle'] == 'continuing':
+    if schedule['hold'] == 'released' and schedule['lifecycle'] in ('continuing', 'suspended', 'recovering'):
         require(schedule['effects'] in ('staging', 'main'), 'continuing hold release lacks staged effects')
-    if schedule['hold'] != 'held' and schedule['lifecycle'] == 'continuing' and schedule['effects'] in ('staging', 'main'):
+    if schedule['hold'] != 'held' and schedule['lifecycle'] in ('continuing', 'suspended', 'recovering') and schedule['effects'] in ('staging', 'main'):
         required.append('hold_release_verified')
     if schedule['lifecycle'] == 'cancelled' and schedule['hold'] != 'held':
         require(all(schedule['resolved_' + branch] == observations.get(branch) for branch in ('dev', 'staging', 'main')), 'cancellation resolved baseline moved/unavailable')
@@ -285,9 +290,13 @@ def evaluate(request, available, observations):
     require(subject['target_ref'] == targets[purpose], 'wrong purpose target')
     require(subject['source_ref'] == 'staging' if purpose == 'staging-main' else subject['source_ref'] not in PERSISTENT, 'persistent authored source or wrong staging source')
     if purpose == 'feature':
+        require(schedule['lifecycle'] != 'recovering', 'cancellation recovery blocks new unit admission')
         require(schedule['hold'] != 'held', 'ordinary dev admission held')
     else:
-        require(schedule['lifecycle'] == 'continuing' and schedule['claim'] is not None, 'release not continuing')
+        recovery = schedule['lifecycle'] == 'recovering'
+        require((schedule['lifecycle'] == 'continuing' or recovery) and schedule['claim'] is not None, 'release not continuing')
+        if recovery:
+            require(purpose in ('repair', 'reconciliation') and schedule['effects'] in ('staging', 'main'), 'invalid cancellation recovery purpose/effects')
         release = bodies['release']['data']
         shape(release, 'claim frozen_dev snapshot staging main intended_target expected_members accepted_members staged_repairs reconciled_repairs prior_qualification intended_integration')
         integration = release['intended_integration']
@@ -319,11 +328,8 @@ def evaluate(request, available, observations):
             require(schedule['hold'] == 'held' and subject['creation_base'] == release['frozen_dev'] == observations['dev'], 'frozen dev or hold moved')
         if purpose == 'promotion':
             require(schedule['hold'] == 'held' and subject['head'] == release['snapshot'] == observations['dev'], 'fixed snapshot or dev hold moved')
-        if purpose == 'repair':
-            require(subject['creation_base'] == observations['staging'], 'repair creation not current staging')
         if purpose == 'reconciliation':
             require(staged_repairs == reconciled_repairs, 'unreconciled or stale repair identities')
-            require(subject['creation_base'] == observations['dev'], 'reconciliation creation not current dev')
         if purpose in ('repair', 'reconciliation', 'staging-main'):
             require(schedule['effects'] in ('staging', 'main'), 'staged release effects unavailable')
             require(release['staging'] == observations['staging'] and release['main'] == observations['main'], 'actual staging/main moved')

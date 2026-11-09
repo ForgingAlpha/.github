@@ -17,7 +17,7 @@ def subject(purpose='feature', **changes):
                  target_ref=target_ref, target={'dev': D0, 'staging': S0, 'main': M0}[target_ref],
                  checking_repository='ForgingAlpha/.github', checking_sha='d' * 40, profile='astro', outcome='proposal', pr=1)
     if purpose == 'staging-main':
-        value.update(source_ref='staging', head=S0)
+        value.update(source_ref='staging', head=S0, creation_base=None)
     value.update(changes)
     return ae.Subject.parse(value)
 
@@ -40,7 +40,7 @@ def resign(records, role):
 
 def context(s):
     value = s.value(); purpose = value['purpose']
-    observation = {'dev': D1 if purpose == 'promotion' else value['creation_base'], 'staging': S0, 'main': M0}
+    observation = {'dev': D1 if purpose == 'promotion' else value['creation_base'] or D0, 'staging': S0, 'main': M0}
     observation[value['target_ref']] = value['target']
     observation = {name: observation[name] for name in ae.required_branches(s)}
     members = [{'task': 'task/a', 'revision': 1, 'integrated': D0}, {'task': 'task/b', 'revision': 1, 'integrated': D1}]
@@ -49,7 +49,7 @@ def context(s):
         'workspace': {'task': value['task'], 'creation_ref': 'staging' if purpose in ('repair', 'staging-main') else 'dev', 'creation_base': value['creation_base']},
         'migration': {'profile': value['profile']},
         'scheduling': {'hold': 'held' if purpose in ('consolidation', 'promotion') else 'clear', 'claim': None if purpose == 'feature' else 'release/1', 'lifecycle': 'none' if purpose == 'feature' else 'continuing', 'effects': 'staging' if purpose in ('repair','reconciliation','staging-main') else 'none', 'resolved_dev': None, 'resolved_staging': None, 'resolved_main': None},
-        'release': {'claim': 'release/1', 'frozen_dev': value['creation_base'], 'snapshot': D1, 'staging': S0, 'main': M0,
+        'release': {'claim': 'release/1', 'frozen_dev': value['creation_base'] or D0, 'snapshot': D1, 'staging': S0, 'main': M0,
                     'intended_target': value['target'], 'intended_integration': {'head':value['head'],'target':value['target'],'result':{'kind':'tree','sha':'f'*40},'evidence_sha256':'f'*64} if purpose in ('promotion','staging-main') else None, 'staged_repairs': [], 'reconciled_repairs': [], 'prior_qualification': {'head': S0, 'results_sha256': 'f'*64, 'state': 'completed-success'} if purpose == 'staging-main' else None, 'expected_members': members, 'accepted_members': copy.deepcopy(members)},
     }
     records = {}
@@ -65,6 +65,89 @@ def context(s):
 
 
 class ContractTests(unittest.TestCase):
+    def test_complete_batch_domain_is_bounded_by_bytes_not_member_count(self):
+        ctx, obs = context(subject('consolidation'))
+        rows = [{'task': 'task/' + str(i).zfill(4), 'revision': 1, 'integrated': D0} for i in range(129)]
+        data = ctx.reader.records['release']['body']['data']
+        data.update(expected_members=rows, accepted_members=copy.deepcopy(rows))
+        resign(ctx.reader.records, 'release')
+        projection = ae.acquire(ctx, obs)
+        self.assertLess(len(ae.encoded(projection)), ae.LIMIT)
+        self.assertEqual(projection['outcome'], 'ProposalEligible')
+        data['accepted_members'][-1] = copy.deepcopy(rows[-2]); resign(ctx.reader.records, 'release')
+        with self.assertRaisesRegex(ValueError, 'duplicate'): ae.acquire(ctx, obs)
+        data['accepted_members'] = rows[:-1]; resign(ctx.reader.records, 'release')
+        with self.assertRaisesRegex(ValueError, 'incomplete'): ae.acquire(ctx, obs)
+        data['expected_members'] = rows * 100
+        with self.assertRaisesRegex(ValueError, 'bounded'): resign(ctx.reader.records, 'release')
+
+    def test_suspension_preserves_applicable_hold_release_evidence(self):
+        for hold in ('clear', 'released', 'held'):
+            ctx, obs = context(subject())
+            body = ctx.reader.records['scheduling']['body']
+            body['data'].update(hold=hold, claim='release/1', lifecycle='suspended', effects='staging')
+            body['predicates']['hold_release_verified']['state'] = 'not-applicable'
+            resign(ctx.reader.records, 'scheduling')
+            with self.subTest(hold=hold), self.assertRaises(ValueError): ae.acquire(ctx, obs)
+            body['predicates']['hold_release_verified']['state'] = 'satisfied'; resign(ctx.reader.records, 'scheduling')
+            if hold == 'held':
+                with self.assertRaisesRegex(ValueError, 'held'): ae.acquire(ctx, obs)
+            else:
+                self.assertEqual(ae.acquire(ctx, obs)['outcome'], 'ProposalEligible')
+            body['data']['effects'] = 'none'; resign(ctx.reader.records, 'scheduling')
+            if hold == 'released':
+                with self.assertRaisesRegex(ValueError, 'lacks staged effects'): ae.acquire(ctx, obs)
+
+    def test_recovery_is_current_nonterminal_duty_not_cancelled_release_admission(self):
+        for purpose in sorted(ae.PURPOSES):
+            ctx, obs = context(subject(purpose))
+            body = ctx.reader.records['scheduling']['body']
+            body['data'].update(lifecycle='recovering', claim='release/1', hold='held', effects='staging')
+            body['predicates']['effects_reconciled']['state'] = 'not-applicable'
+            resign(ctx.reader.records, 'scheduling')
+            if purpose in ('repair', 'reconciliation'):
+                self.assertEqual(ae.acquire(ctx, obs)['outcome'], 'ProposalEligible')
+                before = copy.deepcopy(ctx.reader.records)
+                ae.acquire(ctx, obs)
+                self.assertEqual(before, ctx.reader.records)  # Evaluation cannot complete recovery.
+                body['data']['effects'] = 'none'; resign(ctx.reader.records, 'scheduling')
+                with self.assertRaisesRegex(ValueError, 'recovery'): ae.acquire(ctx, obs)
+                body['data']['effects'] = 'staging'; resign(ctx.reader.records, 'scheduling')
+                ctx.reader.records['task']['body']['predicates']['authorized']['state'] = 'unknown'
+                resign(ctx.reader.records, 'task')
+                with self.assertRaisesRegex(ValueError, 'not satisfied'): ae.acquire(ctx, obs)
+            else:
+                with self.subTest(purpose=purpose), self.assertRaises(ValueError): ae.acquire(ctx, obs)
+        for purpose in ('repair', 'reconciliation', 'promotion', 'staging-main'):
+            ctx, obs = context(subject(purpose)); body = ctx.reader.records['scheduling']['body']
+            body['data'].update(lifecycle='cancelled', hold='held', effects='staging'); resign(ctx.reader.records, 'scheduling')
+            with self.subTest(terminal=purpose), self.assertRaisesRegex(ValueError, 'not continuing'): ae.acquire(ctx, obs)
+        for hold in ('clear', 'released'):
+            ctx, obs = context(subject('reconciliation')); body = ctx.reader.records['scheduling']['body']
+            body['data'].update(lifecycle='recovering', hold=hold)
+            body['predicates']['hold_release_verified']['state'] = 'not-applicable'; resign(ctx.reader.records, 'scheduling')
+            with self.assertRaisesRegex(ValueError, 'not satisfied'): ae.acquire(ctx, obs)
+
+    def test_creation_is_immutable_and_drift_requires_current_review(self):
+        for purpose in ('repair', 'reconciliation'):
+            ctx, obs = context(subject(purpose, creation_base=D1))
+            self.assertNotEqual(ctx.subject.value()['creation_base'], ctx.subject.value()['target'])
+            self.assertEqual(ae.acquire(ctx, obs)['outcome'], 'ProposalEligible')
+            ctx.reader.records['task']['body']['predicates']['drift_reviewed']['state'] = 'unknown'
+            resign(ctx.reader.records, 'task')
+            with self.assertRaisesRegex(ValueError, 'not satisfied'): ae.acquire(ctx, obs)
+            ctx.reader.records['task']['body']['predicates']['drift_reviewed']['state'] = 'satisfied'
+            resign(ctx.reader.records, 'task')
+            ctx.reader.records['workspace']['body']['data']['creation_ref'] = 'main'
+            resign(ctx.reader.records, 'workspace')
+            with self.assertRaisesRegex(ValueError, 'creation route'): ae.acquire(ctx, obs)
+        ctx, obs = context(subject('staging-main'))
+        self.assertIsNone(ctx.subject.value()['creation_base'])
+        self.assertNotIn('workspace', dict(ctx.bindings))
+        self.assertEqual(ae.acquire(ctx, obs)['outcome'], 'ProposalEligible')
+        ctx, obs = context(subject('staging-main', creation_base=S0))
+        with self.assertRaisesRegex(ValueError, 'no task creation'): ae.acquire(ctx, obs)
+
     def test_all_purposes_and_every_migration_gate(self):
         for purpose in sorted(ae.PURPOSES):
             with self.subTest(purpose=purpose):

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1079,10 +1080,23 @@ class UnifiedStageTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
         self.f = ApplicationFixture(self.directory / 'unified')
+        # A separate real, clean checking Git repository preserves source identity
+        # while the maintained candidate can still be under development.
+        self.checking_root = self.directory / 'checking'
+        self.checking_root.mkdir()
+        paths = baseline.git(ROOT, 'ls-files', '-z').decode().split('\0')
+        for name in filter(None, paths):
+            dest = self.checking_root / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / name, dest, follow_symlinks=False)
+        self.checking_git('init', '-q', '-b', 'checking-fixture')
+        self.checking_git('add', '--all')
+        self.checking_git('commit', '-q', '-m', 'exact checking source fixture')
+        self.source_sha = self.checking_git('rev-parse', 'HEAD').strip()
         self.event = self.f.event()
         self.event['repository']['default_branch'] = 'dev'
         self.context, self.observations = context(subject(head=self.f.head, creation_base=self.f.base, target=self.f.base,
-                                                         source_ref=self.event['pull_request']['head']['ref']))
+                                                         source_ref=self.event['pull_request']['head']['ref'], checking_sha=self.source_sha))
         self.api = FakeApi(self.f)
         self.output = self.directory / 'outputs'
         self.calls = []
@@ -1104,15 +1118,20 @@ class UnifiedStageTests(unittest.TestCase):
         stack = ExitStack(); self.addCleanup(stack.close)
         stack.enter_context(patch.dict(os.environ, {'GITHUB_REPOSITORY': ENTRY['repository'],
             'GITHUB_REPOSITORY_ID': str(ENTRY['repository_id']), 'GITHUB_TOKEN': 'secret-fixture-sentinel',
-            'GITHUB_OUTPUT': str(self.output), 'RUNNER_TEMP': str(self.directory)}))
+            'GITHUB_OUTPUT': str(self.output), 'RUNNER_TEMP': str(self.directory), 'GITHUB_EVENT_NAME': 'pull_request'}))
+        stack.enter_context(patch.object(baseline, 'SOURCE', self.checking_root))
         stack.enter_context(patch.object(baseline, 'Api', return_value=self.api))
         stack.enter_context(patch.object(baseline, 'application_integrity', side_effect=integrity))
         stack.enter_context(patch.object(baseline, 'checked', side_effect=command))
 
+    def checking_git(self, *args):
+        from types import SimpleNamespace
+        return Fixture.git(SimpleNamespace(root=self.checking_root), *args)
+
     def stage(self, name, **kwargs):
         from types import SimpleNamespace
         return baseline.staged_main(SimpleNamespace(stage=name), self.f.root, self.event, [self.f.entry],
-                                    kwargs.pop('source_sha', 'd' * 40), unified=kwargs.pop('context', self.context), **kwargs)
+                                    kwargs.pop('source_sha', self.source_sha), unified=kwargs.pop('context', self.context), **kwargs)
 
     def outputs(self):
         return dict(line.split('=', 1) for line in self.output.read_text().splitlines())
@@ -1134,6 +1153,98 @@ class UnifiedStageTests(unittest.TestCase):
         with patch.object(sys, 'stdout', io.StringIO()) as output:
             self.stage('finalize')
         return json.loads(output.getvalue())
+
+    def test_actual_checking_checkout_and_event_are_required_before_commands_and_result(self):
+        from test_admission_evidence import context, subject
+        false_context, _ = context(subject(head=self.f.head, creation_base=self.f.base, target=self.f.base,
+            source_ref=self.event['pull_request']['head']['ref'], checking_sha='d' * 40))
+        with self.assertRaisesRegex(ValueError, 'trusted checkout differs'):
+            self.stage('admit', source_sha='d' * 40, context=false_context)
+        self.assertFalse(self.calls)
+        self.assertFalse(self.output.exists())
+        with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'pull_request_target'}), self.assertRaisesRegex(ValueError, 'pull_request context'):
+            self.stage('admit')
+        dirty = self.checking_root / 'untracked-checking-input'
+        dirty.write_text('changed')
+        os.environ['BASELINE_NEEDS'] = '{}'
+        for phase in ('admit', 'preflight', 'install', 'static', 'tests', 'finalize'):
+            with self.subTest(phase=phase), self.assertRaisesRegex(ValueError, 'checking source is modified'):
+                self.stage(phase)
+        self.assertFalse(self.calls)
+        dirty.unlink()
+        plan = self.admit(); receipts = self.jobs()
+        os.environ['BASELINE_NEEDS'] = json.dumps(successful_needs(plan, **receipts))
+        original = self.api.get; reads = []
+        def changed_after_last_provider_read(path):
+            result = original(path)
+            if path.endswith('/pulls/1'):
+                reads.append(path)
+                if len(reads) == 4:
+                    dirty.write_text('changed during final recheck')
+            return result
+        with patch.object(self.api, 'get', side_effect=changed_after_last_provider_read), patch.object(sys, 'stdout', io.StringIO()) as output:
+            with self.assertRaisesRegex(ValueError, 'checking source is modified'): self.stage('finalize')
+            self.assertEqual(output.getvalue(), '')
+        self.assertEqual(len(reads), 4)
+
+    def test_last_observed_proposal_contradiction_never_publishes_plan_or_success(self):
+        mutations = (
+            lambda pr: pr['head'].update(sha='e' * 40),
+            lambda pr: pr['base'].update(sha='e' * 40),
+            lambda pr: pr['head'].update(ref='feature/other'),
+            lambda pr: pr['base'].update(ref='main'),
+            lambda pr: pr.update(state='closed'),
+            lambda pr: pr.update(number=True),
+            lambda pr: pr['head']['repo'].update(id=True),
+            lambda pr: pr['base']['repo'].update(full_name='ForgingAlpha/other'),
+        )
+        original = self.api.get
+        for phase in ('admit', 'finalize'):
+            for index, mutate in enumerate(mutations):
+                if phase == 'finalize':
+                    plan = self.admit(); receipts = self.jobs()
+                    os.environ['BASELINE_NEEDS'] = json.dumps(successful_needs(plan, **receipts))
+                self.output.unlink(missing_ok=True)
+                reads = []
+                def get(path):
+                    value = original(path)
+                    if path.endswith('/pulls/1'):
+                        reads.append(copy.deepcopy(value))
+                        if len(reads) == 4: mutate(value)
+                    return value
+                with self.subTest(phase=phase, mutation=index), patch.object(self.api, 'get', side_effect=get), patch.object(sys, 'stdout', io.StringIO()) as output:
+                    with self.assertRaisesRegex(ValueError, 'current proposal'): self.stage(phase)
+                    self.assertEqual(output.getvalue(), '')
+                self.assertEqual(len(reads), 4)
+                self.assertFalse(self.output.exists())
+
+    def test_large_complete_plan_survives_escaped_fanin_with_separate_bounds(self):
+        from test_admission_evidence import context, subject, resign, D0
+        self.context, _ = context(subject('consolidation', head=self.f.head, creation_base=self.f.base,
+            target=self.f.base, source_ref=self.event['pull_request']['head']['ref'], checking_sha=self.source_sha))
+        data = self.context.reader.records['release']['body']['data']
+        members = [{'task': 'task/' + str(i).zfill(4) + 'x' * 12, 'revision': 1, 'integrated': D0} for i in range(123)]
+        for name in ('expected_members', 'accepted_members', 'staged_repairs', 'reconciled_repairs'):
+            data[name] = copy.deepcopy(members)
+        resign(self.context.reader.records, 'release')
+        plan = self.admit(); plan_wire = self.outputs()['plan']
+        self.stage('preflight'); self.stage('install'); receipts = self.jobs()
+        needs = successful_needs(plan, **receipts)
+        needs['baseline']['outputs']['plan'] = plan_wire  # Exact emitted workflow output.
+        raw = json.dumps(needs, indent=2)
+        self.assertLess(len(plan_wire.encode()), 65536)
+        self.assertGreater(len(raw.encode()), 65536)
+        os.environ['BASELINE_NEEDS'] = raw
+        with patch.object(sys, 'stdout', io.StringIO()) as output: self.stage('finalize')
+        self.assertEqual(json.loads(output.getvalue())['plan_sha256'], baseline.plan_digest(plan))
+        cases = [raw[:-1] + ',"baseline":{}}', ' ' * (1024 * 1024 + 1)]
+        for job, key in (('baseline', 'plan'), ('static', 'receipt')):
+            bad = copy.deepcopy(needs)
+            bad[job]['outputs'][key] += ' ' * (65537 - len(bad[job]['outputs'][key].encode()))
+            cases.append(json.dumps(bad))
+        for bad in cases:
+            os.environ['BASELINE_NEEDS'] = bad
+            with self.assertRaises(ValueError): self.stage('finalize')
 
     def test_first_run_real_common_and_all_six_stages_failure_repair(self):
         plan = self.admit()
@@ -1259,7 +1370,7 @@ class UnifiedStageTests(unittest.TestCase):
         self.f.entry['branches']=['dev','staging','main']
         self.event=self.f.event();self.event['repository']['default_branch']='dev'
         self.context,observations=context(subject('promotion',head=self.f.head,creation_base=creation,target=self.f.base,
-                                                  source_ref=self.event['pull_request']['head']['ref']))
+                                                  source_ref=self.event['pull_request']['head']['ref'], checking_sha=self.source_sha))
         release=self.context.reader.records['release']['body']['data'];release['snapshot']=self.f.head;resign(self.context.reader.records,'release')
         self.api.live={**self.event['pull_request'],'number':1,'state':'open'};self.api.base=self.f.base
         original=self.api.get

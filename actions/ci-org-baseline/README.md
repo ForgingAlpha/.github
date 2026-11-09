@@ -572,7 +572,8 @@ an author. `admission_evidence.py` defines its closed consumer projection:
 - `UnifiedContext.request` fixes logical role/record bindings. `OwnerReader.acquire`
   returns typed `Available`, `Unavailable`, `Invalid` or `Conflicting`; an author
   JSON flag cannot declare availability or trust. The maintained default is
-  `UnavailableReader`. Bindings identify existing records, never files or URLs.
+  `UnavailableReader`. Bindings are logical record identities; the evaluator
+  never opens or dereferences them as paths or URLs, regardless of their spelling.
 - `evaluate` consumes independently versioned owner references, bounded projected
   records and separate measured branch observations. Each reference preserves the
   decision revision, authoritative state revision, payload digest, predecessor,
@@ -591,9 +592,22 @@ Inputs reject duplicate keys, unsupported fields/versions, ambiguous proposition
 states and duplicate batch identities before membership comparison. Both complete
 accepted scope and the exact unique member/revision mapping are required. Input
 and complete output are bounded to 64 KiB; excess fails without truncation.
+There is no separate member-count cutoff for a complete batch within that bound.
+The final job-results transport has a separate 1 MiB ceiling because it embeds
+escaped plan and receipt strings. Each embedded plan and receipt still has the
+64 KiB ceiling, and duplicate JSON keys fail at either level. The native transport
+and its platform limits remain part of future wrapper qualification.
+Required propositions must be `satisfied`; supplied optional propositions must be
+`satisfied` or explicitly `not-applicable`. Refuted, unknown or unavailable evidence
+cannot silently become absence or success.
 
-Required roles are task, workspace, migration and repository scheduling; release
-purposes additionally require the existing release record. Feature admission
+Required roles are task, migration and repository scheduling. Authored nonpersistent
+purposes also require workspace creation evidence; release purposes additionally
+require the existing release record. Existing persistent staging-to-main has
+explicitly null/not-applicable creation and no fabricated workspace record.
+Repair/reconciliation preserve verified original creation even when reviewed
+current targets have moved; exact current target and drift review remain required.
+Feature admission
 binds its own repository hold and eligibility, including current accepted hold
 release evidence. An unrelated release record is not requested. Every purpose
 requires migration qualification. Preparation, Fact and independent review
@@ -615,9 +629,17 @@ Cancellation and suspension grant no CI mutation rights. A cancelled release
 cannot promote. Before new unit admission after cancellation, every non-held
 state, including `clear`, must bind verified withdrawal, resolved effects and the
 actual resolved dev/staging/main identities. Effects on staging or main retain
-their reconciliation requirement. A continuing release with staged effects also
-requires verified hold release before new units can enter dev. CI does not release
-holds or withdraw proposals.
+their reconciliation requirement. Continuing and suspended claims with staged
+effects require verified hold release before new units can enter dev. A held
+suspension blocks them; suspension cannot invent a released hold before staging.
+The private `recovering` value represents current nonterminal cancellation duties
+under the same owner/claim, with actual staging or main effects. It admits only
+authorized bounded repair or reconciliation with their full exact evidence. It
+cannot admit new features, consolidation, promotion or staging-to-main, and does
+not require completed reconciliation before admitting the task that will produce
+it. Terminal `cancelled` still admits no release purpose. Accepted owner history
+and succession must qualify recovery; relabelling a terminal claim is not valid.
+CI does not complete recovery, release holds, withdraw proposals or mutate history.
 
 Unified application plans use schema **5**, admission projection version **1**.
 Older unmerged schema 3/4 meanings are not accepted or upgraded. Existing schema
@@ -633,7 +655,8 @@ The six stages retain one plan owner and one result owner:
    profile and current provider subject. It acquires owner records and measures
    required provider branch refs, runs every common check, and rechecks current
    owners and provider subject before publishing. Only the unified ordinary route
-   evaluation replaces the conflicting legacy declared-route subprocess.
+   evaluation from live acquisition replaces the conflicting legacy declared-route
+   subprocess. Its later pure consistency check does not establish live authority.
 2. `preflight`, `install`, `static` and `tests` reconstruct the frozen baseline
    plan from its exact direct workflow output and current local source/Git/profile
    inputs. They construct no provider API and contact no owner reader. The existing
@@ -644,6 +667,12 @@ The six stages retain one plan owner and one result owner:
    refs, then compares the entire projection. It accepts only the actual successful
    baseline/static/tests results and exact component receipts for that same plan,
    and repeats currentness checks before emitting success.
+
+Every unified stage verifies the actual clean checking Git checkout against the
+declared checking SHA before commands. Admission/finalization verify it again
+after the final provider/owner recheck. Every received PR observation must match
+the exact open PR, repository, source/target refs and SHAs; a contradictory last
+observation is refused even if earlier observations matched.
 
 The exact workflow source binding and direct-needs wiring supply transport origin.
 JSON, a digest, a `stage` label or a receipt cannot prove job execution. A caller
@@ -658,5 +687,9 @@ all stages, product receipt construction and final aggregation. They capture
 external command/install boundaries and use synthetic owner/provider APIs. These
 observations qualify source behavior only. All live migration, compatibility,
 caller coverage, integration and protected-settings obligations remain with their
-existing owners. The full self-CI, `.github` absent/present-dev and correctly
+existing owners. The current catalog still couples branch selection to legacy
+direct/staged routes; synthetic unified staging fixtures do not qualify real
+enrollment. A coherent catalog/selector and reader need separate activation
+qualification before any production use of this seam.
+The full self-CI, `.github` absent/present-dev and correctly
 identified fork bridge, security paths and schema 1/2 consumers remain required.
