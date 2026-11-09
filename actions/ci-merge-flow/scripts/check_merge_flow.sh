@@ -45,9 +45,9 @@ if claims_source_repository "${GITHUB_REPOSITORY:-}" "${GITHUB_REPOSITORY_ID:-}"
 
   # A fork task is permitted, but its owner and repository must be real name
   # components, not empty/dot/path fragments. Preserve names such as .github.
-  head_repository=${HEAD_REPOSITORY:-}
-  head_owner=${head_repository%%/*}
-  head_repo=${head_repository#*/}
+  source_head_name=${HEAD_REPOSITORY:-}
+  head_owner=${source_head_name%%/*}
+  head_repo=${source_head_name#*/}
   if [[ ! "$head_owner" =~ ^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$ ||
         ! "$head_repo" =~ ^[A-Za-z0-9_.-]+$ ||
         "$head_repo" = . || "$head_repo" = .. ||
