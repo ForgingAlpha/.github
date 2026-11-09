@@ -1,0 +1,154 @@
+name: Foundation compatibility controller
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consumer-compatibility-foundation
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    if: >-
+      github.repository == 'ForgingAlpha/container-foundation' &&
+      github.repository_id == '1428636846' && github.ref == 'refs/heads/dev' &&
+      github.event_name == 'workflow_run'
+    name: Filter owned completion
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      admitted: ${{ steps.filter.outputs.admitted }}
+    steps:
+      - name: Checkout adopted wake filter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ForgingAlpha/.github
+          ref: main
+          path: controller-source
+          persist-credentials: false
+      - name: Check native completion ownership
+        id: filter
+        env:
+          CC_READ_TOKEN: ${{ github.token }}
+          CC_FIXTURE_BOT_ID: ${{ vars.CC_FIXTURE_BOT_ID }}
+        run: /usr/bin/python3 -B controller-source/scripts/consumer_wake.py
+
+  reconcile:
+    needs: wake
+    if: >-
+      always() && !cancelled() &&
+      (github.event_name != 'workflow_run' || needs.wake.outputs.admitted == 'true') &&
+      github.repository == 'ForgingAlpha/container-foundation' &&
+      github.repository_id == '1428636846' && github.ref == 'refs/heads/dev' &&
+      contains(fromJSON('["schedule","push","workflow_run","workflow_dispatch"]'), github.event_name)
+    name: Reconcile Foundation compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: consumer-compatibility
+    env:
+      CC_AUTHORIZATION: ${{ vars.CC_AUTHORIZATION }}
+      CC_REPORTING_APP_ID: ${{ vars.CC_REPORTING_APP_ID }}
+      CC_FIXTURE_APP_ID: ${{ vars.CC_FIXTURE_APP_ID }}
+      CC_FIXTURE_BOT_ID: ${{ vars.CC_FIXTURE_BOT_ID }}
+    steps:
+      - name: Bind trusted defining source and caller
+        id: source
+        env:
+          JOB_CONTEXT: ${{ toJSON(job) }}
+        run: |
+          python3 -I -B - <<'PY'
+          import json, os, re
+          def unique(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError('duplicate context field')
+                  result[key] = value
+              return result
+          try:
+              raw = os.environ['JOB_CONTEXT']
+              assert len(raw.encode()) <= 262144
+              context = json.loads(raw, object_pairs_hook=unique)
+              repo, sha, ref = (context[k] for k in ('workflow_repository', 'workflow_sha', 'workflow_ref'))
+              assert repo == 'ForgingAlpha/.github'
+              assert re.fullmatch('[0-9a-f]{40}', sha)
+              assert ref == repo + '/.github/workflows/consumer-compatibility-controller.yml@refs/heads/main'
+              assert os.environ['GITHUB_REPOSITORY'] == 'ForgingAlpha/container-foundation'
+              assert os.environ['GITHUB_REPOSITORY_ID'] == '1428636846'
+              assert os.environ['GITHUB_REF'] == 'refs/heads/dev'
+              assert os.environ['GITHUB_EVENT_NAME'] in ('schedule', 'push', 'workflow_run', 'workflow_dispatch')
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+                  output.write('repository=' + repo + '\nsha=' + sha + '\nref=' + ref + '\n')
+          except (AssertionError, KeyError, TypeError, ValueError, OSError):
+              raise SystemExit('Trusted controller source or caller is unavailable; no connection is minted.') from None
+          PY
+
+      - name: Checkout exact adopted controller source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.source.outputs.repository }}
+          ref: ${{ steps.source.outputs.sha }}
+          path: controller-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate protected authorization before connection use
+        env:
+          CC_MODE: validate
+          CC_WORKFLOW_REPOSITORY: ${{ steps.source.outputs.repository }}
+          CC_WORKFLOW_SHA: ${{ steps.source.outputs.sha }}
+          CC_WORKFLOW_REF: ${{ steps.source.outputs.ref }}
+        run: /usr/bin/python3 -I -B controller-source/scripts/consumer_compatibility.py
+
+      - name: Prepare isolated exact parser dependency
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I -B -c 'import sys; assert sys.version_info[:2] == (3, 12)'
+          /usr/bin/python3 -m venv "$RUNNER_TEMP/consumer-controller-python"
+          "$RUNNER_TEMP/consumer-controller-python/bin/python" -m pip --isolated install \
+            --disable-pip-version-check --no-cache-dir --no-deps --only-binary=:all: --require-hashes \
+            --index-url https://pypi.org/simple \
+            -r controller-source/scripts/requirements.txt
+
+      - name: Mint public result token
+        id: public-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CC_REPORTING_APP_ID }}
+          private-key: ${{ secrets.CC_REPORTING_APP_PRIVATE_KEY }}
+          owner: ForgingAlpha
+          repositories: .github
+          permission-contents: read
+          permission-pull-requests: read
+          permission-checks: write
+
+      - name: Mint private fixture token
+        id: private-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CC_FIXTURE_APP_ID }}
+          private-key: ${{ secrets.CC_FIXTURE_APP_PRIVATE_KEY }}
+          owner: ForgingAlpha
+          repositories: container-foundation
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+          permission-actions: read
+          permission-checks: read
+
+      - name: Reconcile exact candidates and native results
+        env:
+          CC_MODE: reconcile
+          CC_WORKFLOW_REPOSITORY: ${{ steps.source.outputs.repository }}
+          CC_WORKFLOW_SHA: ${{ steps.source.outputs.sha }}
+          CC_WORKFLOW_REF: ${{ steps.source.outputs.ref }}
+          CC_SHARED_TOKEN: ${{ steps.public-token.outputs.token }}
+          CC_PRIVATE_TOKEN: ${{ steps.private-token.outputs.token }}
+        run: '"$RUNNER_TEMP/consumer-controller-python/bin/python" -I -B controller-source/scripts/consumer_compatibility.py'
