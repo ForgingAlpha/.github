@@ -940,3 +940,100 @@ sandbox and does not qualify NAS behavior or deploy services. Foundation
 consumption guidance references this owner instead of copying its admission
 policy. Signing, new CI credentials and automatic record admission are not part
 of this mechanism.
+
+## Foundation consumer compatibility
+
+Under REQ-028, `scripts/consumer_compatibility.py` owns selection, deterministic
+plans, fixture publication, native evidence checks and the public result.
+`scripts/qualify_foundation.py` remains the sole adapter of Foundation's original
+CI workflow. Foundation owns its product checks, private caller/environment and
+private evidence. There is one participant; no organization-wide dispatch or
+general enrollment engine is provided.
+
+The reusable `consumer-compatibility-controller.yml` has no autonomous trigger.
+An adopted Foundation `dev` caller selects it at literal `@main`. The job binds
+its defining repository, ref and SHA, checks out that exact source, verifies
+current main and the protected authorization projection before minting tokens.
+Its ordinary GitHub token remains read-only. Candidate objects are inspected in
+bare repositories with bounded Git operations; they are never executed in the
+controller. Native fixture jobs receive the original consumer's read permissions.
+
+Two separately installed Apps divide provider capabilities. The public reporting
+App is installed only on `.github` with checks write and contents/PR read. The
+private fixture App is installed only on Foundation with contents/PR/workflows
+write and actions/checks read. Their keys remain in Foundation's dev-restricted
+`consumer-compatibility` environment; each minted token is repository-scoped and
+revoked by the token Action's post-job hook. Full provider protection readback
+must establish that neither principal can bypass or update persistent branches.
+Runtime token narrowing does not replace installation-level scope verification.
+
+Human-owned Resource Enrollment and Cross-Domain Grant records retain authority
+under the control-plane. The protected `CC_AUTHORIZATION` projection binds their
+identities/digests, both App identities, fixture bot, exact repositories, purpose,
+actions, conditions and validity interval. The parser verifies a closed shape
+and time bounds; it does not originate authority or prove record currentness.
+The human-owned publisher maintains and revokes that projection and its keys.
+
+Admission binds one open, nondraft, same-repository PR to shared main, provider
+review decision, effective exact-head User approval and that same account's
+private access. The reviewer assesses the candidate's suitability for private
+source access and ordinary network egress under the standing policy. No extra
+recurring approval is introduced. Complete bounded inventories prevent partial
+lists or duplicate subjects from being mistaken for admission.
+
+The plan includes shared repository/PR/commit/tree, consumer commit/tree and
+checking-source commit/tree. Its digest selects one immutable disposable branch,
+`test/shared-ci-<48 hex characters>`. Custody additionally requires the full plan,
+fixture bot, sole consumer parent and sole generated-workflow tree delta. Existing
+refs and PRs are verified before reuse; no force-update, reopen, merge or rerun
+endpoint exists. At most two new fixture PRs are published per invocation,
+including a recovered ref whose PR creation was interrupted. This limit alone is
+not a daily operating allowance.
+
+The reporter accepts the exact generated compatibility workflow and normal CI,
+their actual PR event, branch/head, run/attempt, jobs, GitHub Actions check issuer,
+required ordered steps and successful post-job hooks. A native run may omit its
+PR association array; the independently verified unique fixture supplies that
+association. Conflicting or duplicate associations refuse success. An unexplained
+later attempt cannot erase a failure; diagnostic-rerun authorization requires
+separate qualification before automatic acceptance.
+
+One issuer-bound public check belongs to each shared head. Waiting for approval
+or capacity is queued; unfinished execution is in progress. Blocking conclusions
+are failure, action_required, cancelled or timed_out, never neutral/skipped/stale.
+An unchanged passing plan is re-observed without first resetting its success.
+Changed or adverse observations invalidate success before replacement work.
+Obsolete owned fixtures may be closed after full custody verification, preserving
+refs and run evidence. Cleanup cannot overwrite a newer plan's public result.
+
+The connection's native behavior, private caller triggers, cost selection and
+required-check admission must be qualified before activation. Shared CI tests
+proposed controller code; the consumer fixture tests proposed Actions using the
+adopted controller. Those are separate claims. Provider observations are eventual,
+not an atomic private-dev snapshot at human merge time. An unavailable controller
+cannot retroactively clear an inaccessible recorded result. See
+[consumer compatibility](consumer-compatibility.md) for operation and setup.
+
+The existing controller's shared-main target is a migration limitation. The
+result subject and required stage on the adopted dev/staging route remain to be
+qualified under REQ027; this source does not establish that migration. Both the
+normal adopted-source CI and generated candidate CI remain required. A rule
+replacement that cannot be satisfied by one consumer revision under both
+contracts stays blocked pending its owning resolution; this source selects no
+premerge-evidence waiver.
+
+Standards diagnosis belongs to the shared-CI and consumer maintainers and their
+retained exact reproduction evidence. Runtime outcomes do not encode intention,
+and no automated decision may infer that diagnosis from failure alone. The local
+composed tests use an explicitly selected consumer-owned Markdown configuration;
+they do not transfer rule-selection authority to the shared wrapper.
+
+No-impact success follows REQ028's reviewed exact-source determination and is
+distinct from successful native qualification. Old catalog records require their
+exact predicates; unchanged record bytes do not qualify a new shared source.
+The initial records do not establish savings for the current-main composition.
+
+Local tests run actual wrapper, generated evaluator and controller functions.
+They supply synthetic native metadata and capture public writes. Their combined
+result does not establish GitHub's outcome mapping, private execution, access
+isolation, write recovery or required-issuer enforcement.

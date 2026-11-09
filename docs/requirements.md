@@ -729,3 +729,71 @@ unsupported profiles. Preserve authorized predecessor paths during transition;
 unknown or conflicting evidence fails rather than inventing a route. Invalid
 security claims remain invalid. New source alone proves neither hosted admission
 nor protection, consumer execution or complete repository migration.
+
+### REQ-028 - Automatic Consumer Compatibility
+
+The shared-CI owner SHALL own exact-candidate consumer qualification and its
+derived result. Each consumer SHALL retain its product requirements, commands and
+tests. An independently admitted reporting App MAY publish a distinct
+`Consumer compatibility` check on the exact shared head. Existing CI, CodeQL,
+human review and human merge requirements remain mandatory for everyone.
+
+Private execution SHALL require a human-approved standing qualification policy,
+current scoped authority, an effective exact-head human approval and the
+reviewer's current access to the private consumer. The review is a prerequisite;
+it does not create an access grant. Candidate jobs SHALL receive only their
+existing read permissions and no controller credential. Write-capable orchestration
+SHALL execute adopted trusted source and treat candidate files and results as data.
+
+Plans SHALL bind the candidate, consumer input and checking source separately.
+Successful native qualification requires the selected workflows' latest complete
+results, required steps and post-job hooks on that exact fixture. Missing, pending,
+failed, ambiguous or known-stale evidence SHALL NOT satisfy the gate. The reporter
+SHALL recheck live inputs and approval before success, invalidate known-stale
+results before replacement work, and reconcile unknown writes before retrying.
+Unchanged valid evidence SHALL be reused without starting another qualification.
+
+Private source, commands, logs and artifact payloads SHALL stay in the consumer's
+custody. Public reporting SHALL disclose only the shared head, opaque plan,
+bounded outcome and access-controlled detail URL. Disposable fixtures SHALL never
+be merged. Source adoption alone grants no credentials, settings or execution
+authority. Required-check enforcement SHALL follow native qualification of the
+exact issuer, permissions, protection and ordinary operation. The owner SHALL
+disclose observation delays and outages; no cross-repository atomic freshness or
+zero-cost guarantee is implied.
+
+Standards correctness and consumer compatibility SHALL remain distinct claims.
+A checker SHALL accept inputs that conform to its selected contract and reject
+violating inputs. A correct rejection can require consumer remediation; it SHALL
+NOT count as successful consumer compatibility. A checker that wrongly accepts
+or rejects input SHALL require correction. Crashes or omitted required work
+SHALL remain non-success until their cause is resolved.
+
+A rejection test MAY pass by demonstrating the required refusal. That assertion
+SHALL NOT replace or override the failed consumer workflow. A changed consumer
+revision SHALL receive a new exact-input plan; failed or stale evidence from the
+previous plan SHALL NOT satisfy it. No intent label or expected-failure
+classification SHALL waive required native success.
+
+The shared-CI and consumer owners SHALL diagnose the cause against the exact
+contract, selected configuration and inputs, retaining the reproduction and
+conclusion in the owning change or qualification evidence. An unresolved cause
+SHALL remain unresolved. Public result fields SHALL NOT imply this diagnosis;
+private source and diagnostics retain consumer custody.
+
+A separately reviewed no-impact determination MAY establish that the exact
+change does not require new consumer execution. It SHALL use only the adopted
+checking source's catalog, matching inspected shared-source fingerprints on
+both sides, declared unaffected paths and the exact complete private source-tree
+family. Any unknown identity, incomplete inventory, changed inspected source,
+unlisted path, unsupported mode or changed private tree SHALL require full
+qualification. Candidate-provided records SHALL NOT admit their own exemption.
+A no-impact result SHALL disclose that product tests were not run; it SHALL NOT
+claim native execution or classify an intended standards rejection as success.
+New catalog records require ordinary owner review and source adoption.
+
+**Fit:** With an exact consumer configuration enabling a rule, conforming input
+passes and violating input fails through the checker and required evaluator.
+A negative assertion may pass while the underlying consumer result remains
+failed. A corrected consumer revision requires a new plan and corresponding
+evidence. An affected standards change cannot select the no-impact path.
