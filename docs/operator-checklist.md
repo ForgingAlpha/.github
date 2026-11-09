@@ -51,11 +51,15 @@ settings retain their own authority.
   source. Preserve historical refs and evidence; source retirement grants no tag
   deletion/movement, credential change or protection write authority.
 - Follow [REQ-027](requirements.md#req-027---uniform-proposal-admission): reviewed
-  disposable exploration and refactoring, task PR to dev, selected staging-based
-  release task and combined refactoring, PR to staging, integrated qualification,
-  staging-to-main PR and reviewed reconciliation to current dev. Every merge is
-  human. Verify exact integrated constituent revisions/bases, dependencies,
-  exclusions, release claim and current subjects; a branch name is not evidence.
+  disposable exploration and refactoring, task PR to dev, whole-batch consolidation
+  from frozen dev and reviewed PR back into dev, fixed-snapshot PR to staging,
+  integrated qualification, staging-to-main PR and reviewed reconciliation to
+  current dev. Every merge is human. Verify the dev merge hold, frozen baseline,
+  reviewed consolidation, actual integrated dev snapshot, intended/actual staging
+  result, dependencies and active release claim; a branch name is not evidence.
+  Honor the owner's hold until verified promotion or authorized terminal
+  cancellation is reconciled under ASR-AUTH-005. Preserve later dev work and
+  revalidate tasks based on representations changed by consolidation.
   Preserve each repository's adopted prior route until workspace, actual CI/callers,
   protection, updater and consumer prerequisites qualify. Update its existing
   transition record and retire the bridge only after that proof. Missing branches

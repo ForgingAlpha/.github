@@ -9,8 +9,8 @@ tags:
 ## Control Plane
 
 All repositories follow REQ-027 and the shared control-plane development route:
-reviewed disposable exploration and unit refactoring, task PR to dev, selected
-staging-based release task and combined refactoring, PR to staging, integrated
+reviewed disposable exploration and unit refactoring, task PR to dev, whole-batch
+consolidation from frozen dev and a reviewed PR back into dev, fixed-snapshot PR to staging, integrated
 qualification, then staging-to-main PR and reviewed reconciliation to dev. Each
 persistent merge requires complete checks and authorized-human approval/execution.
 Main alone is active shared automation source; dev/staging candidates remain
@@ -65,21 +65,57 @@ credentials are verified separately from this source contract.
 
 The shared control-plane owns the route, review and human-merge authority.
 REQ-027 binds this repository's ordinary caller and central admission. Workspace
-identity and release-owner evidence supply exact baselines, selected integrated
-revisions/bases, dependency closure, exclusions, resulting head and active release
+identity and release-owner evidence supply the frozen dev baseline, reviewed
+consolidation, actual integrated dev snapshot, intended staging result and active release
 claim. Shared CI validates its consumed identities and evidence against the exact
 PR and current target; it does not infer semantic acceptance from branch names or
 self-asserted PR text. The existing admission-plan owner carries the release
 subject and checking-source binding consistently through plan consumers. Changed
-head, base, constituent, release claim or checking source invalidates affected
+head, base, batch, release claim or checking source invalidates affected
 proof. Implementation must qualify those producer/consumer bindings before using
 them as admission; this source does not invent a trusted attestation service.
 
-Feature/reconciliation tasks start at current dev. Assembly/repair tasks start at
-current staging under its single active release owner. Staging-to-main is proposal
-metadata on existing branches; agents cannot advance them. The release owner
-verifies prior-release reconciliation before the next selection, preserving newer
-dev work and recording no-change evidence where appropriate.
+Feature/reconciliation tasks start at current dev. Before freezing a batch, its
+single existing release owner resolves unfinished prior staging work and verifies
+reconciliation of earlier staging/main fixes. The owner records and communicates
+the dev merge hold in the existing release record; human mergers honor it and task
+work may continue. This is the development hold defined by ASR-AUTH-005, not an
+ASR-AUTH-013 activation pause or evidence of installed enforcement. A consolidation
+task starts at the exact frozen dev revision
+and examines the whole batch, including representations and affected downstream
+logic. Independent combined review precedes its human PR back into dev. A sound
+unchanged representation needs supported no-change evidence, not artificial churn.
+
+The owner pins the actual integrated dev result, including any integration changes,
+and prepares a nonpersistent promotion branch carrying that fixed snapshot. Its
+staging-target task evidence distinguishes the snapshot's dev identity from its
+staging integration target and current target base; workspace creation identity
+alone cannot prove these release meanings. Verify the actual staged result and
+updated dev baseline before permitting new dev merges on successful promotion.
+That baseline is the verified actual integrated dev result, or the exact reviewed
+no-change baseline after permitted batch corrections. Unexpected movement during
+the hold reopens affected review; new work after its release belongs to the next batch.
+In-flight tasks reconcile and reassess against the consolidated model before their
+later dev proposals. The promotion preserves
+accepted staging/main changes; an unexpected target delta stops reliance and
+returns to affected reconciliation, review and checks. No reset or force update
+replaces a persistent branch. Equivalent unchanged review coverage may carry
+forward with independently verified impact evidence; branch promotion alone
+does not repeat the full semantic review.
+
+Staging qualification can proceed while the next batch enters dev. Bounded repair
+tasks start at current staging under the same release owner and renew affected
+review/checks. Reconcile those corrections into current dev without discarding its
+newer work. Staging-to-main is proposal metadata on existing branches; agents cannot
+advance them. Qualification covers the intended main integration and actual
+consumer effects. Before the next batch freeze, verify prior-release reconciliation;
+verified no-change needs no empty PR. Existing task/project custody owns these
+observations, not a new lock service or release registry. Authorized terminal
+cancellation before staging follows ASR-AUTH-005's reconciliation of actual effects,
+retained work and outstanding promotion eligibility before the hold is released;
+temporary suspension alone is not cancellation. Ordinary urgent fixes retain the
+same route through authorized reprioritization or cancellation/replanning, without
+creating a new direct-main exception.
 
 Chief Improvements owns this repository's enabling transition in existing task
 unified-development-implementation-20261108. The exact predecessor is `.github`
@@ -88,7 +124,7 @@ main source c5d74b7b5de9e0414df007cc81409cb5a90342c5, REQ-027 and this section
 task-to-main for this repository; existing application routes remain bound by
 their own owners. This bridge covers compatible governing/admission/enrollment,
 updater, candidate-source and caller work, not arbitrary operational effects.
-Retire it only after qualified workspace identity, selected-release/repair and
+Retire it only after qualified workspace identity, consolidation/promotion/repair and
 reconciliation admission, complete actual CI/callers, protected human merges and
 candidate isolation. Record installed versions and representative actual consumer
 readback in that existing task; no second migration registry is introduced.
@@ -98,13 +134,12 @@ creating branches or bypasses. This bridge is not the target topology.
 Its retirement changes governing source and retains independent governing review
 and exact human adoption; a transition owner cannot retire it by changing task status.
 
-Qualify the compatible self-CI guard before any authorized creation of dev in this
-repository. The current self-CI calls the legacy merge-flow wrapper, which skips
-when dev is absent but rejects ordinary task-to-main once dev exists. Creating dev
-first would break the enabling bridge while still admitting legacy dev-to-main.
-Deliver and test compatible admission under the existing route first, verify that
-task-to-main remains available throughout the bridge, then let the authorized
-branch/protection owner perform the separately approved setup. Only after complete
+The self-CI guard retains task-to-main admission for the exact `.github` repository
+identity independently of dev's presence, and refuses persistent branch heads.
+That enabling bridge does not implement the successor route. Before any authorized
+creation of dev, verify that task-to-main remains available throughout transition,
+then let the authorized branch/protection owner perform the separately approved
+setup. Only after complete
 successor qualification may the new route replace the bridge. Exercise both
 branch-present and branch-absent intermediate states; branch existence never
 supplies migration authority or selects semantic release evidence.
@@ -574,7 +609,7 @@ digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
 after three, seven, and thirty days respectively. Renovate proposes a pull
-request to dev under REQ-027, followed by selected release-task integration into
+request to dev under REQ-027, followed by whole-batch consolidation into dev and fixed-snapshot integration into
 staging and staging-to-main promotion. Unmigrated repositories retain their
 owner-bound prior route until replacement qualifies. A human merges every PR
 after exact-head CI and applicable approval. Root bot and platform auto-merge
@@ -582,7 +617,7 @@ remain disabled. The validator admits only defined policy shapes; consumer
 configuration cannot override them. `.github` becomes active at its main merge
 after coherent candidate and affected-consumer validation. The receiving repository's
 change owner accounts for the updater's disposable exploration, whole-unit review
-and refactoring before integration; its release owner accounts for selection,
+and refactoring before integration; its release owner accounts for batch identity,
 composition and reconciliation. Those owners consume the shared control-plane's
 exploration procedure, including its disposable-code duty; this downstream source
 defines no exception. A bot PR or green CI alone does not discharge these duties.

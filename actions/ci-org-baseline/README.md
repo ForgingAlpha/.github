@@ -287,12 +287,13 @@ policy exception, downloaded tool or version and does not claim to repair that g
 ## Existing release-route projection and migration
 
 Control-plane ASR-AUTH-005 and [REQ-027](../../docs/requirements.md#req-027---uniform-proposal-admission)
-require one repository-level dev/staging/main route with selected release-task
-assembly and reviewed reconciliation. The schema and helper below describe the
+require one repository-level dev/staging/main route with whole-batch consolidation
+from frozen dev back into dev, fixed-snapshot promotion to staging and reviewed
+reconciliation. The schema and helper below describe the
 existing implementation; its `staged` mode is dev-to-staging and does not implement
-selected staging-based release-task admission. Neither that label nor a green
+the successor consolidation/promotion admission. Neither that label nor a green
 constituent result proves the successor route. Existing owner-bound prior routes
-remain available during qualified migration. Exact-subject selected-release,
+remain available during qualified migration. Exact-subject consolidation/promotion,
 repair and reconciliation evidence, compatible plan consumers and actual checking
 sources must qualify before successor enrollment or predecessor retirement.
 Preserve complete product, security, event and result coverage and unsupported

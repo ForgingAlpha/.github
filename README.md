@@ -33,8 +33,8 @@ jobs:
 ```
 
 Every repository follows the shared route: reviewed disposable exploration and
-unit refactoring; task PR to `dev`; selected release assembly/refactoring on a
-staging-based task branch; PR to `staging`; integrated qualification; then a
+unit refactoring; task PR to `dev`; whole-batch consolidation from frozen `dev`
+and reviewed PR back into `dev`; fixed-snapshot PR to `staging`; integrated qualification; then a
 `staging` to `main` PR and reviewed reconciliation to dev. Every persistent merge
 is human. Main remains the active shared automation source. See
 [REQ-027](docs/requirements.md#req-027---uniform-proposal-admission).
@@ -171,7 +171,7 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
 | `ci-foundation` | Approved exact foundation export and actual working-file integrity before its adapter |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central approved-license policy |
-| `ci-merge-flow` | Existing dev/main guard; successor release-task/staging admission remains unqualified |
+| `ci-merge-flow` | Existing dev/main guard and source-repo bridge; successor consolidation/promotion admission remains unqualified |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
 | `ci-rust` | Format, Clippy, dead code, tests, and audit |
 | `ci-astro` | Format, lint, Astro type checking, and build |

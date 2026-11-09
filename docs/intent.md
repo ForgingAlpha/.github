@@ -31,10 +31,13 @@ automation without copying workflow logic between repositories.
   promotion, source acceptance or recurring ruleset repin makes it active.
 - Authored changes use nonpersistent branches in assigned task worktrees.
   Every repository uses reviewed disposable exploration and whole-unit refactoring,
-  task pull requests to protected `dev`, selected release assembly and combined
-  refactoring on a staging-based task branch, a pull request to protected `staging`,
+  task pull requests to protected `dev`, whole-batch consolidation from frozen
+  `dev` on a task branch and a reviewed pull request back to `dev`, then a fixed
+  integrated snapshot proposed to protected `staging`,
   integrated qualification and a separate `staging` to `main` promotion pull request.
-  Reviewed reconciliation preserves newer dev work while returning release refinements.
+  Feature and batch refactoring reassess representations and affected downstream
+  logic against combined requirements. Reviewed reconciliation preserves newer dev
+  work while returning release refinements.
   The shared control-plane owns this route and its bounded migration; repository
   content does not create exceptions. Complete applicable checks and human approval
   and merge apply on every supported path. Existing adopted routes remain available
