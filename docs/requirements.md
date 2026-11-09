@@ -149,7 +149,7 @@ Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
 of three days for patches, seven days for minors, and thirty days for majors.
 
 **Fit:** Eligible patch, minor, and major proposals follow REQ-027's ordinary
-route: task proposals to `dev`, selected release-task proposals to `staging`,
+route: task proposals to `dev`, reviewed whole-batch consolidation back into `dev`, fixed-snapshot proposals to `staging`,
 then a separate `staging` to `main` promotion. The bounded migration preserves
 each repository's prior route until qualified replacement. An authorized human merges each proposal
 after exact-head `CI` and
@@ -648,26 +648,49 @@ Shared admission SHALL implement control-plane ASR-AUTH-005's repository-level
 route for every repository, including `.github`, control-plane, shared components,
 applications, websites and their documentation. Reviewed disposable exploration
 and whole-unit refactoring precede a nonpersistent task-branch PR to protected
-`dev`. Selected, dependency-complete release assembly and combined refactoring
-start on a nonpersistent task branch from exact current `staging`; its PR targets
-protected `staging`. Qualification covers the integrated staging result and
+`dev`. Before freezing a batch, the release owner SHALL resolve unfinished prior
+staging work and verify reconciliation of earlier staging/main fixes. The owner
+records and communicates the dev merge hold under ASR-AUTH-005; human mergers
+honor it while task work may continue. The owner binds the complete dev batch.
+Combined refactoring starts on a nonpersistent consolidation branch from that
+frozen dev revision; its reviewed PR targets protected `dev`. The owner binds the
+actual integrated dev snapshot and proposes that fixed result to protected
+`staging` through a nonpersistent promotion branch. Verify the actual staged
+result and updated dev baseline before reopening dev to new merges on the successful
+promotion path. An authorized terminal cancellation follows ASR-AUTH-005's
+reconciliation and stale-proposal prevention before releasing the hold. Qualification
+covers the integrated staging result and
 intended main integration before a separate same-repository `staging` to `main`
 PR. Reviewed task-branch reconciliation returns release refinements to current
 `dev` without overwriting newer work. Every persistent merge remains human.
 
 Admission SHALL bind the exact repository, task/release purpose, head, target,
-checking source and applicable evidence. A selected completed dev unit binds its
-accepted integrated revision and base, acceptance and scope. Release selection
-SHALL account for implicit base and shared-file dependencies, dependency closure,
-exclusions and refactored composition. Branch names, cherry-pick lists, self-asserted
-PR text and passing constituent checks alone SHALL NOT prove release eligibility.
+checking source and applicable evidence. The complete batch binds its frozen dev
+revision, reviewed consolidation, actual integrated dev result and intended staging
+integration. Combined acceptance SHALL account for shared dependencies, required
+Fact distinctions and representations, and affected downstream producers and
+consumers. Branch names, self-asserted PR text and passing constituent checks alone
+SHALL NOT prove release eligibility. The owner SHALL resolve or hold incomplete
+work in the batch before promotion, rather than silently select an unexplained subset.
+Removal or deferral of integrated work requires a reviewed dev change before fixing
+the snapshot. Unexpected dev movement during the hold invalidates affected evidence.
+Independently verified no-change consolidation requires no empty PR; its exact
+reviewed dev baseline after any permitted batch corrections and unchanged snapshot
+remain required. Later work after the hold is released belongs to the next batch;
+it cannot change the fixed release snapshot. In-flight tasks SHALL reconcile and
+reassess against the consolidated dev model before their later proposal.
 One existing shared repository/project record owns the active release claim;
-conflicting claims stop assembly. Release and bounded repair tasks belong to that
+conflicting claims stop consolidation or promotion. Consolidation, promotion and
+bounded repair tasks belong to that
 serialized release; repair admits no unrelated feature work and renews affected
-review/checks. Before selecting the next release, verify reconciliation of the
+review/checks. Before freezing the next release, verify reconciliation of the
 actual main result with staging and refinements with current dev. Verified
 no-change evidence requires no empty PR. Shared admission consumes exact owner
-evidence; it does not acquire ownership of semantic selection or review decisions.
+evidence; it does not acquire ownership of semantic acceptance or review decisions.
+The hold and cancellation conditions are source obligations, not proof of automatic
+enforcement; their actual admission consumers remain qualification prerequisites.
+Ordinary urgent fixes follow the same route, using authorized reprioritization or
+release cancellation/replanning where needed, not a direct-main bypass.
 
 Each repository's adopted PROJECT or owning route definition supplies its initial
 migration binding. Its responsible owner retains the prior route, enabling and
@@ -697,10 +720,10 @@ owner adopts a compatible successor. Ordinary releases SHALL NOT claim that path
 to bypass dev/staging. Retire obsolete route representations only after qualified
 replacement preserves every surviving obligation under REQ-022 and REQ-025.
 
-**Fit:** Qualify valid task-to-dev, selected release-task-to-staging, active-release
+**Fit:** Qualify valid task-to-dev, frozen-batch consolidation-to-dev, fixed-snapshot promotion-to-staging, active-release
 repair-to-staging, staging-to-main and reconciliation-task-to-dev paths. Refuse
-forged release names/evidence, stale subjects, omitted dependencies, unrelated dev
-work, conflicting releases, persistent dev-to-staging and ordinary dev-to-main
+forged release names/evidence, stale subjects, omitted dependencies, omitted batch
+work, an unreviewed moving-dev snapshot, conflicting releases, persistent dev-to-staging and ordinary dev-to-main
 shortcuts after migration and
 unsupported profiles. Preserve authorized predecessor paths during transition;
 unknown or conflicting evidence fails rather than inventing a route. Invalid
