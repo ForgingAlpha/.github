@@ -549,3 +549,114 @@ its separately reviewed human-merged consumer source change and observed valid-p
 invalid-block enforcement. Failed, cancelled, skipped or absent restored CI is not
 recovery. Unknown mutation outcomes require reconciliation before retry. This source
 change performs none of those effects and keeps all actual catalog assignments intact.
+
+## Unified admission source capability
+
+The maintained CLI and workflow continue their existing schema 1/2 migration
+routes. There is no unified enrollment, operational owner reader, credential grant,
+reader-loading environment variable, or command-line route selector. Calling the
+in-process unified interface without an explicitly supplied reader refuses with
+`owner acquisition unavailable`. Positive acquisition implementations exist only
+in the test fixtures. Activating a real route requires separate owner, publisher,
+read transport, audience, provenance, currentness and recovery qualification.
+
+`baseline.staged_main(..., unified=UnifiedContext(...))` is a keyword-only seam for
+trusted executing code. It is not safe execution of arbitrary Python supplied by
+an author. `admission_evidence.py` defines its closed consumer projection:
+
+- `Subject.parse` validates exact repository/task/purpose, original creation
+  observation, current source and target, checking source, profile and proposal
+  identity. An unknown creation observation remains unknown and cannot satisfy
+  required evidence. Promotion creation, integrated snapshot and staging target
+  are separate identities.
+- `UnifiedContext.request` fixes logical role/record bindings. `OwnerReader.acquire`
+  returns typed `Available`, `Unavailable`, `Invalid` or `Conflicting`; an author
+  JSON flag cannot declare availability or trust. The maintained default is
+  `UnavailableReader`. Bindings identify existing records, never files or URLs.
+- `evaluate` consumes independently versioned owner references, bounded projected
+  records and separate measured branch observations. Each reference preserves the
+  decision revision, authoritative state revision, payload digest, predecessor,
+  coordinator and succession evidence. Decisions must be accepted and current;
+  identical payload bytes do not erase supersession. Payload digests bind the
+  exact projected body; they do not authenticate its producer.
+- `frozen` checks the same pure contract without contacting an owner. Its result is
+  `ProposalEligible` or `NoProposalRequired`; invalid states raise a sanitized
+  `Refused`. No-change is only for exact independently reviewed consolidation or
+  reconciliation, with no PR number. It cannot produce successful PR CI.
+
+These are local consumer types, not a new authoritative lifecycle format. The
+projection retains only named machine facts and evidence digests. It excludes raw
+private evidence, credential payloads and author-selected execution parameters.
+Inputs reject duplicate keys, unsupported fields/versions, ambiguous proposition
+states and duplicate batch identities before membership comparison. Both complete
+accepted scope and the exact unique member/revision mapping are required. Input
+and complete output are bounded to 64 KiB; excess fails without truncation.
+
+Required roles are task, workspace, migration and repository scheduling; release
+purposes additionally require the existing release record. Feature admission
+binds its own repository hold and eligibility, including current accepted hold
+release evidence. An unrelated release record is not requested. Every purpose
+requires migration qualification. Preparation, Fact and independent review
+eligibility are entry evidence; the current invocation's CI result is produced
+later. Staging-to-main separately requires completed qualification of the exact
+prior staged subject and its result digest. Pending or invented current results
+cannot replace either obligation.
+
+Purpose checks preserve nonpersistent task-to-dev feature/consolidation,
+nonpersistent fixed-snapshot promotion-to-staging, bounded staging repairs,
+reviewed reconciliation preserving later dev, and the explicit staging-to-main
+persistent-source exception. Applicable holds, active claims, whole-batch scope,
+correction review, intended target and measured branch identities remain distinct.
+The intended-integration decision separately binds the exact candidate head, target
+and a declared intended commit or tree identity, separately from its retained
+review-evidence digest. The result may differ from the source. These are reviewed
+intended facts, not a claim of observed human integration.
+Cancellation and suspension grant no CI mutation rights. A cancelled release
+cannot promote. Before new unit admission after cancellation, every non-held
+state, including `clear`, must bind verified withdrawal, resolved effects and the
+actual resolved dev/staging/main identities. Effects on staging or main retain
+their reconciliation requirement. A continuing release with staged effects also
+requires verified hold release before new units can enter dev. CI does not release
+holds or withdraw proposals.
+
+Unified application plans use schema **5**, admission projection version **1**.
+Older unmerged schema 3/4 meanings are not accepted or upgraded. Existing schema
+1/2 plans and bootstrap receipts are unchanged. Schema 5 additionally fingerprints
+both baseline and admission helper source. Component receipt version 1 retains its
+exact phase, full-plan digest and ordered complete component results. The final
+schema 5 receipt binds the original admitted plan digest, exact subject digest,
+checking source and required direct job results.
+
+The six stages retain one plan owner and one result owner:
+
+1. `admit` verifies the actual event, local Git inputs, complete application
+   profile and current provider subject. It acquires owner records and measures
+   required provider branch refs, runs every common check, and rechecks current
+   owners and provider subject before publishing. Only the unified ordinary route
+   evaluation replaces the conflicting legacy declared-route subprocess.
+2. `preflight`, `install`, `static` and `tests` reconstruct the frozen baseline
+   plan from its exact direct workflow output and current local source/Git/profile
+   inputs. They construct no provider API and contact no owner reader. The existing
+   complete product commands produce their actual receipts. Frozen execution
+   proves neither current eligibility nor authorization for additional effects.
+3. `finalize` obtains the original admitted plan from baseline's successful direct
+   needs output, independently reacquires current records and measures required
+   refs, then compares the entire projection. It accepts only the actual successful
+   baseline/static/tests results and exact component receipts for that same plan,
+   and repeats currentness checks before emitting success.
+
+The exact workflow source binding and direct-needs wiring supply transport origin.
+JSON, a digest, a `stage` label or a receipt cannot prove job execution. A caller
+able to fabricate all trusted workflow inputs, or hostile code controlling the
+same runner's outputs, remains outside this check's authentication guarantees.
+No cryptographic attestation, sandbox, human merge approval or effect-time lock is
+claimed. A live owner change after the final read still requires the existing
+merge/effect-time serialization owner.
+
+The local composition tests run real Git inventory, parsers, plans, common route,
+all stages, product receipt construction and final aggregation. They capture
+external command/install boundaries and use synthetic owner/provider APIs. These
+observations qualify source behavior only. All live migration, compatibility,
+caller coverage, integration and protected-settings obligations remain with their
+existing owners. The full self-CI, `.github` absent/present-dev and correctly
+identified fork bridge, security paths and schema 1/2 consumers remain required.

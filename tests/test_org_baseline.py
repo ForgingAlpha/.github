@@ -1070,5 +1070,221 @@ class ApplicationTests(unittest.TestCase):
         self.assertNotIn('customManagers', preset)
 
 
+class UnifiedStageTests(unittest.TestCase):
+    """Real local Git/plan/common/stages/aggregate, captured external commands only."""
+    def setUp(self):
+        from contextlib import ExitStack
+        from test_admission_evidence import subject, context
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        self.f = ApplicationFixture(self.directory / 'unified')
+        self.event = self.f.event()
+        self.event['repository']['default_branch'] = 'dev'
+        self.context, self.observations = context(subject(head=self.f.head, creation_base=self.f.base, target=self.f.base,
+                                                         source_ref=self.event['pull_request']['head']['ref']))
+        self.api = FakeApi(self.f)
+        self.output = self.directory / 'outputs'
+        self.calls = []
+        self.fail_product = False
+        self.fail_common = False
+        def command(argv, cwd, env=None, **kwargs):
+            self.calls.append(argv)
+            if self.fail_common and any(str(x).endswith('validate_codeowners_contract.py') for x in argv):
+                raise ValueError('common command failed')
+            if '--version' in argv:
+                return b'v24.18.0\n'
+            if self.fail_product and argv[-3:] == ['central','script','test']:
+                raise ValueError('product command failed')
+            if argv and argv[0] == 'mise' and env:
+                self.assertNotIn('secret-fixture-sentinel', env.values())
+        original_integrity = baseline.application_integrity
+        def integrity(root, inventory, entry, *args):
+            return original_integrity(root, inventory, entry, self.f.runtime)
+        stack = ExitStack(); self.addCleanup(stack.close)
+        stack.enter_context(patch.dict(os.environ, {'GITHUB_REPOSITORY': ENTRY['repository'],
+            'GITHUB_REPOSITORY_ID': str(ENTRY['repository_id']), 'GITHUB_TOKEN': 'secret-fixture-sentinel',
+            'GITHUB_OUTPUT': str(self.output), 'RUNNER_TEMP': str(self.directory)}))
+        stack.enter_context(patch.object(baseline, 'Api', return_value=self.api))
+        stack.enter_context(patch.object(baseline, 'application_integrity', side_effect=integrity))
+        stack.enter_context(patch.object(baseline, 'checked', side_effect=command))
+
+    def stage(self, name, **kwargs):
+        from types import SimpleNamespace
+        return baseline.staged_main(SimpleNamespace(stage=name), self.f.root, self.event, [self.f.entry],
+                                    kwargs.pop('source_sha', 'd' * 40), unified=kwargs.pop('context', self.context), **kwargs)
+
+    def outputs(self):
+        return dict(line.split('=', 1) for line in self.output.read_text().splitlines())
+
+    def admit(self):
+        self.stage('admit')
+        raw = self.outputs()['plan']
+        os.environ['BASELINE_PLAN'] = raw
+        return json.loads(raw)
+
+    def jobs(self):
+        receipts = {}
+        for phase in ('static','tests'):
+            self.stage(phase); receipts[phase] = self.outputs()['receipt']
+        return receipts
+
+    def finalize(self, plan, receipts):
+        os.environ['BASELINE_NEEDS'] = json.dumps(successful_needs(plan, **receipts))
+        with patch.object(sys, 'stdout', io.StringIO()) as output:
+            self.stage('finalize')
+        return json.loads(output.getvalue())
+
+    def test_first_run_real_common_and_all_six_stages_failure_repair(self):
+        plan = self.admit()
+        self.assertEqual(plan['schema_version'], 5)
+        self.assertNotIn('current_result', json.dumps(plan))
+        common = ' '.join(' '.join(map(str, c)) for c in self.calls)
+        for command in ('validate_product_lifecycle_baseline.py','validate_codeowners_contract.py','lint_bootstrap.mjs',
+                        'check_workflows.py','check_dependabot_coverage.py','validate_update_ownership.py','foundation_source.py'):
+            self.assertIn(command,common)
+        self.assertNotIn('check_merge_flow.sh',common)
+        self.stage('preflight'); self.stage('install'); self.stage('static')
+        static = self.outputs()['receipt']
+        self.fail_product = True
+        with self.assertRaisesRegex(ValueError,'product command failed'): self.stage('tests')
+        needs = successful_needs(plan, static=static, tests=static);needs['tests']['result']='failure'
+        os.environ['BASELINE_NEEDS']=json.dumps(needs)
+        with self.assertRaisesRegex(ValueError,'did not succeed'):self.stage('finalize')
+        self.fail_product=False;self.stage('tests')
+        receipt=self.finalize(plan,{'static':static,'tests':self.outputs()['receipt']})
+        self.assertEqual(receipt['schema_version'],5)
+        self.assertEqual(receipt['plan_sha256'],baseline.plan_digest(plan))
+        self.assertEqual(receipt['required_results'],{'baseline':'success','static':'success','tests':'success'})
+        self.assertNotIn('secret-fixture-sentinel',json.dumps(plan)+json.dumps(receipt))
+        self.assertTrue(any(call==['mise','install','--locked'] for call in self.calls))
+        self.assertEqual(sum(call[-1]=='format' for call in self.calls),1)
+
+    def test_frozen_products_offline_live_finalization_and_identical_byte_supersession(self):
+        from test_admission_evidence import resign
+        plan=self.admit();reads=len(self.context.reader.requests)
+        self.context.reader.outcome=baseline.admission.Unavailable()
+        with patch.object(baseline, 'Api', side_effect=AssertionError('product contacted provider')), patch.object(self.api, 'get', side_effect=AssertionError('product read provider')):
+            self.stage('preflight');self.stage('install');receipts=self.jobs()
+        self.assertEqual(len(self.context.reader.requests),reads)
+        with self.assertRaisesRegex(ValueError,'unavailable'):self.finalize(plan,receipts)
+        self.context.reader.outcome=None
+        self.finalize(plan,receipts)
+        self.context.reader.records['scheduling']['ref']['state_revision']+=1
+        with self.assertRaisesRegex(ValueError,'evidence changed'):self.finalize(plan,receipts)
+        self.context.reader.records['scheduling']['ref']['state_revision']-=1
+        body=self.context.reader.records['scheduling']['body'];body['data'].update(hold='held',claim='release/current',lifecycle='continuing');resign(self.context.reader.records,'scheduling')
+        with self.assertRaisesRegex(ValueError,'held'):self.finalize(plan,receipts)
+
+    def test_failed_or_forged_job_receipts_never_replace_direct_success(self):
+        plan=self.admit();receipts=self.jobs();valid=successful_needs(plan,**receipts)
+        cases=[]
+        for job in ('baseline','static','tests'):
+            for state in ('failure','cancelled','skipped','pending'):
+                bad=copy.deepcopy(valid);bad[job]['result']=state;cases.append(bad)
+            bad=copy.deepcopy(valid);del bad[job];cases.append(bad)
+            bad=copy.deepcopy(valid);bad[job]['outputs']['source_sha']='e'*40;cases.append(bad)
+        for bad in cases:
+            os.environ['BASELINE_NEEDS']=json.dumps(bad)
+            with self.assertRaises(ValueError):self.stage('finalize')
+        bad=copy.deepcopy(valid);forged=copy.deepcopy(plan);forged['stage']='product';bad['baseline']['outputs']['plan']=json.dumps(forged)
+        for phase in ('static','tests'):
+            value=json.loads(bad[phase]['outputs']['receipt']);value['plan_sha256']=baseline.plan_digest(forged);bad[phase]['outputs']['receipt']=json.dumps(value)
+        os.environ['BASELINE_NEEDS']=json.dumps(bad)
+        with self.assertRaisesRegex(ValueError,'admitted plan differs'):self.stage('finalize')
+        with self.assertRaisesRegex(ValueError,'unsupported stage'):self.stage('product')
+
+    def test_missing_prior_eligibility_or_common_failure_publishes_no_plan(self):
+        from test_admission_evidence import resign
+        self.fail_common=True
+        with self.assertRaisesRegex(ValueError,'common command failed'):self.stage('admit')
+        self.assertFalse(self.output.exists())
+        self.fail_common=False
+        body=self.context.reader.records['task']['body'];body['predicates']['preparation_reviewed']['state']='unknown';resign(self.context.reader.records,'task')
+        with self.assertRaisesRegex(ValueError,'not satisfied'):self.stage('admit')
+        self.assertFalse(self.output.exists())
+
+    def test_tampering_refuses_before_any_product_command(self):
+        plan=self.admit();base_calls=len(self.calls)
+        cases=[]
+        for key,value in [('head','e'*40),('source_sha','e'*40),('schema_version',4),('stage','product'),('runtime',{})]:
+            bad=copy.deepcopy(plan);bad[key]=value;cases.append(bad)
+        bad=copy.deepcopy(plan);bad['checking_fingerprints']['actions/ci-org-baseline/scripts/admission_evidence.py']='e'*64;cases.append(bad)
+        bad=copy.deepcopy(plan);bad['admission']['records']['task']['ref']['state_revision']+=1;cases.append(bad)
+        # Frozen products preserve coherent admitted owner revisions; changing only
+        # a ref is not authenticated here. The finalizer must compare live owners.
+        owner_changed=cases.pop()
+        for bad in cases:
+            os.environ['BASELINE_PLAN']=json.dumps(bad)
+            with self.assertRaises(ValueError):self.stage('static')
+        self.assertEqual(len(self.calls),base_calls)
+        os.environ['BASELINE_PLAN']=json.dumps(plan)
+        with self.assertRaises(ValueError):self.stage('static',source_sha='e'*40)
+        self.assertEqual(len(self.calls),base_calls)
+        self.f.write('docs/change.md','# dirty input\n')
+        with self.assertRaises(ValueError):self.stage('static')
+        self.assertEqual(len(self.calls),base_calls)
+        self.f.write('docs/change.md','# Change\n')
+        receipts=self.jobs()
+        with self.assertRaisesRegex(ValueError,'evidence changed'):self.finalize(owner_changed,receipts)
+
+    def test_default_unified_reader_refuses_and_cli_has_no_selector(self):
+        unavailable=baseline.admission.UnifiedContext(self.context.subject,self.context.bindings)
+        with self.assertRaisesRegex(ValueError,'unavailable'):self.stage('admit',context=unavailable)
+        self.assertFalse(self.output.exists())
+        import inspect
+        main=inspect.getsource(baseline.main)
+        self.assertNotIn('unified=',main)
+        for name in ('--reader','--trusted','--admission','ADMISSION_READER'):
+            self.assertNotIn(name,main)
+
+    def test_every_bound_owner_revision_and_no_change_cannot_finalize_pr(self):
+        plan=self.admit();receipts=self.jobs()
+        for role in self.context.reader.records:
+            self.context.reader.records[role]['ref']['state_revision']+=1
+            with self.subTest(role=role),self.assertRaisesRegex(ValueError,'evidence changed'):self.finalize(plan,receipts)
+            self.context.reader.records[role]['ref']['state_revision']-=1
+        from test_admission_evidence import context,subject
+        no_change,_=context(subject('consolidation',head=self.f.base,creation_base=self.f.base,target=self.f.base,outcome='no-change',pr=None))
+        with self.assertRaisesRegex(ValueError,'subject differs'):self.stage('admit',context=no_change)
+        self.api.live['head']['ref']='feature/other'
+        with self.assertRaisesRegex(ValueError,'proposal refs differ'):self.finalize(plan,receipts)
+
+    def test_real_nonpersistent_promotion_replaces_only_legacy_route_guard(self):
+        from test_admission_evidence import context, subject, resign
+        creation=self.f.base
+        self.f.branch='staging'
+        self.f.base=self.f.git('rev-parse','HEAD~2').strip()
+        self.f.git('update-ref','refs/remotes/origin/staging',self.f.base)
+        self.f.entry['branches']=['dev','staging','main']
+        self.event=self.f.event();self.event['repository']['default_branch']='dev'
+        self.context,observations=context(subject('promotion',head=self.f.head,creation_base=creation,target=self.f.base,
+                                                  source_ref=self.event['pull_request']['head']['ref']))
+        release=self.context.reader.records['release']['body']['data'];release['snapshot']=self.f.head;resign(self.context.reader.records,'release')
+        self.api.live={**self.event['pull_request'],'number':1,'state':'open'};self.api.base=self.f.base
+        original=self.api.get
+        def get(path):
+            if path.endswith('/branches/dev'):return {'commit':{'sha':self.f.head}}
+            if path.endswith('/branches/main'):return {'commit':{'sha':observations['main']}}
+            return original(path)
+        with patch.object(self.api,'get',side_effect=get):
+            plan=self.admit();self.assertEqual(plan['route'],'unified')
+            self.assertEqual(plan['admission']['subject']['creation_base'],creation)
+            self.assertNotEqual(creation,self.f.head)
+            self.assertNotEqual(self.f.base,self.f.head)
+            self.finalize(plan,self.jobs())
+        self.assertFalse(any('check_merge_flow.sh' in ' '.join(map(str,call)) for call in self.calls))
+        with patch.object(self.api,'get',side_effect=lambda path: {'commit':{}} if path.endswith('/branches/dev') else get(path)),self.assertRaises(ValueError):
+            self.stage('admit')
+
+    def test_final_recheck_after_aggregate_is_required(self):
+        plan=self.admit();receipts=self.jobs();original=baseline.aggregate
+        def moving_owner(*args):
+            original(*args)
+            self.context.reader.records['task']['ref']['state_revision']+=1
+        with patch.object(baseline,'aggregate',side_effect=moving_owner),self.assertRaisesRegex(ValueError,'evidence changed'):
+            self.finalize(plan,receipts)
+
+
 if __name__ == "__main__":
     unittest.main()
