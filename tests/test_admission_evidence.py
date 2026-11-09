@@ -98,6 +98,12 @@ class ContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, message): ae.acquire(ctx, obs)
 
     def test_owner_provenance_totality_and_sanitized_failures(self):
+        ctx, obs = context(subject())
+        ctx.reader.records['task']['body']['data']['revision'] = True
+        # Integrity is valid, so the nested type check must reject the alias.
+        resign(ctx.reader.records, 'task')
+        with self.assertRaisesRegex(ValueError, 'invalid owner revision'):
+            ae.acquire(ctx, obs)
         for mutate in (
             lambda r:r['task']['ref'].update(record='owner/other'),
             lambda r:r['task']['ref'].update(decision_revision=True),

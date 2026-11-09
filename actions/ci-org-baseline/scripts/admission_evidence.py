@@ -248,6 +248,7 @@ def evaluate(request, available, observations):
             _propositions(bodies[role]['predicates'], names, names)
     task = bodies['task']['data']
     shape(task, 'task revision subject_sha256')
+    revision(task['revision'])
     require(task == {'task': subject['task'], 'revision': subject['task_revision'], 'subject_sha256': digest(subject)}, 'task eligibility subject mismatch')
     workspace = bodies['workspace']['data']
     shape(workspace, 'task creation_ref creation_base')
