@@ -478,18 +478,68 @@ the registry name, version, tarball, integrity, and license to match the lock ex
 No token, caller URL, alternate registry, package exception, or executable package
 content enters this evidence path; unavailable or inconsistent evidence fails closed.
 
-The separate first-party evidence class is fixed in central code to
-`ForgingAlpha/.github/actions/<action>@main`; callers cannot select an owner,
-repository, reference, or exception. The checker requires the dependency record
-to match that family exactly, resolves protected `refs/heads/main`
-directly to a commit, fetches that exact commit's tree once, rejects truncated
-or malformed evidence, and requires exactly one blob at the named action path.
-The fixed repository, reference, commit, and path prove first-party ownership and
-protected-main source provenance. The API lookup does not independently re-prove
-human approval; it composes with the protected human-merge path. All
-endpoints are constructed internally rather than taken from dependency data,
-both first-party requests are cached per validation, and every identity, API,
-schema, tree, or policy error fails closed.
+The first-party Action evidence class remains fixed in central code to
+`ForgingAlpha/.github/actions/<action>@main`. One additional missing-license
+member is fixed to the Foundation compatibility caller: consumer
+`ForgingAlpha/container-foundation`, manifest
+`.github/workflows/consumer-compatibility.yml`, ecosystem `actions`, name
+`ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml`,
+version `main`, and exact package URL
+`pkg:githubactions/ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml@main`.
+An absent or null source repository URL is allowed; a supplied value must equal
+`https://github.com/ForgingAlpha/.github`. These are fixed central identities,
+not a general reusable-workflow family or a caller-configurable exception.
+
+The shared-CI owner owns coordination of this fixed dependency-eligibility
+contract. Foundation retains ownership of its caller and supplies proposed
+caller/manifest changes; the shared-CI owner evaluates changes to the central
+member and coordinates any affected controller references. A path or identity
+change outside the admitted tuple refuses this evidence class until the
+corresponding central policy and implementation have been reviewed and adopted.
+Foundation is not required to keep this filename forever and cannot broaden the
+central class locally. Renames do not silently alias or migrate an admitted
+member; coordinated successor adoption must satisfy the existing consumer
+qualification and evidence-order requirements before reliance.
+
+This member defines central dependency-source eligibility; it is not an
+Enrollment or Grant record, a materialized copy of either record, or evidence of
+current participation or private entitlement. Those human-owned records and
+their protected runtime projection remain authoritative for their own purposes;
+positive dependency eligibility cannot override refusal or revocation there.
+The repository-name predicate is independent of the controller's repository-ID
+predicate: it does not prove identity continuity after rename, transfer, or
+name reuse. These separate predicates must all be satisfied where applicable.
+
+The existing action assigns `DEPENDENCY_REPOSITORY` from `github.repository`;
+`license_policy.py` validates this provider-derived repository identity. The
+workflow member uses that existing identity and the exact dependency manifest;
+no caller input or new environment fallback selects its consumer. The validator
+retains its current distinction between missing-license metadata and explicit
+unapproved or malformed license expressions. The latter never enter a provenance
+exception. Existing approved-license and artifact-exception behavior remains.
+
+All admitted first-party members in one validation share one internally fixed
+protected `refs/heads/main` request and one tree request at the returned immutable
+commit. The ref must resolve directly to a commit; a later main cannot replace
+the selected snapshot. The complete, untruncated tree must contain exactly one
+nonempty regular blob at each member's fixed path; the workflow path is
+`.github/workflows/consumer-compatibility-controller.yml`. Require type `blob`,
+mode `100644` or `100755`, positive integer size and valid immutable blob SHA.
+Missing, conflicting, malformed or unavailable identity/ref/tree/blob evidence
+fails closed. The actual HTTP transport for these fixed first-party evidence
+requests rejects redirects for both Action and workflow members; dependency data
+never supplies an endpoint. This first-party transport is separate from the
+existing third-party exact-SHA license lookup transport, whose behavior remains
+unchanged by this rule.
+Both requests are reused across the legacy Action and exact workflow members,
+not performed separately per member. Third-party exact-SHA license resolution,
+other missing-license evidence classes and vulnerability enforcement remain.
+
+The recorded repository, main snapshot, commit and blob establish source
+provenance only. They do not prove which workflow executed, runtime safety,
+license compliance, a grant, human approval or runtime activation. The lookup
+composes with the governing protected human-merge path; it does not independently
+re-prove that path.
 
 `license_policy.py` also owns the closed artifact exception for
 `ForgingAlpha/turnkeyleads-app`, `assets/customer/package-lock.json`, and

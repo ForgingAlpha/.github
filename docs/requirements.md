@@ -458,7 +458,8 @@ gate through strict ownership and protected-main provenance: the evidence record
 SHALL match the fixed repository and main reference exactly, that reference
 SHALL resolve directly to a commit, and that exact commit SHALL
 contain the named action. Callers SHALL NOT select or broaden this first-party
-evidence class. When GitHub reports a null license for an exact pinned root npm
+evidence class. First-party protected-main evidence requests SHALL reject HTTP
+redirects. When GitHub reports a null license for an exact pinned root npm
 alias, the central gate MAY normalize it to the underlying package only when the
 manifest and npm v3 lock agree on the exact alias, target name and version, canonical
 registry artifact, sha512 integrity, and centrally approved SPDX license. Evidence
@@ -468,6 +469,23 @@ endpoint whose identity, artifact, integrity, and license match the lock. No cal
 URL, alternate registry, credential, package exception, or executable package content
 SHALL enter the resolver. Ranged, tagged, malformed, or non-root aliases SHALL fail
 closed.
+
+For the Foundation compatibility caller only, a missing-license dependency MAY use the
+same first-party ownership evidence for the exact package
+`pkg:githubactions/ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml@main`.
+The consumer SHALL be `ForgingAlpha/container-foundation`, the dependency manifest SHALL
+be `.github/workflows/consumer-compatibility.yml`, the ecosystem SHALL be `actions`, the
+dependency name SHALL be
+`ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml`, and the
+version SHALL be `main`. If present, the source repository URL SHALL be exactly
+`https://github.com/ForgingAlpha/.github`. The fixed protected main ref SHALL resolve
+directly to a commit whose complete tree contains exactly one nonempty regular blob at
+`.github/workflows/consumer-compatibility-controller.yml`. Callers SHALL NOT broaden or
+configure this member, consumer or manifest. Unavailable, malformed, ambiguous or
+conflicting evidence SHALL fail closed. This provides dependency-source provenance only;
+it does not establish execution safety, grant authority, human approval of the
+candidate, or runtime activation. Explicit unapproved or malformed license expressions
+SHALL continue to fail, and all vulnerability checks SHALL remain mandatory.
 
 The control plane MAY admit a custom-licensed artifact through a reviewed policy
 change binding one repository, canonical dependency identity, exact version,
@@ -523,7 +541,10 @@ the adopted policy before operational reliance.
 fails; the exact-revision third-party resolver fails closed on malformed
 identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
 first-party resolver fails closed on any schema, repository, reference, commit,
-tree, or action-path mismatch; npm alias normalization fails closed on any manifest,
+tree, action-path, or first-party transport redirect mismatch; the exact Foundation
+workflow provenance class
+fails closed on any consumer, manifest, identity, reference, transport or blob
+mismatch; npm alias normalization fails closed on any manifest,
 PURL, spec, lock format, target, registry, artifact, integrity, license, redirect,
 availability, response-size, or lookup-count mismatch;
 the artifact exception accepts only its reviewed repository and immutable artifact,

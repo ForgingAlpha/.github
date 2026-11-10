@@ -15,7 +15,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 from license_policy import (
     APPROVED_SPDX,
@@ -35,6 +36,11 @@ FIRST_PARTY_ACTION_PURL = re.compile(
 FIRST_PARTY_REPOSITORY = "ForgingAlpha/.github"
 FIRST_PARTY_SOURCE_URL = "https://github.com/ForgingAlpha/.github"
 FIRST_PARTY_VERSION = "main"
+FOUNDATION_CONSUMER = "ForgingAlpha/container-foundation"
+FOUNDATION_MANIFEST = ".github/workflows/consumer-compatibility.yml"
+FOUNDATION_WORKFLOW_PATH = ".github/workflows/consumer-compatibility-controller.yml"
+FOUNDATION_WORKFLOW_NAME = f"{FIRST_PARTY_REPOSITORY}/{FOUNDATION_WORKFLOW_PATH}"
+FOUNDATION_WORKFLOW_PURL = f"pkg:githubactions/{FOUNDATION_WORKFLOW_NAME}@main"
 FIRST_PARTY_REF_ENDPOINT = "https://api.github.com/repos/ForgingAlpha/.github/git/ref/heads/main"
 GITHUB_API_VERSION = "2026-03-10"
 LICENSE_LOOKUP_LIMIT = 20
@@ -82,6 +88,16 @@ class FirstPartyActionIdentity:
     @property
     def action_path(self) -> str:
         return f"actions/{self.action_directory}/action.yml"
+
+    @property
+    def source_path(self) -> str:
+        return self.action_path
+
+
+@dataclass(frozen=True)
+class FirstPartySourceIdentity:
+    source_path: str
+    package_url: str
 
 
 @dataclass(frozen=True)
@@ -187,6 +203,54 @@ def parse_first_party_action_identity(
         raise EvidenceError(f"First-party GitHub Action {package_url} has an invalid source repository URL.")
 
     return FirstPartyActionIdentity(action_directory, package_url)
+
+
+def parse_first_party_identity(
+    change: dict[str, Any], repository: str
+) -> FirstPartyActionIdentity | FirstPartySourceIdentity | None:
+    """Recognize first-party hints, then validate the complete fixed identity.
+
+    A contradictory name/PURL cannot escape into the third-party resolver.
+    The repository argument is the existing validated provider carrier, not
+    a new caller option. Only missing-license records reach this function.
+    """
+    package_url = change.get("package_url")
+    name = change.get("name")
+    action_prefix = f"{FIRST_PARTY_REPOSITORY}/actions/"
+    if (
+        isinstance(package_url, str)
+        and package_url.startswith(f"pkg:githubactions/{action_prefix}")
+    ) or (isinstance(name, str) and name.startswith(action_prefix)):
+        identity = parse_first_party_action_identity(change)
+        if identity is None:
+            raise EvidenceError("First-party GitHub Action has an inconsistent package URL.")
+        return identity
+
+    workflow_prefix = f"{FIRST_PARTY_REPOSITORY}/.github/workflows/"
+    if not (
+        isinstance(package_url, str)
+        and package_url.startswith(f"pkg:githubactions/{workflow_prefix}")
+    ) and not (isinstance(name, str) and name.startswith(workflow_prefix)):
+        return None
+
+    if repository != FOUNDATION_CONSUMER:
+        raise EvidenceError("First-party workflow evidence requires the exact Foundation consumer.")
+    expected = {
+        "ecosystem": "actions",
+        "manifest": FOUNDATION_MANIFEST,
+        "name": FOUNDATION_WORKFLOW_NAME,
+        "version": FIRST_PARTY_VERSION,
+        "package_url": FOUNDATION_WORKFLOW_PURL,
+    }
+    for field, value in expected.items():
+        if change.get(field) != value:
+            raise EvidenceError(
+                f"First-party Foundation workflow has missing or inconsistent {field}."
+            )
+    source_url = change.get("source_repository_url")
+    if source_url is not None and source_url != FIRST_PARTY_SOURCE_URL:
+        raise EvidenceError("First-party Foundation workflow has an invalid source repository URL.")
+    return FirstPartySourceIdentity(FOUNDATION_WORKFLOW_PATH, FOUNDATION_WORKFLOW_PURL)
 
 
 def npm_purl(name: str, version: str | None = None) -> str:
@@ -307,7 +371,7 @@ def npm_lock_packages(payload: dict[str, Any], label: str) -> dict[str, Any]:
 
 
 class RejectRedirects(urllib.request.HTTPRedirectHandler):
-    """Keep npm evidence requests on their internally constructed endpoints."""
+    """Keep scoped evidence requests on their internally constructed endpoints."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
         return None
@@ -547,8 +611,42 @@ def fetch_github_json(endpoint: str, token: str, subject: str) -> Any:
         ) from error
 
 
-def fetch_first_party_main_tree(token: str) -> tuple[str, tuple[dict[str, Any], ...]]:
-    ref_payload = fetch_github_json(FIRST_PARTY_REF_ENDPOINT, token, "the first-party main channel")
+def open_first_party_request(request: urllib.request.Request, *, timeout: int):
+    """Select a no-redirect transport without changing third-party urlopen."""
+    opener = urllib.request.build_opener(RejectRedirects())
+    response = opener.open(request, timeout=timeout)
+    if response.geturl() != request.full_url or response.getcode() != 200:
+        response.close()
+        raise EvidenceError("First-party evidence requires a direct HTTP 200 response.")
+    return response
+
+
+def fetch_first_party_json(endpoint: str, token: str, subject: str) -> Any:
+    # Deliberately separate from fetch_github_json: no policy flag or global
+    # opener replacement can change the third-party transport.
+    request = urllib.request.Request(
+        endpoint,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": GITHUB_API_VERSION,
+            "User-Agent": "ForgingAlpha-license-evidence",
+        },
+        method="GET",
+    )
+    try:
+        with open_first_party_request(
+            request, timeout=LICENSE_LOOKUP_TIMEOUT_SECONDS
+        ) as response:
+            return json.load(response, object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError, UnicodeError) as error:
+        raise EvidenceError(
+            f"First-party GitHub evidence lookup failed for {subject} ({type(error).__name__})."
+        ) from error
+
+
+def fetch_first_party_main_tree(token: str) -> tuple[str, tuple[Mapping[str, Any], ...]]:
+    ref_payload = fetch_first_party_json(FIRST_PARTY_REF_ENDPOINT, token, "the first-party main channel")
     if not isinstance(ref_payload, dict) or ref_payload.get("ref") != "refs/heads/main":
         raise EvidenceError("First-party main lookup returned an invalid reference.")
     ref_object = ref_payload.get("object")
@@ -558,10 +656,10 @@ def fetch_first_party_main_tree(token: str) -> tuple[str, tuple[dict[str, Any], 
     if not isinstance(commit_sha, str) or not GITHUB_SHA.fullmatch(commit_sha):
         raise EvidenceError("First-party main returned an invalid commit SHA.")
 
-    # Snapshot main once; the provider resolves this exact immutable commitish.
-    # All first-party actions in this validation share these two fixed requests.
+    # Resolve main only once. All Action and workflow members share this
+    # complete tree at the selected immutable commit, even if main later moves.
     tree_endpoint = f"https://api.github.com/repos/ForgingAlpha/.github/git/trees/{commit_sha}?recursive=1"
-    tree_payload = fetch_github_json(tree_endpoint, token, f"first-party main commit {commit_sha}")
+    tree_payload = fetch_first_party_json(tree_endpoint, token, f"first-party main commit {commit_sha}")
     tree_sha = tree_payload.get("sha") if isinstance(tree_payload, dict) else None
     if (not isinstance(tree_sha, str) or not GITHUB_SHA.fullmatch(tree_sha)
             or tree_payload.get("truncated") is not False):
@@ -570,50 +668,71 @@ def fetch_first_party_main_tree(token: str) -> tuple[str, tuple[dict[str, Any], 
     if not isinstance(raw_entries, list):
         raise EvidenceError("First-party main tree returned no entry list.")
 
-    entries: list[dict[str, Any]] = []
+    entries: list[Mapping[str, Any]] = []
+    paths: set[str] = set()
     for entry in raw_entries:
         if not isinstance(entry, dict):
             raise EvidenceError("First-party main tree contains a malformed entry.")
         path = entry.get("path")
         entry_type = entry.get("type")
         entry_sha = entry.get("sha")
+        mode = entry.get("mode")
         size = entry.get("size")
         if (
             not isinstance(path, str)
             or not path
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+            or not isinstance(entry_type, str)
             or entry_type not in {"blob", "tree", "commit"}
             or not isinstance(entry_sha, str)
             or not GITHUB_SHA.fullmatch(entry_sha)
+            or (mode is not None and not isinstance(mode, str))
             or (size is not None and (isinstance(size, bool) or not isinstance(size, int) or size < 0))
         ):
             raise EvidenceError("First-party main tree contains a malformed entry.")
-        entries.append(entry)
+        if path in paths:
+            raise EvidenceError(f"First-party main tree contains duplicate path {path!r}.")
+        paths.add(path)
+        # Retain only checked primitive facts in an immutable local snapshot.
+        entries.append(MappingProxyType({
+            "path": path, "type": entry_type, "sha": entry_sha,
+            "mode": mode, "size": size,
+        }))
 
     return commit_sha, tuple(entries)
 
 
-def verify_first_party_actions(
-    identities: dict[str, FirstPartyActionIdentity], token: str
+def verify_first_party_members(
+    identities: dict[str, FirstPartyActionIdentity | FirstPartySourceIdentity], token: str
 ) -> str:
     commit_sha, entries = fetch_first_party_main_tree(token)
     for identity in identities.values():
-        matches = [entry for entry in entries if entry["path"] == identity.action_path]
+        matches = [entry for entry in entries if entry["path"] == identity.source_path]
         if (
             len(matches) != 1
             or matches[0]["type"] != "blob"
-            or matches[0].get("mode") not in {"100644", "100755"}
+            or matches[0].get("mode") not in ("100644", "100755")
+            or not isinstance(matches[0].get("sha"), str)
+            or not GITHUB_SHA.fullmatch(matches[0]["sha"])
             or not isinstance(matches[0].get("size"), int)
             or isinstance(matches[0].get("size"), bool)
             or matches[0]["size"] <= 0
         ):
             raise EvidenceError(
-                f"First-party main commit does not contain exactly one main-source {identity.action_path} blob."
+                f"First-party main commit does not contain exactly one main-source {identity.source_path} blob."
             )
         print(
             f"✓ Verified first-party provenance for {identity.package_url} at main snapshot commit {commit_sha}; "
-            f"action blob {matches[0]['sha']}. This is dependency-source evidence, not an execution receipt."
+            f"source blob {matches[0]['sha']}. This is dependency-source evidence, not an execution receipt."
         )
     return commit_sha
+
+
+def verify_first_party_actions(
+    identities: dict[str, FirstPartyActionIdentity], token: str
+) -> str:
+    """Preserve the legacy Action helper while sharing the membership check."""
+    return verify_first_party_members(identities, token)
 
 
 def fetch_github_license(identity: GitHubActionIdentity, token: str) -> str:
@@ -751,12 +870,13 @@ def verify_artifact_exception(change: dict[str, Any], approved: dict[str, str]) 
 
 def validate_changes(changes: list[dict[str, Any]]) -> None:
     try:
-        approved = artifact_exception(repository_identity())
+        repository = repository_identity()
+        approved = artifact_exception(repository)
     except ValueError as error:
         raise EvidenceError(str(error)) from error
     missing: list[str] = []
     identities: dict[tuple[str, str, str], GitHubActionIdentity] = {}
-    first_party_identities: dict[str, FirstPartyActionIdentity] = {}
+    first_party_identities: dict[str, FirstPartyActionIdentity | FirstPartySourceIdentity] = {}
     npm_aliases: dict[str, NpmAliasIdentity] = {}
     artifact_seen = False
 
@@ -783,9 +903,16 @@ def validate_changes(changes: list[dict[str, Any]]) -> None:
                 "has malformed license evidence."
             )
 
-        first_party_identity = parse_first_party_action_identity(change)
+        first_party_identity = parse_first_party_identity(change, repository)
         if first_party_identity is not None:
-            first_party_identities[first_party_identity.action_directory] = first_party_identity
+            # Validate every record before deduplication. The admitted facts
+            # normalize absent/null/canonical source URLs to the same owner;
+            # scope and vulnerability enforcement remain with official review.
+            key = first_party_identity.source_path
+            previous = first_party_identities.get(key)
+            if previous is not None and previous != first_party_identity:
+                raise EvidenceError("First-party source membership has conflicting identity evidence.")
+            first_party_identities[key] = first_party_identity
             continue
 
         npm_alias = parse_npm_alias_identity(change)
@@ -823,7 +950,7 @@ def validate_changes(changes: list[dict[str, Any]]) -> None:
         spdx_id = fetch_github_license(identity, token)
         print(f"✓ Resolved {spdx_id} license evidence for {identity.package_url}.")
     if first_party_identities:
-        verify_first_party_actions(first_party_identities, token)
+        verify_first_party_members(first_party_identities, token)
     if npm_aliases:
         verify_npm_aliases(npm_aliases, changes)
 
