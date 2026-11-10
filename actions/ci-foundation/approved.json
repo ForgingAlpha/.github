@@ -34,6 +34,15 @@
       "tree": "dd7b459c987efa09f90d5f3b362f30b179118b51",
       "lock_sha256": "00dfef2d8374ac112c331672219a93b3f3010d9c28ac048cefe3cc2829c196b5",
       "payload_paths": [".foundation", "tools/container-foundation"]
+    },
+    {
+      "repository": "https://github.com/ForgingAlpha/container-foundation",
+      "repository_id": 1428636846,
+      "format": "foundation-source-v1",
+      "commit": "18449f90ecf1fe75f1295e71895c5d4aa6127f99",
+      "tree": "020128269254654333d2af76fb4bce1e098b4fa2",
+      "lock_sha256": "efe697b817d59a710c6cc0acc1318569e94859a0c7d471cae8b9e7a805a609af",
+      "payload_paths": [".foundation", "tools/container-foundation"]
     }
   ]
 }
