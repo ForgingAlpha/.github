@@ -304,10 +304,13 @@ owner steps and direct shell checks; affected candidate wrappers require coheren
 consumer validation before merge.
 
 First-party dependency evidence resolves only the fixed protected-main ref, then
-its immutable commit, tree and named Action blob. It records that snapshot and
-does not label it an executed Action receipt. Unknown dependency-record shapes
-fail closed; actual hosted `main` records need native CI qualification. License,
-vulnerability and third-party immutable-reference rules remain mandatory.
+its immutable commit, tree and admitted Action or reusable-workflow blob. The
+workflow exception is limited to Foundation's fixed consumer, manifest and
+controller tuple; other workflows gain no exemption. Evidence records that
+source snapshot, not an executed Action or workflow receipt. Unknown
+dependency-record shapes fail closed; actual hosted main records need native
+CI qualification. License, vulnerability and third-party immutable-reference
+rules remain mandatory.
 
 Recover with a checked corrective or revert pull request, exact-head human review
 and human merge into main. Record the new exact source and affected outcomes;

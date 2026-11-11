@@ -383,8 +383,17 @@ Protected, human-merged `.github/main` is active. Required CI and review cover
 the exact candidate before the human merge, including coherent affected
 consumer-profile checks. Existing enrolled consumer gates belong to that
 premerge validation; they are not silently removed or moved behind a separate
-activation decision. Post-merge observations record the result and expose
-failures; they do not promote a tag or decide whether main is official.
+activation decision. REQ-020 permits only the exact initial fixed-Foundation-member
+order: coherent source and maintained affected-consumer validation precede checker
+adoption; Foundation's ordinary dependency and product CI must pass against that
+adopted checker before manual-caller adoption. The separately qualified privileged
+connection follows caller adoption. The checker is active for main-following
+consumers at its merge. Its own exact-candidate native qualification is foregone,
+because the controller admits only open proposals. Foundation's ordinary CI and
+later connection remain separate observations of their actual subjects.
+Post-merge observations record their actual subjects, times and failures; they
+do not retroactively qualify a closed proposal, promote a tag or decide whether
+main is official.
 
 For a centrally required workflow, the ruleset tracks main and GitHub supplies
 the immutable defining-workflow identity. Every checking-source checkout uses
@@ -597,7 +606,11 @@ The shared-CI owner verifies actual SPDX expression handling and vulnerability,
 unknown-license and Mapbox regressions before releasing changed enforcement.
 The consumed gate revision must implement the adopted policy before reliance;
 source adoption and a list-entry unit test alone do not prove provider behavior
-or fresh consumer CI success.
+or fresh consumer CI success. REQ-020's initial fixed-Foundation-member admission
+retains the maintained parser, transport and composed-entrypoint controls before
+checker adoption. The exact manual-only Foundation candidate must then pass its
+ordinary dependency and product CI against the adopted checker before its own
+merge. This order changes no existing required gate or later checker obligation.
 
 Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.
@@ -1056,10 +1069,32 @@ Changed or adverse observations invalidate success before replacement work.
 Obsolete owned fixtures may be closed after full custody verification, preserving
 refs and run evidence. Cleanup cannot overwrite a newer plan's public result.
 
-The connection's native behavior, private caller triggers, cost selection and
-required-check admission must be qualified before activation. Shared CI tests
-proposed controller code; the consumer fixture tests proposed Actions using the
-adopted controller. Those are separate claims. Provider observations are eventual,
+The initial fixed-member source and manual qualification stages follow REQ-020.
+The shared-CI owner retains current consumer-selector evidence and the complete
+source/consumer acceptance before checker adoption. Foundation's owner retains
+its actual dependency record, consumer head/tree, run and attempt, the initial
+checker merge commit, the runner-acquired Action revision, and the validator's
+API-resolved main snapshot and source blob before caller adoption. These are
+distinct identities; the main label does not prove that acquired code contains
+the adopted checker or that its acquisition matches the later API snapshot.
+The complete ordinary CI outcome includes required steps and posthooks. The
+owner qualifies the read-only capture and private retention path for these fields
+before seeking or relying on that CI; an unavailable field keeps qualification
+incomplete rather than being reconstructed from another subject.
+A standards-correct refusal requires consumer remediation; a checker defect
+requires its own reviewed human-merged repair. Neither permits suppressed checks,
+an automatic rollback or an unreviewed consumer exception. Before the first
+privileged manual dispatch, its executor verifies adopted controller/caller source,
+qualified protected setup, exact authority, all affected public and private
+inventory, remaining allowance and accepted recovery prerequisites. The authorized
+manual runs then supply only their observed native connection evidence. Automatic
+triggers, standing operation and required-check admission retain their separate
+qualification duties; source adoption and manual success establish none of them.
+Manual results retain their exact-plan meaning without becoming an admitted
+standing gate. Required-result enforcement retains REQ-028's native prerequisites;
+the initial connection order creates no earlier enforcement stage or settings authority.
+Shared CI tests proposed controller code; the consumer fixture tests proposed
+Actions using the adopted controller. Those are separate claims. Provider observations are eventual,
 not an atomic private-dev snapshot at human merge time. An unavailable controller
 cannot retroactively clear an inaccessible recorded result. See
 [consumer compatibility](consumer-compatibility.md) for operation and setup.
@@ -1069,8 +1104,17 @@ result subject and required stage on the adopted dev/staging route remain to be
 qualified under REQ027; this source does not establish that migration. Both the
 normal adopted-source CI and generated candidate CI remain required. A rule
 replacement that cannot be satisfied by one consumer revision under both
-contracts stays blocked pending its owning resolution; this source selects no
-premerge-evidence waiver.
+contracts stays blocked pending its owning resolution. REQ-020's initial manual
+connection order does not waive either workflow or permit incompatible consumer
+contracts. That order separates manual connection proof from later bounded
+qualification of automatic triggers; standing recurring operation and new required-result
+enforcement retain their complete native prerequisites. The unresolved ordering of
+required-result blocking verification remains with its owning qualification decision.
+Outside that exact
+initial fixed-member admission and manual-connection order, this source selects
+no premerge-evidence waiver. Later candidate qualification uses its actual open
+proposal and source/consumer plan; it cannot stand in for the closed initial
+checker proposal's unexecuted premerge native evidence.
 
 Standards diagnosis belongs to the shared-CI and consumer maintainers and their
 retained exact reproduction evidence. Runtime outcomes do not encode intention,

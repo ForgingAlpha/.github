@@ -407,9 +407,54 @@ obligation; changing the active-source mechanism SHALL NOT silently remove it.
 The impact assessment SHALL distinguish preserved coverage, changed obligations
 and operational observations still needed for affected consumers.
 
+For the initial Foundation connection only, an exact human-approved evidence-order
+amendment MAY place privileged native connection proof after adoption of a
+manual-only `workflow_dispatch` caller on Foundation `dev`. This limited order
+requires an already-adopted shared controller, complete coherent source validation,
+independent review of the connection and its retained acceptance, and a manual-only caller whose composed path with the adopted controller
+verifies the exact repository, event and ref before App connection use. It SHALL NOT permit proposed controller code
+in a write-capable job or defer existing enrolled consumer gates, CI, CodeQL,
+dependency admission, human review or human merge requirements.
+
+The initial evidence-order amendment MAY cover adoption of the exact central
+eligibility and first-party evidence-transport change required by that fixed
+Foundation member. It SHALL retain complete coherent source acceptance,
+maintained affected-consumer validation and every existing required gate before
+merge. It SHALL identify the actual main-following consumer exposure and the
+specific native observations deferred. It SHALL identify the initial checker
+proposal whose exact-candidate native qualification is foregone under this order;
+that closed proposal cannot later obtain qualification through the open-proposal
+controller. Foundation's ordinary dependency and product CI SHALL pass against
+the adopted checker before manual-caller adoption. Those observations and the
+later privileged connection concern their actual source and consumer subjects;
+they remain unmet until executed and SHALL NOT substitute for the foregone
+initial-candidate qualification or be reported as prior premerge qualification.
+This admission supplies no dispatch, grant, enforcement or
+later-change exemption.
+
+That source adoption SHALL authorize no dispatch, protected setup or recurring
+execution. Native work requires its separately authorized, qualified environment,
+principals, exact source/consumer subjects and finite operation/cost allowance.
+Full native acceptance remains open until both workflows, reporting, recovery,
+privacy, required-result behavior and automatic triggers are observed under their
+respective authorized qualification packages. A manual result SHALL NOT establish
+automatic operation. New required-result enforcement and standing recurring operation SHALL remain off until
+their complete applicable native qualification passes.
+
+This initial-admission order SHALL NOT carry forward to later checker or
+controller changes without a new owning assessment; source adoption is never a
+substitute for proof.
+
 **Fit:** Candidate checks cannot mix proposed top-level code with helpers from
-another mutable reference. Missing required premerge coverage blocks the merge;
-execution observations after merge record delivery and do not activate source.
+another mutable reference. Outside this exact initial-admission order, missing
+required premerge coverage blocks the merge. The checker becomes active for its
+main-following consumers at its human merge. Foundation's positive ordinary
+dependency and product CI evidence then precedes its manual-caller merge; the
+separately qualified privileged connection follows caller adoption. Deferred
+observations remain explicit incomplete acceptance against their real subjects
+and times; they do not retroactively qualify the checker merge, activate source
+or waive an existing required check. Execution observations after merge record
+delivery and do not activate source.
 
 ### REQ-021 - External Plugin Update Ownership
 
