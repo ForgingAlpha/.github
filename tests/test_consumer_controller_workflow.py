@@ -19,7 +19,19 @@ SPEC.loader.exec_module(generator)
 class WorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.workflow = generator.parse((ROOT / ".github/workflows/consumer-compatibility-controller.yml").read_text())
+        controller_path = ".github/workflows/consumer-compatibility-controller.yml"
+        try:
+            source = (ROOT / controller_path).read_text()
+        except FileNotFoundError as error:
+            raise AssertionError(
+                f"Missing expected shared controller source at {controller_path}. "
+                "Coordinate the shared-CI policy/controller owners and the Foundation caller owner "
+                "to restore conforming source or review and adopt a coordinated successor or "
+                "withdrawal, including required consumer qualification. This is a source "
+                "reconciliation tripwire: Foundation retains source review rights, and central "
+                "dependency eligibility is optional and separate from enrollment and grants."
+            ) from error
+        cls.workflow = generator.parse(source)
         cls.job = cls.workflow["jobs"]["reconcile"]
         cls.steps = cls.job["steps"]
 
