@@ -519,16 +519,21 @@ class CiDependencyReviewTest(unittest.TestCase):
                      package_url=f"pkg:npm/synthetic-{i}@1.0.0", license="MIT")
                 for i in range(1400)]
 
-    def run_file_transport(self, path, extra_env=None):
-        step = next(s for s in self.load_action()["runs"]["steps"]
-                    if s.get("name") == "Validate dependency license evidence")
+    def run_file_transport(self, path, extra_env=None, *, native=False):
+        if native:
+            workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+            step = next(s for s in workflow["jobs"]["CI"]["steps"]
+                        if s.get("name") == "Validate large dependency evidence through the runner")
+        else:
+            step = next(s for s in self.load_action()["runs"]["steps"]
+                        if s.get("name") == "Validate dependency license evidence")
         command = step["shell"].replace("${{ github.action_path }}", str(ACTION.parent))
         command = command.replace("{0}", str(path))
         env = {"PATH": os.environ["PATH"], "DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo",
                "PYTHONDONTWRITEBYTECODE": "1"}
         if extra_env:
             env.update(extra_env)
-        return subprocess.run(shlex.split(command), capture_output=True, text=True, env=env)
+        return subprocess.run(shlex.split(command), capture_output=True, text=True, env=env, cwd=ROOT)
 
     def test_complete_large_file_transport_and_denied_final_record(self):
         changes = self.large_changes()
@@ -537,14 +542,18 @@ class CiDependencyReviewTest(unittest.TestCase):
             raw = json.dumps(changes, separators=(",", ":"))
             self.assertGreater(len(raw.encode()), 128 * 1024)
             path.write_text(raw, encoding="utf-8")
-            result = self.run_file_transport(path)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            for native in (False, True):
+                with self.subTest(native=native):
+                    result = self.run_file_transport(path, native=native)
+                    self.assertEqual(result.returncode, 0, result.stderr)
             changes[-1]["license"] = "AGPL-3.0-only"
             path.write_text(json.dumps(changes), encoding="utf-8")
-            result = self.run_file_transport(path)
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("synthetic-1399", result.stderr)
-            self.assertIn("unapproved", result.stderr)
+            for native in (False, True):
+                with self.subTest(native=native):
+                    result = self.run_file_transport(path, native=native)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn("synthetic-1399", result.stderr)
+                    self.assertIn("unapproved", result.stderr)
 
     @unittest.skipUnless(sys.platform == "linux" and os.sysconf("SC_PAGESIZE") == 4096,
                          "negative control for the qualified Linux 4KiB-page runner")
@@ -595,7 +604,7 @@ class CiDependencyReviewTest(unittest.TestCase):
         native = next(s for s in workflow["jobs"]["CI"]["steps"]
                       if s.get("name") == "Validate large dependency evidence through the runner")
         self.assertEqual(native["shell"], action_step["shell"].replace(
-            "${{ github.action_path }}", "${{ github.workspace }}/actions/ci-dependency-review"))
+            "${{ github.action_path }}", "actions/ci-dependency-review"))
         self.assertEqual(native["run"], "${{ steps.dependency-evidence-fixture.outputs.changes }}")
         self.assertNotIn("continue-on-error", native)
         self.assertNotIn("DEPENDENCY_CHANGES", native["env"])

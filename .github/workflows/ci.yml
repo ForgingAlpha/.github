@@ -134,7 +134,7 @@ jobs:
           PY
 
       - name: Validate large dependency evidence through the runner
-        shell: python3 "${{ github.workspace }}/actions/ci-dependency-review/scripts/validate_license_evidence.py" --changes-file "{0}"
+        shell: python3 "actions/ci-dependency-review/scripts/validate_license_evidence.py" --changes-file "{0}"
         env:
           DEPENDENCY_REPOSITORY: ${{ github.repository }}
         run: ${{ steps.dependency-evidence-fixture.outputs.changes }}
