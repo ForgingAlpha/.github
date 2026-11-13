@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "records": [
+    {
+      "source_fingerprint_sha256": "3fd12fbd2a7a8f4072b494d9e98ce3cea64e8b679b757d72db4d3f60c6ea605c",
+      "evidence_revision": "15255d97dd30810889170d15bb9fe81a6bd7c15e",
+      "consumer_repository_id": 1428636846,
+      "entrypoints": [
+        "actions/ci-merge-flow/action.yml",
+        "actions/ci-alphaapps-policy/action.yml",
+        "actions/ci-github-actions/action.yml",
+        "actions/ci-markdown/action.yml",
+        "actions/ci-dependency-review/action.yml",
+        "actions/ci-update-ownership/action.yml",
+        "actions/ci-dependabot-coverage/action.yml"
+      ],
+      "inspected_paths": [
+        ".github/workflows/org-baseline.yml",
+        "actions/ci-alphaapps-policy/",
+        "actions/ci-dependabot-coverage/",
+        "actions/ci-dependency-review/",
+        "actions/ci-foundation/",
+        "actions/ci-github-actions/",
+        "actions/ci-markdown/",
+        "actions/ci-merge-flow/",
+        "actions/ci-org-baseline/",
+        "actions/ci-update-ownership/",
+        "actions/security-patch/"
+      ],
+      "unaffected_paths": [
+        "README.md",
+        "actions/ci-astro/",
+        "actions/ci-elixir/",
+        "actions/ci-rust/",
+        "actions/ci-shell/",
+        "actions/ci-typescript/"
+      ],
+      "reachability_basis": "At this exact inspected shared source shape AND exact complete Foundation source-tree family, the seven entrypoints do not execute or read the unaffected paths. The family covers every private file, configuration, formatter, rule/module and symlink, plus ci.yml. ci-org-baseline/baseline.py is at most hashed by proposal_route.py on this path; the inspected shared set is not claimed transitively closed. Any change to the private tree disables this record.",
+      "consumer_source_family": "2c522aa9f937fec1a352c0a59a4f4ae71099ae458872879ef1178602ccfc5c40"
+    },
+    {
+      "source_fingerprint_sha256": "351caa322bd4be4a1e405314e88d8296dc73b6e792dfc3e35e6ff06f88e79cd0",
+      "evidence_revision": "020f172af5682bd35896c23ffc66db520ec77ba2",
+      "consumer_repository_id": 1428636846,
+      "entrypoints": [
+        "actions/ci-merge-flow/action.yml",
+        "actions/ci-alphaapps-policy/action.yml",
+        "actions/ci-github-actions/action.yml",
+        "actions/ci-markdown/action.yml",
+        "actions/ci-dependency-review/action.yml",
+        "actions/ci-update-ownership/action.yml",
+        "actions/ci-dependabot-coverage/action.yml"
+      ],
+      "inspected_paths": [
+        ".github/workflows/org-baseline.yml",
+        "actions/ci-alphaapps-policy/",
+        "actions/ci-dependabot-coverage/",
+        "actions/ci-dependency-review/",
+        "actions/ci-foundation/",
+        "actions/ci-github-actions/",
+        "actions/ci-markdown/",
+        "actions/ci-merge-flow/",
+        "actions/ci-org-baseline/",
+        "actions/ci-update-ownership/",
+        "actions/security-patch/"
+      ],
+      "unaffected_paths": [
+        "README.md",
+        "actions/ci-astro/",
+        "actions/ci-elixir/",
+        "actions/ci-rust/",
+        "actions/ci-shell/",
+        "actions/ci-typescript/"
+      ],
+      "reachability_basis": "At this exact inspected shared source shape AND exact complete Foundation source-tree family, the seven entrypoints do not execute or read the unaffected paths. The family covers every private file, configuration, formatter, rule/module and symlink, plus ci.yml. ci-org-baseline/baseline.py is at most hashed by proposal_route.py on this path; the inspected shared set is not claimed transitively closed. Any change to the private tree disables this record.",
+      "consumer_source_family": "2c522aa9f937fec1a352c0a59a4f4ae71099ae458872879ef1178602ccfc5c40"
+    }
+  ]
+}

@@ -383,8 +383,17 @@ Protected, human-merged `.github/main` is active. Required CI and review cover
 the exact candidate before the human merge, including coherent affected
 consumer-profile checks. Existing enrolled consumer gates belong to that
 premerge validation; they are not silently removed or moved behind a separate
-activation decision. Post-merge observations record the result and expose
-failures; they do not promote a tag or decide whether main is official.
+activation decision. REQ-020 permits only the exact initial fixed-Foundation-member
+order: coherent source and maintained affected-consumer validation precede checker
+adoption; Foundation's ordinary dependency and product CI must pass against that
+adopted checker before manual-caller adoption. The separately qualified privileged
+connection follows caller adoption. The checker is active for main-following
+consumers at its merge. Its own exact-candidate native qualification is foregone,
+because the controller admits only open proposals. Foundation's ordinary CI and
+later connection remain separate observations of their actual subjects.
+Post-merge observations record their actual subjects, times and failures; they
+do not retroactively qualify a closed proposal, promote a tag or decide whether
+main is official.
 
 For a centrally required workflow, the ruleset tracks main and GitHub supplies
 the immutable defining-workflow identity. Every checking-source checkout uses
@@ -478,18 +487,68 @@ the registry name, version, tarball, integrity, and license to match the lock ex
 No token, caller URL, alternate registry, package exception, or executable package
 content enters this evidence path; unavailable or inconsistent evidence fails closed.
 
-The separate first-party evidence class is fixed in central code to
-`ForgingAlpha/.github/actions/<action>@main`; callers cannot select an owner,
-repository, reference, or exception. The checker requires the dependency record
-to match that family exactly, resolves protected `refs/heads/main`
-directly to a commit, fetches that exact commit's tree once, rejects truncated
-or malformed evidence, and requires exactly one blob at the named action path.
-The fixed repository, reference, commit, and path prove first-party ownership and
-protected-main source provenance. The API lookup does not independently re-prove
-human approval; it composes with the protected human-merge path. All
-endpoints are constructed internally rather than taken from dependency data,
-both first-party requests are cached per validation, and every identity, API,
-schema, tree, or policy error fails closed.
+The first-party Action evidence class remains fixed in central code to
+`ForgingAlpha/.github/actions/<action>@main`. One additional missing-license
+member is fixed to the Foundation compatibility caller: consumer
+`ForgingAlpha/container-foundation`, manifest
+`.github/workflows/consumer-compatibility.yml`, ecosystem `actions`, name
+`ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml`,
+version `main`, and exact package URL
+`pkg:githubactions/ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml@main`.
+An absent or null source repository URL is allowed; a supplied value must equal
+`https://github.com/ForgingAlpha/.github`. These are fixed central identities,
+not a general reusable-workflow family or a caller-configurable exception.
+
+The shared-CI owner owns coordination of this fixed dependency-eligibility
+contract. Foundation retains ownership of its caller and supplies proposed
+caller/manifest changes; the shared-CI owner evaluates changes to the central
+member and coordinates any affected controller references. A path or identity
+change outside the admitted tuple refuses this evidence class until the
+corresponding central policy and implementation have been reviewed and adopted.
+Foundation is not required to keep this filename forever and cannot broaden the
+central class locally. Renames do not silently alias or migrate an admitted
+member; coordinated successor adoption must satisfy the existing consumer
+qualification and evidence-order requirements before reliance.
+
+This member defines central dependency-source eligibility; it is not an
+Enrollment or Grant record, a materialized copy of either record, or evidence of
+current participation or private entitlement. Those human-owned records and
+their protected runtime projection remain authoritative for their own purposes;
+positive dependency eligibility cannot override refusal or revocation there.
+The repository-name predicate is independent of the controller's repository-ID
+predicate: it does not prove identity continuity after rename, transfer, or
+name reuse. These separate predicates must all be satisfied where applicable.
+
+The existing action assigns `DEPENDENCY_REPOSITORY` from `github.repository`;
+`license_policy.py` validates this provider-derived repository identity. The
+workflow member uses that existing identity and the exact dependency manifest;
+no caller input or new environment fallback selects its consumer. The validator
+retains its current distinction between missing-license metadata and explicit
+unapproved or malformed license expressions. The latter never enter a provenance
+exception. Existing approved-license and artifact-exception behavior remains.
+
+All admitted first-party members in one validation share one internally fixed
+protected `refs/heads/main` request and one tree request at the returned immutable
+commit. The ref must resolve directly to a commit; a later main cannot replace
+the selected snapshot. The complete, untruncated tree must contain exactly one
+nonempty regular blob at each member's fixed path; the workflow path is
+`.github/workflows/consumer-compatibility-controller.yml`. Require type `blob`,
+mode `100644` or `100755`, positive integer size and valid immutable blob SHA.
+Missing, conflicting, malformed or unavailable identity/ref/tree/blob evidence
+fails closed. The actual HTTP transport for these fixed first-party evidence
+requests rejects redirects for both Action and workflow members; dependency data
+never supplies an endpoint. This first-party transport is separate from the
+existing third-party exact-SHA license lookup transport, whose behavior remains
+unchanged by this rule.
+Both requests are reused across the legacy Action and exact workflow members,
+not performed separately per member. Third-party exact-SHA license resolution,
+other missing-license evidence classes and vulnerability enforcement remain.
+
+The recorded repository, main snapshot, commit and blob establish source
+provenance only. They do not prove which workflow executed, runtime safety,
+license compliance, a grant, human approval or runtime activation. The lookup
+composes with the governing protected human-merge path; it does not independently
+re-prove that path.
 
 `license_policy.py` also owns the closed artifact exception for
 `ForgingAlpha/turnkeyleads-app`, `assets/customer/package-lock.json`, and
@@ -547,7 +606,11 @@ The shared-CI owner verifies actual SPDX expression handling and vulnerability,
 unknown-license and Mapbox regressions before releasing changed enforcement.
 The consumed gate revision must implement the adopted policy before reliance;
 source adoption and a list-entry unit test alone do not prove provider behavior
-or fresh consumer CI success.
+or fresh consumer CI success. REQ-020's initial fixed-Foundation-member admission
+retains the maintained parser, transport and composed-entrypoint controls before
+checker adoption. The exact manual-only Foundation candidate must then pass its
+ordinary dependency and product CI against the adopted checker before its own
+merge. This order changes no existing required gate or later checker obligation.
 
 Private organization repositories must have GitHub's dependency-review feature
 and required Code Security entitlement enabled before adopting this gate.
@@ -940,3 +1003,131 @@ sandbox and does not qualify NAS behavior or deploy services. Foundation
 consumption guidance references this owner instead of copying its admission
 policy. Signing, new CI credentials and automatic record admission are not part
 of this mechanism.
+
+## Foundation consumer compatibility
+
+Under REQ-028, `scripts/consumer_compatibility.py` owns selection, deterministic
+plans, fixture publication, native evidence checks and the public result.
+`scripts/qualify_foundation.py` remains the sole adapter of Foundation's original
+CI workflow. Foundation owns its product checks, private caller/environment and
+private evidence. There is one participant; no organization-wide dispatch or
+general enrollment engine is provided.
+
+The reusable `consumer-compatibility-controller.yml` has no autonomous trigger.
+An adopted Foundation `dev` caller selects it at literal `@main`. The job binds
+its defining repository, ref and SHA, checks out that exact source, verifies
+current main and the protected authorization projection before minting tokens.
+Its ordinary GitHub token remains read-only. Candidate objects are inspected in
+bare repositories with bounded Git operations; they are never executed in the
+controller. Native fixture jobs receive the original consumer's read permissions.
+
+Two separately installed Apps divide provider capabilities. The public reporting
+App is installed only on `.github` with checks write and contents/PR read. The
+private fixture App is installed only on Foundation with contents/PR/workflows
+write and actions/checks read. Their keys remain in Foundation's dev-restricted
+`consumer-compatibility` environment; each minted token is repository-scoped and
+revoked by the token Action's post-job hook. Full provider protection readback
+must establish that neither principal can bypass or update persistent branches.
+Runtime token narrowing does not replace installation-level scope verification.
+
+Human-owned Resource Enrollment and Cross-Domain Grant records retain authority
+under the control-plane. The protected `CC_AUTHORIZATION` projection binds their
+identities/digests, both App identities, fixture bot, exact repositories, purpose,
+actions, conditions and validity interval. The parser verifies a closed shape
+and time bounds; it does not originate authority or prove record currentness.
+The human-owned publisher maintains and revokes that projection and its keys.
+
+Admission binds one open, nondraft, same-repository PR to shared main, provider
+review decision, effective exact-head User approval and that same account's
+private access. The reviewer assesses the candidate's suitability for private
+source access and ordinary network egress under the standing policy. No extra
+recurring approval is introduced. Complete bounded inventories prevent partial
+lists or duplicate subjects from being mistaken for admission.
+
+The plan includes shared repository/PR/commit/tree, consumer commit/tree and
+checking-source commit/tree. Its digest selects one immutable disposable branch,
+`test/shared-ci-<48 hex characters>`. Custody additionally requires the full plan,
+fixture bot, sole consumer parent and sole generated-workflow tree delta. Existing
+refs and PRs are verified before reuse; no force-update, reopen, merge or rerun
+endpoint exists. At most two new fixture PRs are published per invocation,
+including a recovered ref whose PR creation was interrupted. This limit alone is
+not a daily operating allowance.
+
+The reporter accepts the exact generated compatibility workflow and normal CI,
+their actual PR event, branch/head, run/attempt, jobs, GitHub Actions check issuer,
+required ordered steps and successful post-job hooks. A native run may omit its
+PR association array; the independently verified unique fixture supplies that
+association. Conflicting or duplicate associations refuse success. An unexplained
+later attempt cannot erase a failure; diagnostic-rerun authorization requires
+separate qualification before automatic acceptance.
+
+One issuer-bound public check belongs to each shared head. Waiting for approval
+or capacity is queued; unfinished execution is in progress. Blocking conclusions
+are failure, action_required, cancelled or timed_out, never neutral/skipped/stale.
+An unchanged passing plan is re-observed without first resetting its success.
+Changed or adverse observations invalidate success before replacement work.
+Obsolete owned fixtures may be closed after full custody verification, preserving
+refs and run evidence. Cleanup cannot overwrite a newer plan's public result.
+
+The initial fixed-member source and manual qualification stages follow REQ-020.
+The shared-CI owner retains current consumer-selector evidence and the complete
+source/consumer acceptance before checker adoption. Foundation's owner retains
+its actual dependency record, consumer head/tree, run and attempt, the initial
+checker merge commit, the runner-acquired Action revision, and the validator's
+API-resolved main snapshot and source blob before caller adoption. These are
+distinct identities; the main label does not prove that acquired code contains
+the adopted checker or that its acquisition matches the later API snapshot.
+The complete ordinary CI outcome includes required steps and posthooks. The
+owner qualifies the read-only capture and private retention path for these fields
+before seeking or relying on that CI; an unavailable field keeps qualification
+incomplete rather than being reconstructed from another subject.
+A standards-correct refusal requires consumer remediation; a checker defect
+requires its own reviewed human-merged repair. Neither permits suppressed checks,
+an automatic rollback or an unreviewed consumer exception. Before the first
+privileged manual dispatch, its executor verifies adopted controller/caller source,
+qualified protected setup, exact authority, all affected public and private
+inventory, remaining allowance and accepted recovery prerequisites. The authorized
+manual runs then supply only their observed native connection evidence. Automatic
+triggers, standing operation and required-check admission retain their separate
+qualification duties; source adoption and manual success establish none of them.
+Manual results retain their exact-plan meaning without becoming an admitted
+standing gate. Required-result enforcement retains REQ-028's native prerequisites;
+the initial connection order creates no earlier enforcement stage or settings authority.
+Shared CI tests proposed controller code; the consumer fixture tests proposed
+Actions using the adopted controller. Those are separate claims. Provider observations are eventual,
+not an atomic private-dev snapshot at human merge time. An unavailable controller
+cannot retroactively clear an inaccessible recorded result. See
+[consumer compatibility](consumer-compatibility.md) for operation and setup.
+
+The existing controller's shared-main target is a migration limitation. The
+result subject and required stage on the adopted dev/staging route remain to be
+qualified under REQ027; this source does not establish that migration. Both the
+normal adopted-source CI and generated candidate CI remain required. A rule
+replacement that cannot be satisfied by one consumer revision under both
+contracts stays blocked pending its owning resolution. REQ-020's initial manual
+connection order does not waive either workflow or permit incompatible consumer
+contracts. That order separates manual connection proof from later bounded
+qualification of automatic triggers; standing recurring operation and new required-result
+enforcement retain their complete native prerequisites. The unresolved ordering of
+required-result blocking verification remains with its owning qualification decision.
+Outside that exact
+initial fixed-member admission and manual-connection order, this source selects
+no premerge-evidence waiver. Later candidate qualification uses its actual open
+proposal and source/consumer plan; it cannot stand in for the closed initial
+checker proposal's unexecuted premerge native evidence.
+
+Standards diagnosis belongs to the shared-CI and consumer maintainers and their
+retained exact reproduction evidence. Runtime outcomes do not encode intention,
+and no automated decision may infer that diagnosis from failure alone. The local
+composed tests use an explicitly selected consumer-owned Markdown configuration;
+they do not transfer rule-selection authority to the shared wrapper.
+
+No-impact success follows REQ028's reviewed exact-source determination and is
+distinct from successful native qualification. Old catalog records require their
+exact predicates; unchanged record bytes do not qualify a new shared source.
+The initial records do not establish savings for the current-main composition.
+
+Local tests run actual wrapper, generated evaluator and controller functions.
+They supply synthetic native metadata and capture public writes. Their combined
+result does not establish GitHub's outcome mapping, private execution, access
+isolation, write recovery or required-issuer enforcement.
