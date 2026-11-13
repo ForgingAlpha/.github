@@ -1,9 +1,11 @@
 import contextlib
 import copy
+import errno
 import importlib.util
 import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -499,16 +501,104 @@ class CiDependencyReviewTest(unittest.TestCase):
         )
         self.assertIn("always()", guard["if"])
         self.assertEqual(guard["env"]["DEPENDENCY_REPOSITORY"], "${{ github.repository }}")
-        self.assertEqual(
-            guard["env"]["DEPENDENCY_CHANGES"],
-            "${{ steps.review.outputs.dependency-changes }}",
-        )
+        self.assertNotIn("DEPENDENCY_CHANGES", guard["env"])
+        self.assertEqual(guard["run"], "${{ steps.review.outputs.dependency-changes }}")
+        self.assertEqual(guard["shell"],
+                         'python3 "${{ github.action_path }}/scripts/validate_license_evidence.py" '
+                         '--changes-file "{0}"')
         self.assertEqual(guard["env"]["GITHUB_LICENSE_TOKEN"], "${{ github.token }}")
         self.assertNotIn("DEPENDENCY_BASE_SHA", guard["env"])
         self.assertEqual(
             guard["env"]["DEPENDENCY_WORKSPACE"],
             "${{ inputs.workspace }}",
         )
+
+    def large_changes(self):
+        return [dict(change_type="added", ecosystem="npm", manifest="package-lock.json",
+                     name=f"synthetic-{i}", version="1.0.0",
+                     package_url=f"pkg:npm/synthetic-{i}@1.0.0", license="MIT")
+                for i in range(1400)]
+
+    def run_file_transport(self, path, extra_env=None):
+        step = next(s for s in self.load_action()["runs"]["steps"]
+                    if s.get("name") == "Validate dependency license evidence")
+        command = step["shell"].replace("${{ github.action_path }}", str(ACTION.parent))
+        command = command.replace("{0}", str(path))
+        env = {"PATH": os.environ["PATH"], "DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo",
+               "PYTHONDONTWRITEBYTECODE": "1"}
+        if extra_env:
+            env.update(extra_env)
+        return subprocess.run(shlex.split(command), capture_output=True, text=True, env=env)
+
+    def test_complete_large_file_transport_and_denied_final_record(self):
+        changes = self.large_changes()
+        with tempfile.TemporaryDirectory(prefix="dependency data ") as directory:
+            path = Path(directory) / "runner data.json"
+            raw = json.dumps(changes, separators=(",", ":"))
+            self.assertGreater(len(raw.encode()), 128 * 1024)
+            path.write_text(raw, encoding="utf-8")
+            result = self.run_file_transport(path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            changes[-1]["license"] = "AGPL-3.0-only"
+            path.write_text(json.dumps(changes), encoding="utf-8")
+            result = self.run_file_transport(path)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("synthetic-1399", result.stderr)
+            self.assertIn("unapproved", result.stderr)
+
+    @unittest.skipUnless(sys.platform == "linux" and os.sysconf("SC_PAGESIZE") == 4096,
+                         "negative control for the qualified Linux 4KiB-page runner")
+    def test_legacy_large_environment_fails_before_shell_start(self):
+        raw = json.dumps(self.large_changes(), separators=(",", ":"))
+        with self.assertRaises(OSError) as failure:
+            subprocess.run(["/usr/bin/bash", "--noprofile", "--norc", "-e", "-c", "true"],
+                           env={"PATH": os.environ["PATH"], "DEPENDENCY_CHANGES": raw},
+                           capture_output=True, text=True)
+        self.assertEqual(failure.exception.errno, errno.E2BIG)
+
+    def test_file_data_is_not_executable_shell_or_python(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "must-not-exist"
+            value = "\"; $(touch " + str(marker) + "); `touch " + str(marker) + "`\nEOF\n" \
+                    "__import__('pathlib').Path(" + repr(str(marker)) + ").touch()\nUnicode: café"
+            changes = [dict(change_type="added", name=value, license="MIT")]
+            path = Path(directory) / "data.json"
+            path.write_text(json.dumps(changes, ensure_ascii=False), encoding="utf-8")
+            self.assertEqual(validator.load_changes(path), changes)
+            result = self.run_file_transport(path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists())
+
+    def test_file_failures_never_fall_back_to_environment(self):
+        bad = [b"", b" ", b"null", b"{}", b"[null]", b"[",
+               b'[{"change_type":"added","change_type":"removed"}]',
+               b'[{"change_type":"other"}]', b"\xff"]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "data.json"
+            for raw in bad:
+                with self.subTest(raw=raw):
+                    path.write_bytes(raw)
+                    self.assertNotEqual(self.run_file_transport(
+                        path, {"DEPENDENCY_CHANGES": "[]"}).returncode, 0)
+            path.unlink()
+            self.assertNotEqual(self.run_file_transport(path, {"DEPENDENCY_CHANGES": "[]"}).returncode, 0)
+            self.assertNotEqual(self.run_file_transport(Path(directory)).returncode, 0)
+            path.write_text('[{"change_type":"added","name":"missing-license"}]')
+            self.assertNotEqual(self.run_file_transport(path).returncode, 0)
+            path.write_text("[]")
+            self.assertEqual(self.run_file_transport(path).returncode, 0)
+
+    def test_native_fixture_uses_the_production_file_interpreter(self):
+        action_step = next(s for s in self.load_action()["runs"]["steps"]
+                           if s.get("name") == "Validate dependency license evidence")
+        workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+        native = next(s for s in workflow["jobs"]["CI"]["steps"]
+                      if s.get("name") == "Validate large dependency evidence through the runner")
+        self.assertEqual(native["shell"], action_step["shell"].replace(
+            "${{ github.action_path }}", "${{ github.workspace }}/actions/ci-dependency-review"))
+        self.assertEqual(native["run"], "${{ steps.dependency-evidence-fixture.outputs.changes }}")
+        self.assertNotIn("continue-on-error", native)
+        self.assertNotIn("DEPENDENCY_CHANGES", native["env"])
 
     def test_validator_accepts_known_license_and_ignores_removals(self):
         result = self.run_validator(

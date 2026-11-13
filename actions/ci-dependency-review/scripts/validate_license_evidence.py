@@ -757,8 +757,14 @@ def fetch_github_license(identity: GitHubActionIdentity, token: str) -> str:
     return spdx_id
 
 
-def load_changes() -> list[dict[str, Any]]:
-    raw = os.environ.get("DEPENDENCY_CHANGES", "")
+def load_changes(changes_file: Path | None = None) -> list[dict[str, Any]]:
+    if changes_file is None:
+        raw = os.environ.get("DEPENDENCY_CHANGES", "")
+    else:
+        try:
+            raw = changes_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise EvidenceError("dependency-changes file could not be read as UTF-8 JSON.") from error
     if not raw.strip():
         raise EvidenceError("The official dependency-review action returned no dependency-changes JSON.")
     try:
@@ -955,9 +961,16 @@ def validate_changes(changes: list[dict[str, Any]]) -> None:
         verify_npm_aliases(npm_aliases, changes)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     try:
-        validate_changes(load_changes())
+        args = [] if argv is None else argv
+        if not args:
+            changes_file = None
+        elif len(args) == 2 and args[0] == "--changes-file":
+            changes_file = Path(args[1])
+        else:
+            raise EvidenceError("Expected no arguments or --changes-file followed by the runner data file.")
+        validate_changes(load_changes(changes_file))
     except EvidenceError as error:
         return fail(
             str(error),
@@ -972,4 +985,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

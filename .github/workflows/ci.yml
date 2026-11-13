@@ -120,6 +120,25 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s actions/ci-dependency-review/tests
 
+      - name: Prepare large dependency evidence fixture
+        id: dependency-evidence-fixture
+        run: |
+          python3 - <<'PY'
+          import json, os
+          changes = [dict(change_type="added", ecosystem="npm", manifest="package-lock.json",
+                          name=f"synthetic-{i}", version="1.0.0",
+                          package_url=f"pkg:npm/synthetic-{i}@1.0.0", license="MIT")
+                     for i in range(1400)]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("changes=" + json.dumps(changes, separators=(",", ":")) + "\n")
+          PY
+
+      - name: Validate large dependency evidence through the runner
+        shell: python3 "${{ github.workspace }}/actions/ci-dependency-review/scripts/validate_license_evidence.py" --changes-file "{0}"
+        env:
+          DEPENDENCY_REPOSITORY: ${{ github.repository }}
+        run: ${{ steps.dependency-evidence-fixture.outputs.changes }}
+
       - name: Test Dependabot coverage action
         run: |
           set -euo pipefail

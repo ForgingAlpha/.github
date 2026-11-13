@@ -55,10 +55,11 @@ runs:
 
     - name: Validate dependency license evidence
       if: ${{ github.event_name == 'pull_request' && always() }}
-      shell: bash
+      # The runner writes run data to {0}; the fixed interpreter reads JSON,
+      # never executes it. Large outputs must not enter the process environment.
+      shell: python3 "${{ github.action_path }}/scripts/validate_license_evidence.py" --changes-file "{0}"
       env:
         DEPENDENCY_REPOSITORY: ${{ github.repository }}
-        DEPENDENCY_CHANGES: ${{ steps.review.outputs.dependency-changes }}
         DEPENDENCY_WORKSPACE: ${{ inputs.workspace }}
         GITHUB_LICENSE_TOKEN: ${{ github.token }}
-      run: python3 "$GITHUB_ACTION_PATH/scripts/validate_license_evidence.py"
+      run: ${{ steps.review.outputs.dependency-changes }}
