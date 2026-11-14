@@ -1498,96 +1498,84 @@ class CiDependencyReviewTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("WHAT:", result.stderr)
 
-    def foundation_workflow_change(self):
-        # The retained provider record, including its absent vulnerabilities field.
+    def unsupported_workflow_change(self):
+        # A generic unsupported first-party workflow record with missing license metadata.
         return {
             "change_type": "added",
             "ecosystem": "actions",
             "license": None,
-            "manifest": ".github/workflows/consumer-compatibility.yml",
-            "name": "ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml",
-            "package_url": "pkg:githubactions/ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml@main",
+            "manifest": ".github/workflows/example-caller.yml",
+            "name": "ForgingAlpha/.github/.github/workflows/example.yml",
+            "package_url": "pkg:githubactions/ForgingAlpha/.github/.github/workflows/example.yml@main",
             "scope": "runtime",
             "source_repository_url": None,
             "version": "main",
         }
 
-    def test_foundation_and_action_members_share_one_immutable_snapshot(self):
-        workflow = self.foundation_workflow_change()
-        paths = (
-            "actions/ci-merge-flow/action.yml",
-            ".github/workflows/consumer-compatibility-controller.yml",
-        )
-        responses = self.first_party_api_responses(paths)
-        responses.append(io.BytesIO(json.dumps({
-            "ref": "refs/heads/main", "object": {"type": "commit", "sha": "e" * 40},
-        }).encode()))
-        with mock.patch.object(
-            validator, "open_first_party_request", side_effect=responses
-        ) as request:
-            code, output, error = self.run_main(
-                [self.first_party_change(), workflow, dict(workflow)],
-                extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"},
-            )
-        self.assertEqual(code, 0, error)
-        self.assertEqual(request.call_count, 2)
-        self.assertEqual(output.count("Verified first-party provenance"), 2)
-        self.assertIn(FIRST_PARTY_COMMIT, output)
-        self.assertIn(FIRST_PARTY_BLOB, output)
-        self.assertNotIn("e" * 40, output)
-        self.assertEqual(request.call_args_list[0].args[0].full_url, validator.FIRST_PARTY_REF_ENDPOINT)
-        self.assertEqual(
-            request.call_args_list[1].args[0].full_url,
-            f"https://api.github.com/repos/ForgingAlpha/.github/git/trees/{FIRST_PARTY_COMMIT}?recursive=1",
-        )
-        identity = validator.parse_first_party_identity(workflow, "ForgingAlpha/container-foundation")
-        self.assertEqual(identity.source_path, paths[1])
 
-    def test_every_workflow_record_is_validated_before_duplicate_aggregation_or_network(self):
-        valid = self.foundation_workflow_change()
-        mutations = {
-            "ecosystem": "npm",
-            "manifest": ".github/workflows/renamed.yml",
-            "name": "ForgingAlpha/.github/.github/workflows/other.yml",
-            "package_url": f"pkg:githubactions/actions/checkout@{CHECKOUT_SHA}",
-            "version": "v1",
-            "source_repository_url": "https://github.com/ForgingAlpha/other",
-        }
-        for field, wrong in mutations.items():
-            for value in (wrong, {}, None):
-                # Missing/null source is explicitly allowed; other mismatches are not.
-                if field == "source_repository_url" and value is None:
-                    continue
-                invalid = {**valid, field: value}
-                for records in ([invalid], [valid, invalid], [invalid, valid]):
-                    with self.subTest(field=field, value=value, records=len(records)), mock.patch.object(
-                        validator, "open_first_party_request"
-                    ) as first_party, mock.patch.object(validator, "fetch_github_license") as third_party:
+    def test_unsupported_and_contradictory_first_party_hints_refuse_before_provider_lookup(self):
+        workflow = self.unsupported_workflow_change()
+        action = self.first_party_change()
+        cases = [
+            workflow,
+            {**workflow, "package_url": f"pkg:githubactions/actions/checkout@{CHECKOUT_SHA}",
+             "source_repository_url": "https://github.com/actions/checkout"},
+            {**workflow, "package_url": f"pkg:githubactions/ForgingAlpha/.github@{CHECKOUT_SHA}",
+             "source_repository_url": "https://github.com/ForgingAlpha/.github"},
+            {**workflow, "package_url": action["package_url"]},
+            {**workflow, "name": action["name"]},
+            {**workflow, "name": None},
+            {**workflow, "package_url": None},
+            {**workflow, "package_url": {}},
+            {**workflow, "package_url": workflow["package_url"].replace("@main", "@v1")},
+        ]
+        for owner in ("forgingalpha", "FORGINGALPHA"):
+            name = workflow["name"].replace("ForgingAlpha", owner)
+            package_url = workflow["package_url"].replace("ForgingAlpha", owner)
+            cases.extend([
+                {**workflow, "name": name,
+                 "package_url": f"pkg:githubactions/ForgingAlpha/.github@{CHECKOUT_SHA}",
+                 "source_repository_url": "https://github.com/ForgingAlpha/.github"},
+                {**workflow, "name": name,
+                 "package_url": f"pkg:githubactions/actions/checkout@{CHECKOUT_SHA}",
+                 "source_repository_url": "https://github.com/actions/checkout"},
+                {**workflow, "name": action["name"], "package_url": package_url},
+                {**workflow, "name": None, "package_url": package_url},
+            ])
+            action_name = action["name"].replace("ForgingAlpha", owner)
+            action_purl = action["package_url"].replace("ForgingAlpha", owner)
+            cases.extend([
+                {**action, "name": action_name,
+                 "package_url": f"pkg:githubactions/actions/checkout@{CHECKOUT_SHA}",
+                 "source_repository_url": "https://github.com/actions/checkout"},
+                {**action, "name": action_name,
+                 "package_url": f"pkg:githubactions/ForgingAlpha/.github@{CHECKOUT_SHA}",
+                 "source_repository_url": "https://github.com/ForgingAlpha/.github"},
+                {**action, "name": action_name},
+                {**action, "name": action_name, "package_url": action_purl},
+                {**action, "name": None, "package_url": action_purl},
+            ])
+        for repository in ("ForgingAlpha/test-repo", "ForgingAlpha/another-example"):
+            for invalid in cases:
+                for records in ([invalid], [action, invalid], [invalid, action]):
+                    with self.subTest(repository=repository, record=invalid, count=len(records)), \
+                            mock.patch.object(validator, "open_first_party_request") as first_party, \
+                            mock.patch.object(validator, "fetch_github_license") as third_party:
                         code, _, error = self.run_main(
-                            records,
-                            extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"},
-                        )
+                            records, extra_env={"DEPENDENCY_REPOSITORY": repository})
                         self.assertEqual(code, 1, error)
                         first_party.assert_not_called()
                         third_party.assert_not_called()
-        for repository in ("ForgingAlpha/test-repo", "Other/container-foundation", "forgingalpha/container-foundation"):
-            with self.subTest(repository=repository), mock.patch.object(
-                validator, "open_first_party_request"
-            ) as request:
-                self.assertEqual(self.run_main(
-                    [valid], extra_env={"DEPENDENCY_REPOSITORY": repository}
-                )[0], 1)
-                request.assert_not_called()
 
     def test_empty_removed_and_explicit_license_paths_do_not_need_provenance(self):
-        valid = self.foundation_workflow_change()
+        valid = self.unsupported_workflow_change()
         for records in ([], [{**valid, "change_type": "removed"}], [{**valid, "license": "MIT"}]):
             with self.subTest(records=records), mock.patch.object(
                 validator, "open_first_party_request"
             ) as request:
                 code, _, error = self.run_main(
                     records, token="",
-                    extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"},
+                    extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"},
                 )
                 self.assertEqual(code, 0, error)
                 request.assert_not_called()
@@ -1596,33 +1584,17 @@ class CiDependencyReviewTest(unittest.TestCase):
                 validator, "open_first_party_request"
             ) as request:
                 code, _, error = self.run_main(
-                    [valid, {**valid, "license": bad}],
-                    extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"},
+                    [{**valid, "license": bad}],
+                    extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"},
                 )
                 self.assertEqual(code, 1, error)
                 request.assert_not_called()
 
-    def test_contradictory_first_party_name_cannot_use_root_repository_license(self):
-        valid = self.foundation_workflow_change()
-        contradictory = {
-            **valid,
-            "package_url": f"pkg:githubactions/ForgingAlpha/.github@{CHECKOUT_SHA}",
-            "source_repository_url": "https://github.com/ForgingAlpha/.github",
-        }
-        for records in ([contradictory], [valid, contradictory], [contradictory, valid]):
-            with self.subTest(records=records), mock.patch.object(
-                validator, "open_first_party_request"
-            ) as first_party, mock.patch.object(validator, "fetch_github_license") as third_party:
-                code, _, error = self.run_main(
-                    records, extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"}
-                )
-                self.assertEqual(code, 1, error)
-                first_party.assert_not_called()
-                third_party.assert_not_called()
 
     def test_optional_source_and_missing_license_forms_preserve_valid_aggregation(self):
-        workflow = self.foundation_workflow_change()
-        path = ".github/workflows/consumer-compatibility-controller.yml"
+        workflow = self.first_party_change()
+        workflow["source_repository_url"] = None
+        path = "actions/ci-merge-flow/action.yml"
         absent = dict(workflow)
         del absent["source_repository_url"]
         records = [
@@ -1637,15 +1609,15 @@ class CiDependencyReviewTest(unittest.TestCase):
                 side_effect=self.first_party_api_responses((path,)),
             ) as request:
                 code, output, error = self.run_main(
-                    ordered, extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"}
+                    ordered, extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"}
                 )
                 self.assertEqual(code, 0, error)
                 self.assertEqual(request.call_count, 2)
                 self.assertEqual(output.count("Verified first-party provenance"), 1)
 
     def test_complete_first_party_evidence_rejects_unrelated_duplicates_and_json_keys(self):
-        workflow = self.foundation_workflow_change()
-        path = ".github/workflows/consumer-compatibility-controller.yml"
+        workflow = self.first_party_change()
+        path = "actions/ci-merge-flow/action.yml"
         for duplicate in ("unrelated-path", "ref-key", "tree-key"):
             ref, tree = self.first_party_api_responses((path,))
             if duplicate == "unrelated-path":
@@ -1662,22 +1634,22 @@ class CiDependencyReviewTest(unittest.TestCase):
                 validator, "open_first_party_request", side_effect=[ref, tree]
             ) as request:
                 code, _, error = self.run_main(
-                    [workflow], extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"}
+                    [workflow], extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"}
                 )
                 self.assertEqual(code, 1, error)
                 self.assertIn("duplicate", error.lower())
                 self.assertEqual(request.call_count, 1 if duplicate == "ref-key" else 2)
 
     def test_each_member_requires_its_own_regular_nonempty_blob(self):
-        workflow = self.foundation_workflow_change()
+        workflow = self.first_party_change("ci-runtime-profile")
         paths = ("actions/ci-merge-flow/action.yml",
-                 ".github/workflows/consumer-compatibility-controller.yml")
-        for mutation in ("missing-action", "missing-workflow", "duplicate", "symlink", "empty", "bad-sha", "bad-type"):
+                 "actions/ci-runtime-profile/action.yml")
+        for mutation in ("missing-action", "missing-second-member", "duplicate", "symlink", "empty", "bad-sha", "bad-type"):
             ref, tree = self.first_party_api_responses(paths)
             payload = json.loads(tree.getvalue())
             if mutation == "missing-action":
                 del payload["tree"][0]
-            elif mutation == "missing-workflow":
+            elif mutation == "missing-second-member":
                 del payload["tree"][1]
             elif mutation == "duplicate":
                 payload["tree"].append(dict(payload["tree"][1]))
@@ -1693,11 +1665,11 @@ class CiDependencyReviewTest(unittest.TestCase):
             ):
                 code, _, error = self.run_main(
                     [self.first_party_change(), workflow],
-                    extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"},
+                    extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"},
                 )
                 self.assertEqual(code, 1, error)
 
-    def test_first_party_actual_opener_refuses_redirects_for_both_member_classes(self):
+    def test_first_party_actual_opener_refuses_redirects(self):
         # Drive HTTP 302 through the actual opener/error/redirect handler stack.
         # Only the lowest HTTPS transport is synthetic: there are no sockets,
         # real tokens, external requests or globally installed openers.
@@ -1707,7 +1679,6 @@ class CiDependencyReviewTest(unittest.TestCase):
         urls = (validator.FIRST_PARTY_REF_ENDPOINT, tree_url)
         for record, path in (
             (self.first_party_change(), "actions/ci-merge-flow/action.yml"),
-            (self.foundation_workflow_change(), ".github/workflows/consumer-compatibility-controller.yml"),
         ):
             for redirect_stage in (None, 0, 1):
                 responses = self.first_party_api_responses((path,))
@@ -1740,7 +1711,7 @@ class CiDependencyReviewTest(unittest.TestCase):
                 ):
                     code, _, error = self.run_main(
                         [record],
-                        extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/container-foundation"},
+                        extra_env={"DEPENDENCY_REPOSITORY": "ForgingAlpha/test-repo"},
                     )
                     if redirect_stage is None:
                         self.assertEqual(code, 0, error)

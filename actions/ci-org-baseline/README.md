@@ -18,13 +18,17 @@ the protection operator owns actual protection, source selector and recovery eff
 Human source integration and hosted effects retain their existing authorization.
 
 `enrollment.json` is accepted configuration only from the admitted checking-source
-revision. It cannot assign runtime versions, admit foundation revisions, prove hosted
-rights, or grant itself operational eligibility. `runtime-profiles/catalog.json` and
+revision. It cannot assign runtime versions, prove hosted rights, or grant itself
+operational eligibility. `runtime-profiles/catalog.json` and
 its existing validator own repository runtime assignments and exact tuples.
-`ci-foundation/approved.json` and its existing verifier own admitted foundation
-fingerprints. GitHub supplies observations of current PR/base, effective rules and
+GitHub supplies observations of current PR/base, effective rules and
 actual run results. Receipts and job outputs are derived evidence, never new policy.
 A consumer manifest proves observed shape, not entitlement to select a smaller profile.
+
+The baseline owns its bounded Git transport, strict JSON decoding and regular-file
+evidence reads. These primitives reject duplicate/non-JSON values, linked or
+changing files, excessive output and timed-out Git processes before the baseline
+uses their results. They execute no consumer-supplied checking code.
 
 ## Markdown policy rights and entry feasibility
 
@@ -40,11 +44,11 @@ reconciliation. Current legacy wrappers retain their existing repository-config 
 
 Schema 1 remains readable with exactly its existing keys and constraints; its only
 profile remains `documentation-bootstrap`. Normalization explicitly derives bootstrap
-producer, qualified-team policy, empty component list and non-applicable foundation
-from that historical schema contract. Schema-1 application records are refused. Its historic release-route non-applicability
+producer, qualified-team policy and empty component list from that historical
+schema contract. Schema-1 application records are refused. Its historic release-route non-applicability
 and result behavior stay unchanged; schema-2 route decisions cannot be backfilled into it.
-The live catalog remains byte-identical in this change; schema 2 is exercised by
-synthetic source fixtures. No public fixture ID represents an admitted real consumer.
+The live catalog explicitly selects its admitted profile; synthetic source fixtures
+exercise the other supported schema-2 shapes. No public fixture ID represents an admitted real consumer.
 
 Schema 2 has exactly `schema_version: 2` and `repositories` (1–32 records). Each
 record has exactly these required fields, with no nulls, implicit defaults or unknown
@@ -59,7 +63,6 @@ keys:
 | `qualification_subject` | Exactly `{kind:'none'}` except for `qualification`, which requires the exact subject and legacy workflow binding below. No null or default. |
 | `release_route` | Docs: exactly `{kind:'not-applicable'}`. Applications: explicit direct/staged projection with exact adopted product-source binding below. No unknown route admitted. |
 | `review_policy` | Exactly `{kind:'qualified-team',team_id:positive-int,minimum_approvals:positive-int}` or `{kind:'codeowners'}`. Docs uses qualified-team. Team replacement for application CODEOWNERS needs separately retained actual protection qualification. |
-| `foundation` | `not-applicable` for docs; application `required` or `not-applicable` only from an explicit owner-established scope disposition described below. |
 | `components` | Docs: empty array. Application: 1–16 unique component records, sorted by root and kind; exact schema below. |
 
 A Rust component has exactly `{kind:'rust',root:PATH,tests:['cargo-all']}`. An Astro
@@ -123,14 +126,14 @@ workspace members, linked/untracked members, vendored manifests, path dependenci
 outside the admitted member set and Cargo workspace exclusions leaving tracked crates
 uncovered fail. Metadata failure, incomplete output or unknown workspace identity is
 an error, never permission for a lighter manifest heuristic. Cargo metadata uses --no-deps to avoid dependency enumeration/fetch; it still runs
-without credentials after foundation/runtime admission and is not privileged evidence.
+without credentials after runtime admission and is not privileged evidence.
 
 Each lock belongs to one declared root; undeclared/orphan/nested extra locks fail.
 Mixed means at least one component of each kind, not an inferred runtime tuple.
 Any unsupported tree can be proposed to the owning contract in later work; this
 bounded implementation must not claim support or drop an input to pass.
 
-## Runtime and foundation boundaries
+## Runtime boundaries
 
 All central application profiles require an active repository assignment in the
 existing runtime catalog and pass its `validate_catalog`, `validate_policy_assignment`
@@ -152,21 +155,6 @@ Rust tuple. This limitation does not block independent docs/Astro source qualifi
 The Markdown tool's Node and actionlint/cargo-audit tooling are shared checking tools,
 not consumer product runtime assertions. Keep their existing owned pins/update coverage;
 do not copy application versions into workflow inputs or call tool Node a runtime tuple.
-
-For an explicitly foundation-backed application, `foundation:'required'` always calls
-the canonical verifier with its fixed checking-source catalog before any copied helper,
-consumer formatter/configuration, package install, metadata, build or test. Deleting
-both foundation.lock and payload fails; update-owner's absent-pair behavior cannot
-replace this unconditional admission. Partial/dual imports and modified bytes fail.
-`not-applicable` requires an explicit existing owning-scope determination retained by
-the shared-CI/product owners before activation, and refuses either pair member if
-present. Absence of files, an Astro label or static-site output alone establishes
-neither exemption nor container obligation. The broad application wording in Selected
-Container Foundation Source must be reconciled against the actual consumer's scope;
-unresolved applicability blocks that consumer, not independent source preparation.
-No new foundation exemption is adopted by this contract. Catalog eligibility follows
-its human-reviewed merge into main; the exact checking checkout supplies the catalog.
-Human-reviewed recovery discloses any restored or withdrawn approvals.
 
 ## Fixed checking composition
 
@@ -198,7 +186,7 @@ resolve a moving remote sibling, including @main, including hidden nested `uses`
 The common job runs the following once, before product jobs, with exact head/base:
 
 1. Identity, enrollment, complete tracked inventory, producer-conflict and applicable
-   foundation/runtime data validation. Rust workspace metadata verification is a
+   runtime data validation. Rust workspace metadata verification is a
    mandatory static-job obligation after admitted setup; no Cargo runs in admission.
 2. Schema-2 declared release-route admission below, with its separate exact security
    projection carveout; no changed event is passed to that guard. Bootstrap remains
@@ -216,8 +204,8 @@ The common job runs the following once, before product jobs, with exact head/bas
 5. Full workflow/composite inventory: actionlint and check_workflows.py always run for
    application profiles, including Markdown-only changes. Existing reviewed exceptions
    retain their owned validation; they cannot skip this complete check.
-6. Existing Dependabot coverage, complete update-ownership validator and canonical
-   foundation update-owner check. Missing required update policy or owner fails.
+6. Existing Dependabot coverage and complete update-ownership validation. Missing
+   required update policy or owner fails.
 7. Pinned dependency-review Action with low severity and existing license policy and
    exact-artifact evidence validation. Add the scoped `workspace` input at
    ci-dependency-review/action.yml, defaulting to the existing github.workspace.
@@ -382,7 +370,7 @@ activation even though this admission carveout is preserved in source.
 A trusted admission job derives a bounded JSON plan from validated enrollment and
 complete tree: schema, repository name/ID, PR number, base ref/SHA, head/tree SHA,
 checking-source SHA, enrollment digest, profile/producer, qualification subject, declared route/source binding,
-review/foundation dispositions,
+review policy,
 canonical ordered components and required lane IDs. Lane IDs are bounded source-generated
 indices tied to that ordered inventory, not consumer job-name expressions. Output
 only these allowlisted values to GITHUB_OUTPUT using bounded validated serialization;
@@ -456,11 +444,13 @@ GITHUB_TOKEN, GH_TOKEN and GITHUB_LICENSE_TOKEN; persist-credentials stays false
 Bootstrap retains the exact existing public receipt field set and meanings; topology
 or internal plan metadata does not silently change that public contract. Application
 receipts use a distinct versioned shape containing approved plan identities,
-catalog/verifier fingerprints, required lane IDs and exact conclusions. These new
-application fields are never inferred for a bootstrap receipt.
+SHA256 fingerprints for exactly `actions/ci-org-baseline/enrollment.json`,
+`runtime-profiles/catalog.json` and `actions/ci-org-baseline/scripts/baseline.py`,
+required lane IDs and exact conclusions. Every fingerprint uses bytes from the same
+checking-source checkout. Application fields are never inferred for a bootstrap receipt.
 Freeze public subject metadata before authenticated operations, emit only after
-validation, and discard authenticated return payloads. Never log private foundation
-locks/inventory, rule bodies, membership, secret-bearing exceptions or tokens. Failed
+validation, and discard authenticated return payloads. Never log private consumer
+payloads, rule bodies, membership, secret-bearing exceptions or tokens. Failed
 runs retain actionable sanitized refusal and exact public subject where validated;
 missing evidence remains missing. Store exact source qualification and private admission
 material through the existing retained task/artifact custody. Source receipts do not
@@ -470,7 +460,7 @@ prove real consumer protection, product quality, source adoption or deployment.
 
 The shared-CI owner coordinates the product owner and protection operator. For a new
 component, bind the proposed complete consumer head and source enrollment successor,
-owner-selected tests, runtime/foundation compatibility and source/base predecessors.
+owner-selected tests, runtime compatibility and source/base predecessors.
 Qualify the exact pair before activating the selector or accepting that consumer head.
 Existing pins reject undeclared new components; successor pins reject old heads missing
 the newly required component. That fail-closed interval is permissible; a green gap or

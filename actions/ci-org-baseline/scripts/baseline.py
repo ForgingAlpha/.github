@@ -45,18 +45,96 @@ def load_checking_module(name, path):
     return module
 
 
-# Existing bounded Git transport and strict JSON decoder; exact same source checkout.
-foundation = load_checking_module("org_baseline_git", "actions/ci-foundation/scripts/foundation_source.py")
-policy = load_checking_module("org_baseline_policy", "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")
-require = foundation.require
-git = foundation.git
+GIT_OUTPUT_LIMIT = 1024 * 1024
+GIT_TIMEOUT = 30
+
+
+class Refused(ValueError):
+    pass
+
+
+def require(condition, reason):
+    if not condition:
+        raise Refused(reason)
+
+
+def unique_pairs(items):
+    result = {}
+    for key, value in items:
+        require(key not in result, "duplicate JSON property")
+        result[key] = value
+    return result
+
+
+def read_regular(path, limit):
+    # NONBLOCK avoids hanging on a special file swapped in before open.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        require(stat.S_ISREG(before.st_mode), "nonregular or linked evidence")
+        require(before.st_size <= limit, "supported input size exceeded")
+        data = stream.read(limit + 1)
+        after = os.fstat(stream.fileno())
+    require(len(data) <= limit and len(data) == before.st_size,
+            "input size changed or supported limit exceeded")
+    require((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns,
+             before.st_ctime_ns, before.st_mode) ==
+            (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns,
+             after.st_ctime_ns, after.st_mode), "evidence changed during read")
+    return data, before
+
+
+def git(source, *args, limit=GIT_OUTPUT_LIMIT):
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_NO_LAZY_FETCH="1", GIT_TERMINAL_PROMPT="0",
+               GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null")
+    command = ["git", "--no-replace-objects", "-c", "core.fsmonitor=false", "-C", str(source), *args]
+    output, counts, deadline = bytearray(), {"stdout": 0, "stderr": 0}, time.monotonic() + GIT_TIMEOUT
+    with subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, start_new_session=True) as process:
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ, ("stdout", limit))
+                selector.register(process.stderr, selectors.EVENT_READ, ("stderr", GIT_OUTPUT_LIMIT))
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    require(remaining > 0, "canonical Git operation timed out")
+                    events = selector.select(remaining)
+                    require(events, "canonical Git operation timed out")
+                    for key, _ in events:
+                        name, cap = key.data
+                        data = os.read(key.fd, min(65536, cap - counts[name] + 1))
+                        if not data:
+                            selector.unregister(key.fileobj)
+                            continue
+                        counts[name] += len(data)
+                        require(counts[name] <= cap, "supported Git output size exceeded")
+                        if name == "stdout":
+                            output.extend(data)
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, "canonical Git operation timed out")
+            require(process.wait(timeout=remaining) == 0, "canonical Git object unavailable")
+        finally:
+            if process.returncode is None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=5)
+    return bytes(output)
 
 
 def decode(data):
+    def invalid_constant(_):
+        raise Refused("non-JSON numeric constant")
     try:
-        return foundation.decode(data)
+        return json.loads(data.decode("utf-8"), object_pairs_hook=unique_pairs,
+                          parse_constant=invalid_constant)
     except RecursionError:
-        raise foundation.Refused("JSON nesting exceeds the supported limit") from None
+        raise Refused("JSON nesting exceeds the supported limit") from None
+
+
+policy = load_checking_module("org_baseline_policy", "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")
 
 
 def positive(value):
@@ -191,9 +269,9 @@ class Api:
                 require(len(data) <= 2 * 1024 * 1024, "GitHub evidence exceeds response limit")
                 return decode(data), response.headers.get("Link", "")
         except Exception as error:
-            if isinstance(error, foundation.Refused):
+            if isinstance(error, Refused):
                 raise
-            raise foundation.Refused("required GitHub evidence read failed; no cached or credential fallback") from None
+            raise Refused("required GitHub evidence read failed; no cached or credential fallback") from None
 
     def get(self, path):
         data, link = self.page(path)
@@ -235,7 +313,7 @@ class Api:
                 return results
             require(pages["next"] == page + 1 and bool(data) and (terminal_page is None or pages["next"] <= terminal_page),
                     "untrusted or incomplete rule pagination")
-        raise foundation.Refused("rule pagination exceeds bounded complete evidence")
+        raise Refused("rule pagination exceeds bounded complete evidence")
 
 
 def prove_pr(api, event, entry):
@@ -355,7 +433,7 @@ def application_catalog(data):
     require(isinstance(entries, list) and 0 < len(entries) <= 32, "invalid enrollment inventory")
     names, ids = set(), set()
     for entry in entries:
-        shape(entry, "repository repository_id branches profile producer qualification_subject release_route review_policy foundation components", "schema-2 enrollment")
+        shape(entry, "repository repository_id branches profile producer qualification_subject release_route review_policy components", "schema-2 enrollment")
         name = entry["repository"]
         require(isinstance(name, str) and re.fullmatch(r"ForgingAlpha/[A-Za-z0-9_.-]+", name) and name != SOURCE_REPOSITORY, "invalid consumer identity")
         require(positive(entry["repository_id"]) and name not in names and entry["repository_id"] not in ids, "ambiguous enrollment")
@@ -369,12 +447,11 @@ def application_catalog(data):
             shape(review, "kind team_id minimum_approvals", "team policy")
             require(review["kind"] == "qualified-team" and positive(review["team_id"]) and positive(review["minimum_approvals"]), "invalid team policy")
         if entry["profile"] == "documentation-bootstrap":
-            require(entry["producer"] == "bootstrap" and entry["components"] == [] and entry["foundation"] == "not-applicable" and
+            require(entry["producer"] == "bootstrap" and entry["components"] == [] and
                     entry["release_route"] == {"kind": "not-applicable"} and entry["qualification_subject"] == {"kind": "none"} and
                     review["kind"] == "qualified-team" and entry["branches"] in (["dev"], ["dev", "main"]), "invalid schema-2 bootstrap")
             continue
         require(entry["profile"] in ("astro", "rust", "mixed") and entry["producer"] in ("central-product", "qualification"), "unsupported profile/producer")
-        require(entry["foundation"] in ("required", "not-applicable"), "unknown foundation applicability")
         route_schema(entry["release_route"])
         staged = any(x["kind"] == "staged" for x in entry["release_route"]["declarations"])
         require(entry["branches"] == ["dev", "staging", "main"] if staged else entry["branches"] in (["dev"], ["dev", "main"]), "invalid declared branch selection")
@@ -447,7 +524,7 @@ def yaml_data(data):
         require(not any(isinstance(token, yaml.TagToken) for token in yaml.scan(data)), "explicit YAML tags unsupported")
         value = yaml.load(data, Loader=StrictYaml)
     except (yaml.YAMLError, RecursionError):
-        raise foundation.Refused("malformed or excessive YAML") from None
+        raise Refused("malformed or excessive YAML") from None
     require(isinstance(value, dict), "YAML mapping required")
     return value
 
@@ -484,7 +561,7 @@ def clean_inventory(root, head):
 
 def tracked_bytes(root, inventory, name, limit=1024 * 1024):
     require(name in inventory and inventory[name][0] in ("100644", "100755"), "missing tracked regular input: " + name)
-    data, info = foundation.read_regular(root / name, limit)
+    data, info = read_regular(root / name, limit)
     require(hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest() == inventory[name][1], "changed tracked bytes: " + name)
     require(bool(info.st_mode & 0o111) == (inventory[name][0] == "100755"), "changed tracked executable mode")
     return data
@@ -606,13 +683,7 @@ def declared_route(root, entry, base, head):
     return "staged" if any(declarations[i]["kind"] == "staged" for i in matches) else "direct"
 
 
-def application_integrity(root, inventory, entry, runtime_data=None, foundation_data=None):
-    pair = any(os.path.lexists(root / name) for name in ("foundation.lock", ".foundation", "tools/container-foundation"))
-    if entry["foundation"] == "required":
-        records = foundation.catalog(foundation_data if foundation_data is not None else (SOURCE / "actions/ci-foundation/approved.json").read_bytes())
-        foundation.verify(root, records, {})
-    else:
-        require(not pair, "foundation pair conflicts with explicit not-applicable scope")
+def application_integrity(root, inventory, entry, runtime_data=None):
     runtime = load_checking_module("org_runtime", "actions/ci-runtime-profile/scripts/validate_runtime_profile.py")
     data = runtime_data if runtime_data is not None else decode((SOURCE / "runtime-profiles/catalog.json").read_bytes())
     runtime.validate_catalog(data)
@@ -628,23 +699,23 @@ def application_integrity(root, inventory, entry, runtime_data=None, foundation_
     return {"tuple": tuple_id, "tools": {key: value["version"] for key, value in tools.items()}}
 
 
-def app_plan(root, event, entry, source_sha, runtime_data=None, foundation_data=None):
+def app_plan(root, event, entry, source_sha, runtime_data=None):
     pr = event["pull_request"]
     base, head, branch = pr["base"]["sha"], pr["head"]["sha"], pr["base"]["ref"]
     inventory = clean_inventory(root, head)
     manifests = classify(root, inventory, entry)
     producer_check(root, inventory, entry, branch)
     route = declared_route(root, entry, base, head)
-    runtime = application_integrity(root, inventory, entry, runtime_data, foundation_data)
+    runtime = application_integrity(root, inventory, entry, runtime_data)
     return {"schema_version": 2, "consumer": entry["repository"], "repository_id": entry["repository_id"], "pr": event["number"],
             "branch": branch, "base": base, "head": head, "tree": git(root, "rev-parse", "HEAD^{tree}").decode().strip(),
             "source_sha": source_sha, "enrollment_sha256": hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "profile": entry["profile"], "producer": entry["producer"], "route": route, "runtime": runtime,
             "components": entry["components"], "manifests": manifests,
-            "review_policy": entry["review_policy"], "foundation": entry["foundation"],
+            "review_policy": entry["review_policy"],
             "checking_fingerprints": {name: hashlib.sha256((SOURCE / name).read_bytes()).hexdigest() for name in
                                       ("actions/ci-org-baseline/enrollment.json", "runtime-profiles/catalog.json",
-                                       "actions/ci-foundation/approved.json", "actions/ci-foundation/scripts/foundation_source.py")},
+                                       "actions/ci-org-baseline/scripts/baseline.py")},
             "required_jobs": ["baseline", "static", "tests"]}
 
 
@@ -774,7 +845,6 @@ def application_common(root, event, entry, api, plan):
     checked(source_script("actions/ci-update-ownership/scripts/validate_update_ownership.py", "--repository-root", root,
                           "--default-branch", event["repository"]["default_branch"], "--policy", ".github/update-policy.json",
                           "--renovate", "renovate.json", "--dependabot", ".github/dependabot.yml"), root)
-    checked(source_script("actions/ci-foundation/scripts/foundation_source.py", "update-owner", "--root", root), root)
 
 
 def verify_runtime(root, plan):

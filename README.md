@@ -111,12 +111,12 @@ ordinary `ci-markdown` behavior are unchanged.
 
 The [organization baseline contract](actions/ci-org-baseline/README.md) defines the
 strict schema-2 source capability for Astro, Rust and mixed complete component trees.
-The shipped enrollment, runtime catalog and foundation catalog retain their existing
+The shipped enrollment and runtime catalog define the current profile and runtime
 assignments. Source fixtures exercise schema 2; they do not enroll a consumer.
 Rust/mixed remain fixture-only until actual approved runtime and consumer evidence exists.
 
 Admission and common checking process consumer data without executing its scripts.
-They check complete manifests, declared release route, source/foundation/runtime
+They check complete manifests, declared release route, source and runtime
 integrity, policy, controlled Markdown, workflow safety, dependency and update ownership.
 Product static checks and tests run in separate jobs on fresh bound checkouts; a final
 trusted job rederives the plan, requires every applicable job to succeed and refuses
@@ -169,7 +169,6 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-dependabot-coverage` | Declared package coverage for Dependabot-managed consumers |
 | `ci-update-ownership` | Sole normal-updater ownership and security-only Dependabot configuration |
 | `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
-| `ci-foundation` | Approved exact foundation export and actual working-file integrity before its adapter |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central approved-license policy |
 | `ci-merge-flow` | Existing dev/main guard and source-repo bridge; successor consolidation/promotion admission remains unqualified |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
@@ -304,10 +303,9 @@ owner steps and direct shell checks; affected candidate wrappers require coheren
 consumer validation before merge.
 
 First-party dependency evidence resolves only the fixed protected-main ref, then
-its immutable commit, tree and admitted Action or reusable-workflow blob. The
-workflow exception is limited to Foundation's fixed consumer, manifest and
-controller tuple; other workflows gain no exemption. Evidence records that
-source snapshot, not an executed Action or workflow receipt. Unknown
+its immutable commit, tree and admitted Action blob. Reusable workflows have no
+first-party missing-license exemption. Evidence records that source snapshot,
+not an executed Action receipt. Unknown
 dependency-record shapes fail closed; actual hosted main records need native
 CI qualification. License, vulnerability and third-party immutable-reference
 rules remain mandatory.
@@ -342,3 +340,10 @@ readback; future main merges require no recurring selector update.
 
 The durable policy is defined in [Intent](docs/intent.md),
 [Requirements](docs/requirements.md), and [Architecture](docs/architecture.md).
+
+## Application development containers
+
+The control-plane [container procedure](https://github.com/ForgingAlpha/control-plane/blob/main/system/runbooks/operate-local-containers.md)
+owns the Compose convention and container responsibilities. Applications own their
+product commands, tests and deployment configuration. Shared mandatory checks
+remain shared-CI owned.

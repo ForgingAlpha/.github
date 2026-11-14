@@ -84,8 +84,10 @@ An already resolved execution SHALL NOT substitute a later `main` revision.
 
 **Fit:** Central workflow jobs use their defining workflow commit throughout
 admission, product lanes and finalization. Composite execution retains the native
-resolved Action commit and applicable verifier/catalog fingerprints. A branch
-name or consumer commit alone cannot stand in for executed-source identity.
+resolved Action commit. Central application plans and receipts additionally retain
+fingerprints of the exact baseline source, enrollment and runtime catalog from the
+same checking checkout. A branch name or consumer commit alone cannot stand in for
+executed-source identity.
 
 ### REQ-007 - Human-Reviewed Source Recovery
 
@@ -407,54 +409,10 @@ obligation; changing the active-source mechanism SHALL NOT silently remove it.
 The impact assessment SHALL distinguish preserved coverage, changed obligations
 and operational observations still needed for affected consumers.
 
-For the initial Foundation connection only, an exact human-approved evidence-order
-amendment MAY place privileged native connection proof after adoption of a
-manual-only `workflow_dispatch` caller on Foundation `dev`. This limited order
-requires an already-adopted shared controller, complete coherent source validation,
-independent review of the connection and its retained acceptance, and a manual-only caller whose composed path with the adopted controller
-verifies the exact repository, event and ref before App connection use. It SHALL NOT permit proposed controller code
-in a write-capable job or defer existing enrolled consumer gates, CI, CodeQL,
-dependency admission, human review or human merge requirements.
-
-The initial evidence-order amendment MAY cover adoption of the exact central
-eligibility and first-party evidence-transport change required by that fixed
-Foundation member. It SHALL retain complete coherent source acceptance,
-maintained affected-consumer validation and every existing required gate before
-merge. It SHALL identify the actual main-following consumer exposure and the
-specific native observations deferred. It SHALL identify the initial checker
-proposal whose exact-candidate native qualification is foregone under this order;
-that closed proposal cannot later obtain qualification through the open-proposal
-controller. Foundation's ordinary dependency and product CI SHALL pass against
-the adopted checker before manual-caller adoption. Those observations and the
-later privileged connection concern their actual source and consumer subjects;
-they remain unmet until executed and SHALL NOT substitute for the foregone
-initial-candidate qualification or be reported as prior premerge qualification.
-This admission supplies no dispatch, grant, enforcement or
-later-change exemption.
-
-That source adoption SHALL authorize no dispatch, protected setup or recurring
-execution. Native work requires its separately authorized, qualified environment,
-principals, exact source/consumer subjects and finite operation/cost allowance.
-Full native acceptance remains open until both workflows, reporting, recovery,
-privacy, required-result behavior and automatic triggers are observed under their
-respective authorized qualification packages. A manual result SHALL NOT establish
-automatic operation. New required-result enforcement and standing recurring operation SHALL remain off until
-their complete applicable native qualification passes.
-
-This initial-admission order SHALL NOT carry forward to later checker or
-controller changes without a new owning assessment; source adoption is never a
-substitute for proof.
-
 **Fit:** Candidate checks cannot mix proposed top-level code with helpers from
-another mutable reference. Outside this exact initial-admission order, missing
-required premerge coverage blocks the merge. The checker becomes active for its
-main-following consumers at its human merge. Foundation's positive ordinary
-dependency and product CI evidence then precedes its manual-caller merge; the
-separately qualified privileged connection follows caller adoption. Deferred
-observations remain explicit incomplete acceptance against their real subjects
-and times; they do not retroactively qualify the checker merge, activate source
-or waive an existing required check. Execution observations after merge record
-delivery and do not activate source.
+another mutable reference. Missing required premerge coverage blocks the merge.
+Post-merge observations record their actual subjects, times and failures; they
+do not retroactively qualify a proposal, waive required checks or activate source.
 
 ### REQ-021 - External Plugin Update Ownership
 
@@ -515,23 +473,6 @@ URL, alternate registry, credential, package exception, or executable package co
 SHALL enter the resolver. Ranged, tagged, malformed, or non-root aliases SHALL fail
 closed.
 
-For the Foundation compatibility caller only, a missing-license dependency MAY use the
-same first-party ownership evidence for the exact package
-`pkg:githubactions/ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml@main`.
-The consumer SHALL be `ForgingAlpha/container-foundation`, the dependency manifest SHALL
-be `.github/workflows/consumer-compatibility.yml`, the ecosystem SHALL be `actions`, the
-dependency name SHALL be
-`ForgingAlpha/.github/.github/workflows/consumer-compatibility-controller.yml`, and the
-version SHALL be `main`. If present, the source repository URL SHALL be exactly
-`https://github.com/ForgingAlpha/.github`. The fixed protected main ref SHALL resolve
-directly to a commit whose complete tree contains exactly one nonempty regular blob at
-`.github/workflows/consumer-compatibility-controller.yml`. Callers SHALL NOT broaden or
-configure this member, consumer or manifest. Unavailable, malformed, ambiguous or
-conflicting evidence SHALL fail closed. This provides dependency-source provenance only;
-it does not establish execution safety, grant authority, human approval of the
-candidate, or runtime activation. Explicit unapproved or malformed license expressions
-SHALL continue to fail, and all vulnerability checks SHALL remain mandatory.
-
 The control plane MAY admit a custom-licensed artifact through a reviewed policy
 change binding one repository, canonical dependency identity, exact version,
 manifest and install path, canonical registry URL, sha512 integrity, and reviewed
@@ -586,10 +527,8 @@ the adopted policy before operational reliance.
 fails; the exact-revision third-party resolver fails closed on malformed
 identity, unavailable evidence, or a disallowed SPDX identifier; the fixed
 first-party resolver fails closed on any schema, repository, reference, commit,
-tree, action-path, or first-party transport redirect mismatch; the exact Foundation
-workflow provenance class
-fails closed on any consumer, manifest, identity, reference, transport or blob
-mismatch; npm alias normalization fails closed on any manifest,
+tree, action-path, or first-party transport redirect mismatch;
+npm alias normalization fails closed on any manifest,
 PURL, spec, lock format, target, registry, artifact, integrity, license, redirect,
 availability, response-size, or lookup-count mismatch;
 the artifact exception accepts only its reviewed repository and immutable artifact,
@@ -773,7 +712,7 @@ Central enrollment SHALL explicitly select the repository, supported complete
 profile and protected targets. Universal topology SHALL NOT force a repository
 into an unsupported application or bootstrap profile. The owner SHALL qualify
 complete applicable checks, unique result production, security/event consumers,
-review, runtime and foundation obligations on every selected target before
+review and runtime obligations on every selected target before
 retiring predecessor admission. Actual source, enrollment and checking-source
 identity remain separate. Staging qualification follows actual repository
 consumers; it need not require a permanently running environment.
@@ -796,37 +735,20 @@ unknown or conflicting evidence fails rather than inventing a route. Invalid
 security claims remain invalid. New source alone proves neither hosted admission
 nor protection, consumer execution or complete repository migration.
 
-### REQ-028 - Automatic Consumer Compatibility
+### REQ-028 - Consumer Qualification
 
-The shared-CI owner SHALL own exact-candidate consumer qualification and its
-derived result. Each consumer SHALL retain its product requirements, commands and
-tests. An independently admitted reporting App MAY publish a distinct
-`Consumer compatibility` check on the exact shared head. Existing CI, CodeQL,
-human review and human merge requirements remain mandatory for everyone.
+The shared-CI owner SHALL own exact-candidate affected-consumer qualification
+and its recorded result. Each consumer SHALL retain its product requirements,
+commands and tests. Existing CI, CodeQL, human review and human merge requirements
+remain mandatory for everyone.
 
-Private execution SHALL require a human-approved standing qualification policy,
-current scoped authority, an effective exact-head human approval and the
-reviewer's current access to the private consumer. The review is a prerequisite;
-it does not create an access grant. Candidate jobs SHALL receive only their
-existing read permissions and no controller credential. Write-capable orchestration
-SHALL execute adopted trusted source and treat candidate files and results as data.
-
-Plans SHALL bind the candidate, consumer input and checking source separately.
-Successful native qualification requires the selected workflows' latest complete
-results, required steps and post-job hooks on that exact fixture. Missing, pending,
-failed, ambiguous or known-stale evidence SHALL NOT satisfy the gate. The reporter
-SHALL recheck live inputs and approval before success, invalidate known-stale
-results before replacement work, and reconcile unknown writes before retrying.
-Unchanged valid evidence SHALL be reused without starting another qualification.
-
-Private source, commands, logs and artifact payloads SHALL stay in the consumer's
-custody. Public reporting SHALL disclose only the shared head, opaque plan,
-bounded outcome and access-controlled detail URL. Disposable fixtures SHALL never
-be merged. Source adoption alone grants no credentials, settings or execution
-authority. Required-check enforcement SHALL follow native qualification of the
-exact issuer, permissions, protection and ordinary operation. The owner SHALL
-disclose observation delays and outages; no cross-repository atomic freshness or
-zero-cost guarantee is implied.
+Qualification SHALL bind the shared candidate, consumer input, selected checking
+source, applicable required workflows and complete outcomes. Successful native
+qualification requires those workflows' latest complete results, required steps
+and post-job hooks for the exact inputs. Missing, pending, failed, ambiguous or
+known-stale evidence SHALL NOT satisfy a required result. Changed inputs SHALL
+receive affected requalification; unchanged evidence MAY be reused only after its
+scope, dependencies and currentness are verified under REQ-020 and REQ-025.
 
 Standards correctness and consumer compatibility SHALL remain distinct claims.
 A checker SHALL accept inputs that conform to its selected contract and reject
@@ -836,30 +758,21 @@ or rejects input SHALL require correction. Crashes or omitted required work
 SHALL remain non-success until their cause is resolved.
 
 A rejection test MAY pass by demonstrating the required refusal. That assertion
-SHALL NOT replace or override the failed consumer workflow. A changed consumer
-revision SHALL receive a new exact-input plan; failed or stale evidence from the
-previous plan SHALL NOT satisfy it. No intent label or expected-failure
-classification SHALL waive required native success.
+SHALL NOT replace or override the failed consumer workflow. A corrected consumer
+revision requires corresponding exact-input evidence. No intent label or
+expected-failure classification SHALL waive required native success. The shared-CI
+and consumer owners SHALL diagnose the cause against the exact contract,
+configuration and inputs and retain the reproduction and conclusion in the owning
+change record. An unresolved cause SHALL remain unresolved.
 
-The shared-CI and consumer owners SHALL diagnose the cause against the exact
-contract, selected configuration and inputs, retaining the reproduction and
-conclusion in the owning change or qualification evidence. An unresolved cause
-SHALL remain unresolved. Public result fields SHALL NOT imply this diagnosis;
-private source and diagnostics retain consumer custody.
+Private source, commands, logs and artifact payloads SHALL stay in consumer
+custody. Public reports SHALL disclose only the exact public subject, bounded
+outcome and permitted detail location. Synthetic or local evidence SHALL NOT be
+reported as native consumer execution. Source adoption alone grants no
+credentials, settings or execution authority.
 
-A separately reviewed no-impact determination MAY establish that the exact
-change does not require new consumer execution. It SHALL use only the adopted
-checking source's catalog, matching inspected shared-source fingerprints on
-both sides, declared unaffected paths and the exact complete private source-tree
-family. Any unknown identity, incomplete inventory, changed inspected source,
-unlisted path, unsupported mode or changed private tree SHALL require full
-qualification. Candidate-provided records SHALL NOT admit their own exemption.
-A no-impact result SHALL disclose that product tests were not run; it SHALL NOT
-claim native execution or classify an intended standards rejection as success.
-New catalog records require ordinary owner review and source adoption.
-
-**Fit:** With an exact consumer configuration enabling a rule, conforming input
-passes and violating input fails through the checker and required evaluator.
-A negative assertion may pass while the underlying consumer result remains
-failed. A corrected consumer revision requires a new plan and corresponding
-evidence. An affected standards change cannot select the no-impact path.
+**Fit:** Conforming input passes and violating input fails through the actual
+checker and its applicable required result producer. A negative assertion may
+pass while the consumer result remains failed. Corrected inputs require their
+corresponding evidence. Impact assessment cannot waive a changed required behavior
+or an existing mandatory check; it cannot claim execution that did not occur.
