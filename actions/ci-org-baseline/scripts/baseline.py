@@ -47,6 +47,7 @@ def load_checking_module(name, path):
 
 # Existing bounded Git transport and strict JSON decoder; exact same source checkout.
 foundation = load_checking_module("org_baseline_git", "actions/ci-foundation/scripts/foundation_source.py")
+admission = load_checking_module("org_admission_evidence", "actions/ci-org-baseline/scripts/admission_evidence.py")
 policy = load_checking_module("org_baseline_policy", "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")
 require = foundation.require
 git = foundation.git
@@ -628,15 +629,15 @@ def application_integrity(root, inventory, entry, runtime_data=None, foundation_
     return {"tuple": tuple_id, "tools": {key: value["version"] for key, value in tools.items()}}
 
 
-def app_plan(root, event, entry, source_sha, runtime_data=None, foundation_data=None):
+def app_plan(root, event, entry, source_sha, runtime_data=None, foundation_data=None, *, frozen_admission=None):
     pr = event["pull_request"]
     base, head, branch = pr["base"]["sha"], pr["head"]["sha"], pr["base"]["ref"]
     inventory = clean_inventory(root, head)
     manifests = classify(root, inventory, entry)
     producer_check(root, inventory, entry, branch)
-    route = declared_route(root, entry, base, head)
+    route = declared_route(root, entry, base, head) if frozen_admission is None else "unified"
     runtime = application_integrity(root, inventory, entry, runtime_data, foundation_data)
-    return {"schema_version": 2, "consumer": entry["repository"], "repository_id": entry["repository_id"], "pr": event["number"],
+    plan = {"schema_version": 2, "consumer": entry["repository"], "repository_id": entry["repository_id"], "pr": event["number"],
             "branch": branch, "base": base, "head": head, "tree": git(root, "rev-parse", "HEAD^{tree}").decode().strip(),
             "source_sha": source_sha, "enrollment_sha256": hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "profile": entry["profile"], "producer": entry["producer"], "route": route, "runtime": runtime,
@@ -646,6 +647,12 @@ def app_plan(root, event, entry, source_sha, runtime_data=None, foundation_data=
                                       ("actions/ci-org-baseline/enrollment.json", "runtime-profiles/catalog.json",
                                        "actions/ci-foundation/approved.json", "actions/ci-foundation/scripts/foundation_source.py")},
             "required_jobs": ["baseline", "static", "tests"]}
+    if frozen_admission is not None:
+        plan.update(schema_version=5, admission=frozen_admission)
+        for name in ("actions/ci-org-baseline/scripts/baseline.py", "actions/ci-org-baseline/scripts/admission_evidence.py"):
+            plan["checking_fingerprints"][name] = hashlib.sha256((SOURCE / name).read_bytes()).hexdigest()
+        admission.encoded(plan)  # Refuse oversize before any command/output, never truncate.
+    return plan
 
 
 def clean_env():
@@ -729,12 +736,19 @@ def application_common(root, event, entry, api, plan):
         checked(source_script("actions/ci-alphaapps-policy/scripts/validate_codeowners_contract.py"), root, safe)
     else:
         team_configuration(api.rules(entry["repository"], plan["branch"]), entry["review_policy"])
-    # This is a trusted metadata subprocess, not consumer execution. Token is scoped to this guard alone.
-    guard_env = clean_env()
-    guard_env.update(GH_TOKEN=os.environ.get("GITHUB_TOKEN", ""), GITHUB_ACTION_PATH=str(SOURCE / "actions/ci-merge-flow"),
-                     DECLARED_ROUTE=plan["route"], HEAD_REF=event["pull_request"]["head"]["ref"], HEAD_REPOSITORY=entry["repository"],
-                     BASE_REF=plan["branch"], GITHUB_REPOSITORY=entry["repository"], PR_NUMBER=str(event["number"]))
-    checked(["bash", str(SOURCE / "actions/ci-merge-flow/scripts/check_merge_flow.sh"), "declared-route"], root, guard_env)
+    if plan["schema_version"] == 5:
+        projection = plan["admission"]
+        context = admission.UnifiedContext(admission.Subject.parse(projection["subject"]),
+                                           tuple(tuple(row) for row in projection["bindings"]))
+        require(admission.frozen(projection, context)["outcome"] == "ProposalEligible", "no-change is not PR admission")
+        require(plan["route"] == "unified", "unified ordinary route required")
+    else:
+        # This is a trusted metadata subprocess, not consumer execution. Token is scoped to this guard alone.
+        guard_env = clean_env()
+        guard_env.update(GH_TOKEN=os.environ.get("GITHUB_TOKEN", ""), GITHUB_ACTION_PATH=str(SOURCE / "actions/ci-merge-flow"),
+                         DECLARED_ROUTE=plan["route"], HEAD_REF=event["pull_request"]["head"]["ref"], HEAD_REPOSITORY=entry["repository"],
+                         BASE_REF=plan["branch"], GITHUB_REPOSITORY=entry["repository"], PR_NUMBER=str(event["number"]))
+        checked(["bash", str(SOURCE / "actions/ci-merge-flow/scripts/check_merge_flow.sh"), "declared-route"], root, guard_env)
     inventory = clean_inventory(root, plan["head"])
     texts, total = {}, 0
     for name in sorted(inventory):
@@ -924,36 +938,136 @@ def current_checks(api, event, entry):
         team_configuration(api.rules(entry["repository"], branch), review)
 
 
-def make_plan(root, event, entry, source_sha):
+def make_plan(root, event, entry, source_sha, *, frozen_admission=None):
     if entry["profile"] != "documentation-bootstrap":
-        return app_plan(root, event, entry, source_sha)
+        return app_plan(root, event, entry, source_sha, frozen_admission=frozen_admission)
     admit_tree(root, event["pull_request"]["head"]["sha"])
     return {**public_receipt(root, event, [bootstrap_entry(entry)], source_sha), "producer": "bootstrap", "components": [], "required_jobs": ["baseline"]}
 
 
-def staged_main(args, root, event, entries, source_sha):
+def _unified_subject(context, event, entry, source_sha):
+    subject = context.request().subject.value()
+    pr = event["pull_request"]
+    expected = {"repository": entry["repository"], "repository_id": entry["repository_id"],
+                "head": pr["head"]["sha"], "source_ref": pr["head"]["ref"], "target": pr["base"]["sha"],
+                "target_ref": pr["base"]["ref"], "checking_sha": source_sha, "profile": entry["profile"],
+                "pr": event["number"], "outcome": "proposal"}
+    require(all(subject[key] == value and type(subject[key]) is type(value) for key, value in expected.items()),
+            "unified subject differs from exact event/profile/source")
+    return subject
+
+
+def _owner_observations(context, api, records):
+    subject = context.request().subject
+    expected = subject.value()
+    result = {}
+    live = api.get(f'/repos/{expected["repository"]}/pulls/{expected["pr"]}')
+    require(isinstance(live, dict) and live.get("state") == "open" and
+            type(live.get("number")) is int and live["number"] == expected["pr"], "current proposal identity/state differs from admission subject")
+    for side, ref, sha in (("head", "source_ref", "head"), ("base", "target_ref", "target")):
+        value = live.get(side)
+        require(isinstance(value, dict) and value.get("ref") == expected[ref], "current proposal refs differ from admission subject")
+        repository = value.get("repo")
+        require(value.get("sha") == expected[sha] and isinstance(repository, dict) and
+                type(repository.get("id")) is int and repository["id"] == expected["repository_id"] and
+                repository.get("full_name") == expected["repository"], "current proposal subject differs from admission subject")
+    for branch in admission.required_branches(subject, records):
+        value = api.get(f'/repos/{subject.value()["repository"]}/branches/{branch}')
+        require(isinstance(value, dict) and isinstance(value.get("commit"), dict), "branch observation unavailable")
+        result[branch] = admission.sha(value["commit"].get("sha"))
+    return result
+
+
+def _acquire_unified(context, api):
+    available = admission.read(context)
+    records = admission.decode(available.records)
+    return admission.evaluate(context.request(), available, _owner_observations(context, api, records))
+
+
+def _admitted_plan(needs):
+    require(isinstance(needs, dict) and isinstance(needs.get("baseline"), dict), "missing admission job")
+    baseline_job = needs["baseline"]
+    require(baseline_job.get("result") == "success" and isinstance(baseline_job.get("outputs"), dict), "admission job did not succeed")
+    raw = baseline_job["outputs"].get("plan")
+    require(isinstance(raw, str), "missing admitted plan")
+    return admission.decode(raw)
+
+
+def staged_main(args, root, event, entries, source_sha, *, unified=None):
+    """The fixed CLI is legacy. Only trusted code may supply a unified context.
+
+    The default context reader is unavailable. This seam is not a sandbox against
+    callers with Python execution rights, and cannot be selected by plan bytes.
+    """
+    require(args.stage in ("admit", "preflight", "install", "static", "tests", "finalize"), "unsupported stage")
+    needs = None
+    if unified is not None:
+        require(type(unified) is admission.UnifiedContext, "unsupported unified interface")
+        require(os.environ.get("GITHUB_EVENT_NAME") == "pull_request", "read-only pull_request context required")
+        if args.stage == "finalize":
+            # Bound the transport before passing the environment to any child.
+            needs = admission.decode(os.environ.get("BASELINE_NEEDS", ""), limit=1024 * 1024)
+            require(isinstance(needs, dict), "invalid job results transport")
+            for job in needs.values():
+                if isinstance(job, dict) and isinstance(job.get("outputs"), dict):
+                    for key in ("plan", "receipt"):
+                        if key in job["outputs"]:
+                            admission.decode(job["outputs"][key])
+        source_identity(source_sha)
     entry = event_subject(root, event, entries)
-    plan = make_plan(root, event, entry, source_sha)
+    # Preserve the legacy pre-authentication public-data freeze.
+    plan = make_plan(root, event, entry, source_sha) if unified is None else None
     if args.stage in ("admit", "finalize"):
         api = Api(os.environ.get("GITHUB_TOKEN"))
         current_checks(api, event, entry)
+    frozen_admission = None
+    if unified is not None:
+        _unified_subject(unified, event, entry, source_sha)
+        if args.stage == "admit":
+            frozen_admission = _acquire_unified(unified, api)
+        else:
+            original = _admitted_plan(needs) if needs is not None else admission.decode(os.environ.get("BASELINE_PLAN", ""))
+            require(isinstance(original, dict) and type(original.get("schema_version")) is int and original["schema_version"] == 5,
+                    "unified stage requires exact schema5 admitted plan")
+            frozen_admission = admission.frozen(original.get("admission"), unified)
+            if args.stage == "finalize":
+                require(_acquire_unified(unified, api) == frozen_admission,
+                        "authoritative admission evidence changed")
+        require(frozen_admission["outcome"] == "ProposalEligible", "no-change is not PR admission")
+    if unified is not None:
+        plan = make_plan(root, event, entry, source_sha, frozen_admission=frozen_admission)
+
+    def recheck(message):
+        current_checks(api, event, entry)
+        if unified is not None:
+            require(_acquire_unified(unified, api) == frozen_admission,
+                    "authoritative admission evidence changed")
+        expected = make_plan(root, event, entry, source_sha) if unified is None else make_plan(
+            root, event, entry, source_sha, frozen_admission=frozen_admission)
+        require(expected == plan, message)
+        if unified is not None:
+            source_identity(source_sha)
+
     if args.stage == "admit":
         if entry["profile"] == "documentation-bootstrap":
             run(root, event, [bootstrap_entry(entry)], api)
         else:
             application_common(root, event, entry, api, plan)
-        current_checks(api, event, entry)
-        require(make_plan(root, event, entry, source_sha) == plan, "admission inputs changed")
+        recheck("admission inputs changed")
         emit_outputs({"plan": plan, "profile": entry["profile"], "producer": plan["producer"],
                       "result_name": "Organization Profile Qualification" if plan["producer"] == "qualification" else "CI",
                       "mise_version": literal_values()["mise_version"]})
     elif args.stage == "finalize":
-        aggregate(plan, decode(os.environ.get("BASELINE_NEEDS", "").encode()))
-        current_checks(api, event, entry)
-        require(make_plan(root, event, entry, source_sha) == plan, "final inputs changed")
-        print(json.dumps(public_receipt(root, event, [bootstrap_entry(entry)], source_sha) if entry["profile"] == "documentation-bootstrap" else
-                         {"schema_version": 2, "plan_sha256": plan_digest(plan), "consumer": plan["consumer"], "head": plan["head"], "base": plan["base"], "source_sha": source_sha, "producer": plan["producer"], "checking_fingerprints": plan["checking_fingerprints"],
-                          "required_results": {job: "success" for job in plan["required_jobs"]}, "result": "success"}))
+        aggregate(plan, needs if needs is not None else decode(os.environ.get("BASELINE_NEEDS", "").encode()))
+        recheck("final inputs changed")
+        receipt = public_receipt(root, event, [bootstrap_entry(entry)], source_sha) if entry["profile"] == "documentation-bootstrap" else {
+            "schema_version": plan["schema_version"], "plan_sha256": plan_digest(plan), "consumer": plan["consumer"],
+            "head": plan["head"], "base": plan["base"], "source_sha": source_sha, "producer": plan["producer"],
+            "checking_fingerprints": plan["checking_fingerprints"],
+            "required_results": {job: "success" for job in plan["required_jobs"]}, "result": "success"}
+        if unified is not None:
+            receipt["subject_sha256"] = admission.digest(frozen_admission["subject"])
+        print(json.dumps(receipt))
     else:
         expected = decode(os.environ.get("BASELINE_PLAN", "").encode())
         require(plan == expected, "job plan differs from rederived trusted source")
