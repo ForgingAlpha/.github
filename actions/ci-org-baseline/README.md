@@ -161,8 +161,10 @@ replace this unconditional admission. Partial/dual imports and modified bytes fa
 `not-applicable` requires an explicit existing owning-scope determination retained by
 the shared-CI/product owners before activation, and refuses either pair member if
 present. Absence of files, an Astro label or static-site output alone establishes
-neither exemption nor container obligation. The broad application wording in Selected
-Container Foundation Source must be reconciled against the actual consumer's scope;
+neither exemption nor container obligation. The [Foundation implementation transition](../../docs/requirements.md#foundation-implementation-transition)
+preserves the specified existing import responsibilities until qualified source
+replacement. The [imported-source contract](../../docs/architecture.md#imported-source-integrity)
+must be reconciled against the actual consumer's scope;
 unresolved applicability blocks that consumer, not independent source preparation.
 No new foundation exemption is adopted by this contract. Catalog eligibility follows
 its human-reviewed merge into main; the exact checking checkout supplies the catalog.

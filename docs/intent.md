@@ -6,6 +6,10 @@ tags:
 ---
 # ForgingAlpha/.github - Intent
 
+The [Foundation implementation transition](requirements.md#foundation-implementation-transition)
+binds the target outcome to qualified source replacement while preserving the
+specified existing operational obligations. It grants no new operational rights.
+
 ## Purpose
 
 `ForgingAlpha/.github` is the public automation control plane for ForgingAlpha.
@@ -82,9 +86,8 @@ automation without copying workflow logic between repositories.
   `LGPL-3.0-or-later`, or a reviewed exception for one repository and immutable
   artifact. License eligibility and actual-use compliance are separate: product
   release owners address applicable notice, source and distribution obligations.
-  Fixed first-party actions and the centrally fixed Foundation compatibility
-  workflow member have governed ownership and release provenance; unknown
-  evidence fails closed.
+  Fixed first-party actions have governed ownership and release provenance;
+  unknown evidence fails closed.
 
 ## Boundaries
 
@@ -117,16 +120,8 @@ automation never executes untrusted pull-request code.
 - Every control-plane change lands through a reviewed pull request with green
   `CI`, authorized-human approval of the exact current revision, and human
   execution of the merge. Coherent candidate and affected-consumer validation
-  belongs before merge. For the initial admission of the fixed Foundation
-  compatibility workflow member, an exact human-approved evidence-order amendment
-  may establish coherent source and maintained consumer validation before the
-  initial checker and manual-caller adoptions, with only its explicitly named
-  native connection and dependency observations following their necessary source
-  adoption. The initial checker proposal's exact-candidate native qualification
-  is foregone; later observations of other subjects cannot supply it. No existing
-  required check or enrolled consumer gate may be deferred.
-  This initial order does not carry forward to later checker or controller
-  changes. Main membership makes the resulting source active; execution
+  belongs before merge. No existing required check or enrolled consumer gate may
+  be deferred. Main membership makes the resulting source active; execution
   observations do not add another activation decision.
 - Normal and security automation have disjoint authority. Renovate does not
   remediate vulnerability alerts, and Dependabot does not create normal version

@@ -1,5 +1,10 @@
 # ForgingAlpha/.github
 
+The [Foundation implementation transition](docs/requirements.md#foundation-implementation-transition)
+defines when the controller, workflow-eligibility and import-responsibility
+changes described here become operative. Existing obligations continue until
+the qualified replacement is human-adopted.
+
 ForgingAlpha's public CI, dependency, security, and release automation control
 plane.
 
@@ -169,7 +174,7 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-dependabot-coverage` | Declared package coverage for Dependabot-managed consumers |
 | `ci-update-ownership` | Sole normal-updater ownership and security-only Dependabot configuration |
 | `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
-| `ci-foundation` | Approved exact foundation export and actual working-file integrity before its adapter |
+| `ci-foundation` | Existing imported-source integrity before its application adapter |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central approved-license policy |
 | `ci-merge-flow` | Existing dev/main guard and source-repo bridge; successor consolidation/promotion admission remains unqualified |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
@@ -304,10 +309,9 @@ owner steps and direct shell checks; affected candidate wrappers require coheren
 consumer validation before merge.
 
 First-party dependency evidence resolves only the fixed protected-main ref, then
-its immutable commit, tree and admitted Action or reusable-workflow blob. The
-workflow exception is limited to Foundation's fixed consumer, manifest and
-controller tuple; other workflows gain no exemption. Evidence records that
-source snapshot, not an executed Action or workflow receipt. Unknown
+its immutable commit, tree and admitted Action blob. Reusable workflows have no
+first-party missing-license exemption. Evidence records that source snapshot,
+not an executed Action receipt. Unknown
 dependency-record shapes fail closed; actual hosted main records need native
 CI qualification. License, vulnerability and third-party immutable-reference
 rules remain mandatory.
@@ -342,3 +346,12 @@ readback; future main merges require no recurring selector update.
 
 The durable policy is defined in [Intent](docs/intent.md),
 [Requirements](docs/requirements.md), and [Architecture](docs/architecture.md).
+
+## Application development containers
+
+The control-plane [container procedure](https://github.com/ForgingAlpha/control-plane/blob/main/system/runbooks/operate-local-containers.md)
+owns the Compose convention and container responsibilities. Shared mandatory
+checks remain shared-CI owned. Existing imported-source integrity obligations follow the
+[imported-source contract](docs/architecture.md#imported-source-integrity), including
+qualified input removal and reconciliation of actual callers and any enrollment. Selecting Compose
+alone does not remove a required check or prove data preservation.
