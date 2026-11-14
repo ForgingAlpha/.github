@@ -1,19 +1,26 @@
-# Selected foundation verification
+# Imported source verification
 
-The [owning Architecture](../../docs/architecture.md#selected-container-foundation-source)
+The [Foundation implementation transition](../../docs/requirements.md#foundation-implementation-transition)
+preserves the specified existing import responsibilities until qualified source
+replacement. The target duties below do not retire this verifier or its catalog.
+
+The [owning Architecture](../../docs/architecture.md#imported-source-integrity)
 defines admission, update ownership, withdrawal and rollback. This action checks
 the actual checkout before any copied helper executes. It runs offline with
 Python's standard library, using only its own resolved checking-source catalog and verifier.
 
-The catalog lists approved core revisions. Synthetic fixture success does
-not make a draft core eligible. Human source delivery, required checks, private
-derivation evidence and a human-reviewed main merge precede real admission.
+This action serves existing imported source pairs. Container responsibilities
+follow the [container procedure](https://github.com/ForgingAlpha/control-plane/blob/main/system/runbooks/operate-local-containers.md).
+An application keeps required imported-source checks until qualified input removal
+and reconciliation of its actual caller and any enrollment under the owning
+Architecture. The existing change record carries that evidence, including an
+unenrolled application's actual absence of enrollment. File absence alone is not
+qualified removal. Synthetic fixture success grants no source eligibility.
 
 ## Consumer wiring
 
-Each platform selects one `tools/container-foundation/` directory and a root
-`foundation.lock`. Existing `.foundation/` imports remain supported during the
-explicit transition. Exactly one of these two fixed payload locations must
+An existing imported pair contains one `tools/container-foundation/` directory
+or `.foundation/` directory and a root `foundation.lock`. Exactly one of these two fixed payload locations must
 exist; the verifier rejects dual, partial, linked or non-directory selections,
 including a linked `tools/` ancestor. Unrelated content under `tools/` is allowed.
 Component configuration stays application-owned; its adapter supplies the
@@ -41,8 +48,11 @@ exists, including dangling links and partial selections. Absence of all three is
 reported not applicable; unrelated `tools/` content does not enroll a repository.
 The standalone gate always requires the complete pair.
 
-The application integration owner prepares complete imported updates through
-human-reviewed app PRs. The fixed first-party reviewed-import profile is the
+The application integration owner retains the exact approved pair and its
+provenance through human-reviewed app PRs. No new upstream acquisition route is
+selected. Restore checkout drift only from an approved complete pair. A payload
+defect requiring changed source returns to that owner's qualified migration;
+rewritten payload or lock bytes cannot grant admission. The fixed first-party reviewed-import profile is the
 pair's narrow management exception; ordinary Renovate/Dependabot ownership for
 all other dependencies remains mandatory. A catalog record permits selection;
 it does not establish application compatibility. Roll back only a complete
@@ -53,51 +63,25 @@ Each application supplies its runnable target, images, health, migrations,
 secrets and allocation. A disposable core fixture does not qualify a different
 application storage profile.
 
-## Prepare an approval record
+## Catalog and source custody
 
-The designated GitHub operator first verifies canonical repository identity,
-human source delivery and required checks through its existing qualified
-nonhuman access. In a private workspace, independently derive from that exact
-committed source without importing or executing the upstream exporter:
+Use the catalog in the exact resolved checking source. Records bind source
+identity, human-delivered commit/tree, export format and the exact lock digest.
+The owning Architecture preserves canonical hosted-identity, human-delivery,
+required-check and independent private-derivation predicates. Retained evidence
+must establish each predicate for the exact admitted subject; an origin name or
+exporter assertion cannot replace it. Missing provenance or its accountable
+custody prevents a dependent catalog change. Real locks, inventory, payload and
+private receipts stay in their owning custody; public self-CI uses synthetic
+fixtures. The admitted export definition remains authoritative; verifier
+maintenance creates no new format owner or export producer.
 
-```sh
-python3 -I actions/ci-foundation/scripts/foundation_source.py derive \
-  --source /absolute/qualified/core-checkout \
-  --revision FULL_HUMAN_MERGED_COMMIT \
-  --lock-output /absolute/private/new-foundation.lock
-```
-
-The output record is a candidate. Local origin text and Git objects do not prove
-the numeric hosted identity, human merge, checks or eligibility. Independently
-compare the private manifest with canonical blobs/modes and the owned export
-serialization. Bind those exact inputs and observations to the proposed record
-in qualified private task/artifact custody. Do not put the real lock, inventory,
-payload or private receipt into this public repository, CI logs or artifacts.
-Public self-CI uses synthetic fixtures exclusively.
-
-Catalog schema version 1 permits an optional trusted record field `payload_paths`:
-a nonempty, unique list containing only `.foundation` and/or
-`tools/container-foundation`. Existing records without the field permit only
-`.foundation`. Qualify the exact helper's support for each permitted location
-before adding the field to its record. The derived record intentionally omits
-this policy decision. The lock format, upstream identity and inventory remain
-unchanged; a consumer cannot add layout eligibility to its lock. New standard
-adoption requires a main-adopted record explicitly permitting
-`tools/container-foundation`. Preserve a compatible legacy selection until that
-record is available, then use the core-owned update and layout-migration
-procedures. Moving an older legacy-only helper does not establish compatibility.
-
-An approved record addition goes through the existing human-reviewed shared
-policy PR and human merge into protected main. All consumers reuse it; no per-app catalog
-or new credential is created. Source admission includes update-coverage review
-for that exact payload so future native-manager surfaces cannot acquire an
-overlapping updater. The current core's variable image inputs stay app-owned.
-
-For a coordinated source and layout change, human-merge the exact core source
-and verify its canonical delivery before merging its shared catalog admission
-into protected main. Application source updates and layout migrations follow
-that adoption. Execution uses the catalog from its resolved checking source,
-never a second catalog fetched from later main. A proposed record in a task branch grants no runtime use.
+Catalog schema 1 allows `payload_paths` only as a nonempty unique subset of
+`.foundation` and `tools/container-foundation`. Without that field only
+`.foundation` is permitted. A consumer cannot add eligibility to its lock or
+obtain compatibility merely by moving an older helper. Catalog changes retain
+the owning Architecture's affected-consumer and human source-adoption duties.
+No new source acquisition or import procedure is selected by this action.
 
 ## Evidence and failures
 
@@ -112,8 +96,9 @@ or ambiguous native association leaves source-version evidence incomplete.
 Local/candidate action tests do not establish human source adoption.
 
 Errors report WHAT, WHY and HOW without exposing private paths or inventory.
-Restore a complete approved pair for checkout drift; request shared admission
-for an unavailable core revision; repair malformed shared policy with its owner.
+Restore a complete approved pair for checkout drift. Return an unavailable source
+revision or malformed shared policy to its owner; do not assume source acquisition
+is available or substitute an unqualified revision.
 Never regenerate expected policy from a changed application lock to pass CI.
 
 Checkouts must preserve exported bytes and executable bits. Content filters,
