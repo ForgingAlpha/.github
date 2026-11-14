@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import importlib.util
+import io
 import json
+import os
 from pathlib import Path
+import re
+import subprocess
 import sys
 import unittest
 from unittest.mock import patch
@@ -2814,6 +2819,148 @@ class ReviewRegressionTest(unittest.TestCase):
 
 
 class ActionContractTest(unittest.TestCase):
+
+    def verification_step(self, step_id, overrides=None):
+        """Render the actual action step with explicit, nonsecret input values."""
+        import yaml
+        action = yaml.safe_load(VERIFICATION_ACTION.read_text())
+        values = {name: spec.get("default", "") for name, spec in action["inputs"].items()}
+        values.update({
+            "proof-token": "test-only-proof-token",
+            "pull-request-number": "52",
+            "ci-app-id": "15368",
+            "codeql-app-id": "57789",
+            "merge-sha": sha("a"),
+            "operation": "post-merge" if step_id == "post" else "pre-merge",
+        })
+        values.update(overrides or {})
+        step = next(
+            (item for item in action["runs"]["steps"] if item.get("id") == step_id),
+            action["runs"]["steps"][0],
+        )
+
+        def render(text):
+            return re.sub(r"\$\{\{\s*inputs\.([a-z0-9-]+)\s*\}\}", lambda match: values[match[1]], text)
+
+        # Deliberately do not inherit HOME, credentials or the caller's environment.
+        env = {
+            "PATH": os.defpath,
+            "GITHUB_ACTION_PATH": str(VERIFICATION_ACTION.parent),
+            "GITHUB_REPOSITORY": "ForgingAlpha/alphaapps-site",
+            **{name: render(value) for name, value in step.get("env", {}).items()},
+        }
+        return render(step["run"]), env
+
+    def verification_argv(self, step_id, overrides=None):
+        """Exercise Bash argument transport; the real CLI is tested separately."""
+        command, env = self.verification_step(step_id, overrides)
+        interceptor = (
+            "python3() {\n"
+            '  [[ "${GH_TOKEN:-}" == test-only-proof-token ]] || return 9\n'
+            '  printf "%s\\0" "$@"\n'
+            "}\n"
+        )
+        result = subprocess.run(
+            ["bash", "--noprofile", "--norc", "-c", interceptor + command],
+            env=env, capture_output=True, text=True, timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "", "input executed the harmless sentinel")
+        self.assertTrue(result.stdout.endswith("\0"))
+        return result.stdout[:-1].split("\0")
+
+    def test_verification_valid_arguments_and_numeric_domain_are_preserved(self):
+        for number in ("1", "52", "4294967297"):
+            for step_id in ("verify", "post"):
+                with self.subTest(step=step_id, number=number):
+                    actual = self.verification_argv(step_id, {"pull-request-number": number})
+                    prefix = [
+                        str(VERIFICATION_ACTION.parent / "../security-patch/scripts/security_patch.py"),
+                        "verify-projection" if step_id == "verify" else "verify-post-merge",
+                        "--repository", "ForgingAlpha/alphaapps-site",
+                    ]
+                    if step_id == "verify":
+                        expected = prefix + [
+                            "--pull-request", number, "--source-branch", "dev",
+                            "--target-branch", "main", "--manifest-path", "package.json",
+                            "--lock-path", "package-lock.json", "--require-ready", "true",
+                            "--verify-checks", "true", "--ci-app-id", "15368",
+                            "--codeql-app-id", "57789", "--codeql-check-name", "CodeQL",
+                        ]
+                    else:
+                        expected = prefix + [
+                            "--target-branch", "main", "--pull-request", number,
+                            "--merge-sha", sha("a"),
+                        ]
+                    self.assertEqual(actual, expected)
+                    self.assertEqual(security_patch.require_pr_number(actual[actual.index("--pull-request") + 1]), int(number))
+
+    def test_verification_inputs_remain_literal_shell_arguments(self):
+        fields = {
+            "verify": (
+                "pull-request-number", "source-branch", "target-branch",
+                "manifest-path", "lock-path", "ci-app-id", "codeql-app-id",
+                "codeql-check-name",
+            ),
+            "post": ("target-branch", "pull-request-number", "merge-sha"),
+        }
+        literals = (
+            "$(printf VERIFIER_SENTINEL >&2)52",
+            "`printf VERIFIER_SENTINEL >&2`52",
+            "$((26 * 2))",
+            "quote\"'\\value",
+            " spaced value ",
+            "first\nsecond\n",
+            "",
+        )
+        # Test each command's transport independently of the earlier operation/SHA
+        # guard; invalid merge SHAs are separately refused before the post step.
+        for step_id, names in fields.items():
+            for name in names:
+                for value in literals:
+                    with self.subTest(step=step_id, field=name, value=value):
+                        argv = self.verification_argv(step_id, {name: value})
+                        flag = "--pull-request" if name == "pull-request-number" else "--" + name
+                        self.assertEqual(argv[argv.index(flag) + 1], value)
+
+    def test_verification_cli_rejects_malformed_pr_before_api(self):
+        malformed = (
+            "", "0", "052", "+52", "-52", "52.0", " 52", "52 ", "52\n", "\n52",
+            "５２", "$(printf VERIFIER_SENTINEL >&2)52",
+            "`printf VERIFIER_SENTINEL >&2`52", "$((26 * 2))", "quote\"'\\value",
+        )
+        for step_id in ("verify", "post"):
+            for value in malformed:
+                with self.subTest(step=step_id, value=value):
+                    argv = self.verification_argv(step_id, {"pull-request-number": value})
+                    output = io.StringIO()
+                    with patch.object(security_patch.GhApi, "_run") as api_call, contextlib.redirect_stderr(output):
+                        result = security_patch.cli(argv[1:])
+                    self.assertEqual(result, 1)
+                    self.assertIn("pull request number must be a positive integer", output.getvalue())
+                    api_call.assert_not_called()
+
+    def test_verification_operation_and_merge_sha_guards(self):
+        cases = [
+            ({"operation": "pre-merge", "merge-sha": ""}, 0, ""),
+            ({"operation": "post-merge"}, 0, ""),
+            ({"operation": "true"}, 1, "operation must be"),
+            ({"operation": "$(printf VERIFIER_SENTINEL >&2)"}, 1, "operation must be"),
+        ]
+        for invalid_sha in ("", "a" * 39, "A" * 40, "$(printf VERIFIER_SENTINEL >&2)" + sha("a")):
+            cases.append(({"operation": "post-merge", "merge-sha": invalid_sha}, 1, "requires the observed main push SHA"))
+        for values, expected, diagnostic in cases:
+            with self.subTest(inputs=values):
+                command, env = self.verification_step("operation", values)
+                result = subprocess.run(
+                    ["bash", "--noprofile", "--norc", "-c", command],
+                    env=env, capture_output=True, text=True, timeout=5,
+                )
+                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertIn(diagnostic, result.stderr)
+                self.assertNotIn("VERIFIER_SENTINEL", result.stdout + result.stderr)
+
+
     def test_projection_action_has_no_checkout_or_merge_authority(self):
         text = PROJECTION_ACTION.read_text()
         self.assertIn("security_patch.py\" project", text)

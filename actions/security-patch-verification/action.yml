@@ -74,20 +74,28 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.proof-token }}
+        VERIFY_PULL_REQUEST_NUMBER: ${{ inputs.pull-request-number }}
+        VERIFY_SOURCE_BRANCH: ${{ inputs.source-branch }}
+        VERIFY_TARGET_BRANCH: ${{ inputs.target-branch }}
+        VERIFY_MANIFEST_PATH: ${{ inputs.manifest-path }}
+        VERIFY_LOCK_PATH: ${{ inputs.lock-path }}
+        VERIFY_CI_APP_ID: ${{ inputs.ci-app-id }}
+        VERIFY_CODEQL_APP_ID: ${{ inputs.codeql-app-id }}
+        VERIFY_CODEQL_CHECK_NAME: ${{ inputs.codeql-check-name }}
       run: |
         set -euo pipefail
         python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-projection \
           --repository "${GITHUB_REPOSITORY}" \
-          --pull-request "${{ inputs.pull-request-number }}" \
-          --source-branch "${{ inputs.source-branch }}" \
-          --target-branch "${{ inputs.target-branch }}" \
-          --manifest-path "${{ inputs.manifest-path }}" \
-          --lock-path "${{ inputs.lock-path }}" \
+          --pull-request "${VERIFY_PULL_REQUEST_NUMBER}" \
+          --source-branch "${VERIFY_SOURCE_BRANCH}" \
+          --target-branch "${VERIFY_TARGET_BRANCH}" \
+          --manifest-path "${VERIFY_MANIFEST_PATH}" \
+          --lock-path "${VERIFY_LOCK_PATH}" \
           --require-ready true \
           --verify-checks true \
-          --ci-app-id "${{ inputs.ci-app-id }}" \
-          --codeql-app-id "${{ inputs.codeql-app-id }}" \
-          --codeql-check-name "${{ inputs.codeql-check-name }}"
+          --ci-app-id "${VERIFY_CI_APP_ID}" \
+          --codeql-app-id "${VERIFY_CODEQL_APP_ID}" \
+          --codeql-check-name "${VERIFY_CODEQL_CHECK_NAME}"
 
     - name: Verify observed human merge against its attested projection
       id: post
@@ -95,10 +103,13 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.proof-token }}
+        VERIFY_TARGET_BRANCH: ${{ inputs.target-branch }}
+        VERIFY_PULL_REQUEST_NUMBER: ${{ inputs.pull-request-number }}
+        VERIFY_MERGE_SHA: ${{ inputs.merge-sha }}
       run: |
         set -euo pipefail
         python3 "${GITHUB_ACTION_PATH}/../security-patch/scripts/security_patch.py" verify-post-merge \
           --repository "${GITHUB_REPOSITORY}" \
-          --target-branch "${{ inputs.target-branch }}" \
-          --pull-request "${{ inputs.pull-request-number }}" \
-          --merge-sha "${{ inputs.merge-sha }}"
+          --target-branch "${VERIFY_TARGET_BRANCH}" \
+          --pull-request "${VERIFY_PULL_REQUEST_NUMBER}" \
+          --merge-sha "${VERIFY_MERGE_SHA}"
