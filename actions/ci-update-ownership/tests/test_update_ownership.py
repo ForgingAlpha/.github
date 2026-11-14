@@ -58,7 +58,7 @@ class UpdateOwnershipTest(unittest.TestCase):
         self.assertNotIn("github.token", action)
         self.assertNotIn("secrets.", action)
 
-    def run_owned_action(self, root, default_branch="main"):
+    def run_owned_action(self, root, default_branch="main", env_extra=None):
         step = yaml.safe_load(ACTION.read_text())["runs"]["steps"][0]
         env = dict(
             os.environ,
@@ -66,6 +66,7 @@ class UpdateOwnershipTest(unittest.TestCase):
             UPDATE_POLICY_DEFAULT_BRANCH=default_branch,
             PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"],
         )
+        env.update(env_extra or {})
         return subprocess.run(
             ["bash", "-c", step["run"]], cwd=root, env=env,
             capture_output=True, text=True, timeout=15,
@@ -111,6 +112,30 @@ class UpdateOwnershipTest(unittest.TestCase):
                     result = self.run_owned_action(root)
                     self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertIn("Update ownership validation failed", result.stderr)
+
+    def test_owned_action_isolates_python_startup_and_preserves_policy_refusal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "consumer"
+            (root / ".github").mkdir(parents=True)
+            policy = {"schema_version": 1, "normal_update_owner": "renovate", "base_branch": "main"}
+            declaration = root / ".github/update-policy.json"
+            declaration.write_text(json.dumps(policy))
+            (root / "renovate.json").write_text(json.dumps(
+                dict(self.renovate, baseBranchPatterns=["main"])))
+            (root / ".github/dependabot.yml").write_text(yaml.safe_dump(self.dependabot))
+            startup = Path(directory) / "startup"
+            startup.mkdir()
+            sentinel = Path(directory) / "startup-executed"
+            (startup / "sitecustomize.py").write_text(
+                "from pathlib import Path\nPath(" + repr(str(sentinel)) + ").touch()\n")
+            result = self.run_owned_action(root, env_extra={"PYTHONPATH": str(startup)})
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse(sentinel.exists(), "consumer-controlled Python startup executed")
+            declaration.unlink()
+            result = self.run_owned_action(root, env_extra={"PYTHONPATH": str(startup)})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Update ownership validation failed", result.stderr)
+            self.assertFalse(sentinel.exists())
 
     def test_runtime_profile_is_optional_only_for_the_update_gate(self):
         policy = {key: value for key, value in self.policy.items() if key != "runtime_profile"}

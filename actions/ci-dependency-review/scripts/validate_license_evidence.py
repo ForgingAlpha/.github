@@ -36,11 +36,6 @@ FIRST_PARTY_ACTION_PURL = re.compile(
 FIRST_PARTY_REPOSITORY = "ForgingAlpha/.github"
 FIRST_PARTY_SOURCE_URL = "https://github.com/ForgingAlpha/.github"
 FIRST_PARTY_VERSION = "main"
-FOUNDATION_CONSUMER = "ForgingAlpha/container-foundation"
-FOUNDATION_MANIFEST = ".github/workflows/consumer-compatibility.yml"
-FOUNDATION_WORKFLOW_PATH = ".github/workflows/consumer-compatibility-controller.yml"
-FOUNDATION_WORKFLOW_NAME = f"{FIRST_PARTY_REPOSITORY}/{FOUNDATION_WORKFLOW_PATH}"
-FOUNDATION_WORKFLOW_PURL = f"pkg:githubactions/{FOUNDATION_WORKFLOW_NAME}@main"
 FIRST_PARTY_REF_ENDPOINT = "https://api.github.com/repos/ForgingAlpha/.github/git/ref/heads/main"
 GITHUB_API_VERSION = "2026-03-10"
 LICENSE_LOOKUP_LIMIT = 20
@@ -92,12 +87,6 @@ class FirstPartyActionIdentity:
     @property
     def source_path(self) -> str:
         return self.action_path
-
-
-@dataclass(frozen=True)
-class FirstPartySourceIdentity:
-    source_path: str
-    package_url: str
 
 
 @dataclass(frozen=True)
@@ -206,51 +195,33 @@ def parse_first_party_action_identity(
 
 
 def parse_first_party_identity(
-    change: dict[str, Any], repository: str
-) -> FirstPartyActionIdentity | FirstPartySourceIdentity | None:
+    change: dict[str, Any]
+) -> FirstPartyActionIdentity | None:
     """Recognize first-party hints, then validate the complete fixed identity.
 
     A contradictory name/PURL cannot escape into the third-party resolver.
-    The repository argument is the existing validated provider carrier, not
-    a new caller option. Only missing-license records reach this function.
+    Only missing-license records reach this function.
     """
     package_url = change.get("package_url")
     name = change.get("name")
-    action_prefix = f"{FIRST_PARTY_REPOSITORY}/actions/"
+    action_prefix = f"{FIRST_PARTY_REPOSITORY}/actions/".lower()
     if (
         isinstance(package_url, str)
-        and package_url.startswith(f"pkg:githubactions/{action_prefix}")
-    ) or (isinstance(name, str) and name.startswith(action_prefix)):
+        and package_url.lower().startswith(f"pkg:githubactions/{action_prefix}")
+    ) or (isinstance(name, str) and name.lower().startswith(action_prefix)):
         identity = parse_first_party_action_identity(change)
         if identity is None:
             raise EvidenceError("First-party GitHub Action has an inconsistent package URL.")
         return identity
 
-    workflow_prefix = f"{FIRST_PARTY_REPOSITORY}/.github/workflows/"
+    workflow_prefix = f"{FIRST_PARTY_REPOSITORY}/.github/workflows/".lower()
     if not (
         isinstance(package_url, str)
-        and package_url.startswith(f"pkg:githubactions/{workflow_prefix}")
-    ) and not (isinstance(name, str) and name.startswith(workflow_prefix)):
+        and package_url.lower().startswith(f"pkg:githubactions/{workflow_prefix}")
+    ) and not (isinstance(name, str) and name.lower().startswith(workflow_prefix)):
         return None
 
-    if repository != FOUNDATION_CONSUMER:
-        raise EvidenceError("First-party workflow evidence requires the exact Foundation consumer.")
-    expected = {
-        "ecosystem": "actions",
-        "manifest": FOUNDATION_MANIFEST,
-        "name": FOUNDATION_WORKFLOW_NAME,
-        "version": FIRST_PARTY_VERSION,
-        "package_url": FOUNDATION_WORKFLOW_PURL,
-    }
-    for field, value in expected.items():
-        if change.get(field) != value:
-            raise EvidenceError(
-                f"First-party Foundation workflow has missing or inconsistent {field}."
-            )
-    source_url = change.get("source_repository_url")
-    if source_url is not None and source_url != FIRST_PARTY_SOURCE_URL:
-        raise EvidenceError("First-party Foundation workflow has an invalid source repository URL.")
-    return FirstPartySourceIdentity(FOUNDATION_WORKFLOW_PATH, FOUNDATION_WORKFLOW_PURL)
+    raise EvidenceError("First-party reusable workflows have no missing-license provenance exception.")
 
 
 def npm_purl(name: str, version: str | None = None) -> str:
@@ -656,7 +627,7 @@ def fetch_first_party_main_tree(token: str) -> tuple[str, tuple[Mapping[str, Any
     if not isinstance(commit_sha, str) or not GITHUB_SHA.fullmatch(commit_sha):
         raise EvidenceError("First-party main returned an invalid commit SHA.")
 
-    # Resolve main only once. All Action and workflow members share this
+    # Resolve main only once. All Action members share this
     # complete tree at the selected immutable commit, even if main later moves.
     tree_endpoint = f"https://api.github.com/repos/ForgingAlpha/.github/git/trees/{commit_sha}?recursive=1"
     tree_payload = fetch_first_party_json(tree_endpoint, token, f"first-party main commit {commit_sha}")
@@ -703,7 +674,7 @@ def fetch_first_party_main_tree(token: str) -> tuple[str, tuple[Mapping[str, Any
 
 
 def verify_first_party_members(
-    identities: dict[str, FirstPartyActionIdentity | FirstPartySourceIdentity], token: str
+    identities: dict[str, FirstPartyActionIdentity], token: str
 ) -> str:
     commit_sha, entries = fetch_first_party_main_tree(token)
     for identity in identities.values():
@@ -882,7 +853,7 @@ def validate_changes(changes: list[dict[str, Any]]) -> None:
         raise EvidenceError(str(error)) from error
     missing: list[str] = []
     identities: dict[tuple[str, str, str], GitHubActionIdentity] = {}
-    first_party_identities: dict[str, FirstPartyActionIdentity | FirstPartySourceIdentity] = {}
+    first_party_identities: dict[str, FirstPartyActionIdentity] = {}
     npm_aliases: dict[str, NpmAliasIdentity] = {}
     artifact_seen = False
 
@@ -909,7 +880,7 @@ def validate_changes(changes: list[dict[str, Any]]) -> None:
                 "has malformed license evidence."
             )
 
-        first_party_identity = parse_first_party_identity(change, repository)
+        first_party_identity = parse_first_party_identity(change)
         if first_party_identity is not None:
             # Validate every record before deduplication. The admitted facts
             # normalize absent/null/canonical source URLs to the same owner;

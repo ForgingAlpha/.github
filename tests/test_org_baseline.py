@@ -1,5 +1,6 @@
 """REQ-024–026: preserve valid bootstrap and refuse trust-boundary violations."""
 import copy
+import hashlib
 import importlib.util
 import io
 import itertools
@@ -10,6 +11,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -566,7 +568,7 @@ class ApplicationFixture(Fixture):
         self.commit()
         self.entry = {'repository': ENTRY['repository'], 'repository_id': ENTRY['repository_id'], 'branches': ['dev', 'main'], 'profile': 'mixed' if len({k for k, _ in kinds}) > 1 else kinds[0][0], 'producer': producer,
                       'qualification_subject': {'kind': 'none'}, 'release_route': {'declarations': [{'kind': 'direct', 'path': 'docs/route.md', 'start': '<!-- route -->', 'end': '<!-- end-route -->', 'text': 'Direct release through dev.\n'}], 'transition': 'none', 'reconciliation_sha256': 'c' * 64},
-                      'review_policy': {'kind': 'codeowners'}, 'foundation': 'not-applicable', 'components': sorted(components, key=lambda c: c['root'])}
+                      'review_policy': {'kind': 'codeowners'}, 'components': sorted(components, key=lambda c: c['root'])}
         if producer == 'qualification':
             self.entry['qualification_subject'] = {'kind': 'legacy-ci', 'branch': 'dev', 'legacy_workflow': {'path': '.github/workflows/ci.yml', 'blob': self.git('rev-parse', self.head + ':.github/workflows/ci.yml').strip(), 'job_id': 'legacy'}}
         self.runtime = {'schema_version': 1, 'profiles': {'fixture': {'description': 'NONAUTHORITATIVE SOURCE FIXTURE', 'approved_tuples': [{'id': 'fixture-1', 'state': 'current', 'tools': tools}]}}, 'assignments': {ENTRY['repository']: {'profile': 'fixture', 'status': 'active'}}}
@@ -628,7 +630,7 @@ class ApplicationTests(unittest.TestCase):
                     f.plan()
 
     def test_schema_totality_and_explicit_no_tests(self):
-        for change in ({'producer': None}, {'extra': True}, {'foundation': 'unknown'}, {'repository_id': True}):
+        for change in ({'producer': None}, {'extra': True}, {'profile': 'unsupported'}, {'repository_id': True}):
             entry = {**self.f.entry, **change}
             with self.subTest(change=change), self.assertRaises(ValueError):
                 baseline.catalog({'schema_version': 2, 'repositories': [entry]})
@@ -669,7 +671,80 @@ class ApplicationTests(unittest.TestCase):
         self.f.write('package.json', json.dumps(original)); self.f.commit()
         self.f.plan()
 
-    def test_runtime_missing_planned_mismatch_and_foundation_deleted_pair(self):
+    def test_enrolled_application_team_review_and_required_result_composition(self):
+        from types import SimpleNamespace
+        entry = copy.deepcopy(baseline.catalog(baseline.decode(
+            (ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))[0])
+        self.assertEqual((entry["profile"], entry["producer"], entry["review_policy"]["kind"]),
+                         ("astro", "central-product", "qualified-team"))
+        self.f.entry = entry
+        package = json.loads((self.f.root / "package.json").read_text())
+        component = entry["components"][0]
+        for script in component["static_scripts"] + component["tests"]["scripts"]:
+            package["scripts"][script] = "echo synthetic product command"
+        self.f.write("package.json", json.dumps(package))
+        declaration = entry["release_route"]["declarations"][0]
+        self.f.write(declaration["path"], "# Project\n\n" + declaration["start"] + "\n" +
+                     declaration["text"] + declaration["end"] + "\n")
+        self.f.commit()
+        self.f.base = self.f.head
+        self.f.git("update-ref", "refs/remotes/origin/dev", self.f.base)
+        self.f.write("docs/change.md", "# New candidate\n")
+        self.f.commit()
+        event = self.f.event()
+        event["repository"]["default_branch"] = "dev"
+        output = self.directory / "enrolled-outputs"
+        api = FakeApi(self.f)
+        original_integrity = baseline.application_integrity
+        def fixture_integrity(root, inventory, selected, *args):
+            return original_integrity(root, inventory, selected, self.f.runtime)
+        calls = []
+        def command(argv, *args, **kwargs):
+            calls.append(argv)
+            return b"v24.18.0\n" if "--version" in argv else None
+        def outputs():
+            return dict(line.split("=", 1) for line in output.read_text().splitlines())
+        environment = {"GITHUB_REPOSITORY": entry["repository"],
+                       "GITHUB_REPOSITORY_ID": str(entry["repository_id"]),
+                       "GITHUB_OUTPUT": str(output), "GITHUB_TOKEN": "fixture-only"}
+        with patch.dict(os.environ, environment), patch.object(baseline, "Api", return_value=api), \
+                patch.object(baseline, "application_integrity", side_effect=fixture_integrity), \
+                patch.object(baseline, "checked", side_effect=command):
+            baseline.staged_main(SimpleNamespace(stage="admit"), self.f.root, event, [entry], "d" * 40)
+            plan = json.loads(outputs()["plan"])
+            self.assertEqual(plan["review_policy"], entry["review_policy"])
+            self.assertEqual(plan["components"], entry["components"])
+            expected = ("actions/ci-org-baseline/enrollment.json", "runtime-profiles/catalog.json",
+                        "actions/ci-org-baseline/scripts/baseline.py")
+            self.assertEqual(plan["checking_fingerprints"], {
+                path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in expected})
+            self.assertFalse(any("validate_codeowners_contract.py" in str(part)
+                                 for argv in calls for part in argv))
+            os.environ["BASELINE_PLAN"] = outputs()["plan"]
+            baseline.staged_main(SimpleNamespace(stage="static"), self.f.root, event, [entry], "d" * 40)
+            static = outputs()["receipt"]
+            baseline.staged_main(SimpleNamespace(stage="tests"), self.f.root, event, [entry], "d" * 40)
+            tests = outputs()["receipt"]
+            for script in component["static_scripts"] + component["tests"]["scripts"]:
+                self.assertTrue(any(argv[-1] == script for argv in calls), script)
+            needs = successful_needs(plan, static=static, tests=tests)
+            os.environ["BASELINE_NEEDS"] = json.dumps(needs)
+            with patch("sys.stdout", new_callable=io.StringIO) as final:
+                baseline.staged_main(SimpleNamespace(stage="finalize"), self.f.root, event, [entry], "d" * 40)
+            receipt = json.loads(final.getvalue())
+            self.assertEqual(receipt["result"], "success")
+            self.assertEqual(receipt["checking_fingerprints"], plan["checking_fingerprints"])
+            needs["tests"]["result"] = "failure"
+            os.environ["BASELINE_NEEDS"] = json.dumps(needs)
+            with self.assertRaises(ValueError):
+                baseline.staged_main(SimpleNamespace(stage="finalize"), self.f.root, event, [entry], "d" * 40)
+            before = len(calls)
+            api.evidence[0]["parameters"]["required_reviewers"] = []
+            with self.assertRaises(ValueError):
+                baseline.staged_main(SimpleNamespace(stage="admit"), self.f.root, event, [entry], "d" * 40)
+            self.assertEqual(len(calls), before, "unqualified team policy reached product/common execution")
+
+    def test_runtime_missing_or_planned_assignment_refused_then_repaired(self):
         valid = copy.deepcopy(self.f.runtime)
         self.f.runtime['assignments'] = {}
         with self.assertRaises(ValueError): self.f.plan()
@@ -677,11 +752,7 @@ class ApplicationTests(unittest.TestCase):
         self.f.runtime['assignments'][ENTRY['repository']]['status'] = 'planned'
         with self.assertRaises(ValueError): self.f.plan()
         self.f.runtime = valid
-        self.f.entry['foundation'] = 'required'
-        with self.assertRaises(ValueError): self.f.plan()
-        self.f.entry['foundation'] = 'not-applicable'
-        self.f.write('foundation.lock', '{}'); self.f.commit()
-        with self.assertRaisesRegex(ValueError, 'foundation pair'): self.f.plan()
+        self.f.plan()
 
     def test_only_alternative_cargo_compiler_selectors_are_refused(self):
         self.f.write('.cargo/config.toml', '[build]\njobs=2\n[net]\noffline=true\n')
@@ -900,7 +971,7 @@ class ApplicationTests(unittest.TestCase):
             event = self.f.event(); event['repository']['default_branch'] = 'dev'
             baseline.application_common(self.f.root, event, self.f.entry, FakeApi(self.f), plan)
         joined = [' '.join(map(str, a[0])) for a, _ in calls]
-        for owner in ('validate_product_lifecycle_baseline.py', 'validate_codeowners_contract.py', 'lint_bootstrap.mjs', 'check_workflows.py', 'check_dependabot_coverage.py', 'validate_update_ownership.py', 'foundation_source.py'):
+        for owner in ('validate_product_lifecycle_baseline.py', 'validate_codeowners_contract.py', 'lint_bootstrap.mjs', 'check_workflows.py', 'check_dependabot_coverage.py', 'validate_update_ownership.py'):
             self.assertEqual(sum(owner in command for command in joined), 1, owner)
         self.assertFalse(any('lint_markdown.mjs' in command for command in joined))
         self.assertTrue(any('check_merge_flow.sh declared-route' in command for command in joined))
@@ -914,7 +985,7 @@ class ApplicationTests(unittest.TestCase):
         owners = ('validate_product_lifecycle_baseline.py', 'validate_codeowners_contract.py',
                   'check_merge_flow.sh', 'lint_bootstrap.mjs', 'install_actionlint.sh',
                   'check_workflows.py', 'check_dependabot_coverage.py',
-                  'validate_update_ownership.py', 'foundation_source.py')
+                  'validate_update_ownership.py')
         for owner in owners:
             calls = []
             def command(argv, *args, **kwargs):
@@ -1068,6 +1139,114 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(values, {'actionlint_version': '1.7.12', 'actionlint_sha256': '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8', 'mise_version': '2026.8.3', 'audit_version': '0.22.2'})
         preset = json.loads((ROOT / 'renovate-config.json').read_text())
         self.assertNotIn('customManagers', preset)
+
+
+
+class BoundedEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.area = Path(self.temporary.name)
+
+    def test_regular_file_limits_links_and_special_files(self):
+        target = self.area / "evidence"
+        target.write_bytes(b"data")
+        self.assertEqual(baseline.read_regular(target, 4)[0], b"data")
+        with self.assertRaisesRegex(ValueError, "size exceeded"):
+            baseline.read_regular(target, 3)
+        link = self.area / "linked"
+        link.symlink_to(target)
+        with self.assertRaises(OSError):
+            baseline.read_regular(link, 4)
+        special = self.area / "fifo"
+        os.mkfifo(special)
+        with self.assertRaisesRegex(ValueError, "nonregular"):
+            baseline.read_regular(special, 4)
+        self.assertEqual(target.read_bytes(), b"data")
+
+    def test_change_during_real_file_read_refused(self):
+        target = self.area / "evidence"
+        target.write_bytes(b"data")
+        original = os.fstat
+        observed = []
+        def changing_stat(fd):
+            observed.append(fd)
+            if len(observed) == 2:
+                target.write_bytes(b"changed")
+            return original(fd)
+        with patch.object(baseline.os, "fstat", side_effect=changing_stat):
+            with self.assertRaisesRegex(ValueError, "changed during read"):
+                baseline.read_regular(target, 16)
+        self.assertEqual(len(observed), 2)
+
+    def test_git_ignores_inherited_repository_and_configuration_selectors(self):
+        fixture = Fixture(self.area / "repository")
+        with patch.dict(os.environ, {"GIT_DIR": str(self.area / "wrong"),
+                                    "GIT_WORK_TREE": str(self.area / "outside"),
+                                    "GIT_CONFIG_COUNT": "1",
+                                    "GIT_CONFIG_KEY_0": "core.worktree",
+                                    "GIT_CONFIG_VALUE_0": str(self.area / "outside")}):
+            self.assertEqual(baseline.git(fixture.root, "rev-parse", "HEAD").decode().strip(),
+                             fixture.head)
+
+    def test_git_stream_caps_and_owned_process_cleanup(self):
+        tools = self.area / "tools"
+        tools.mkdir()
+        fake_git = tools / "git"
+        actual_popen = subprocess.Popen
+        for stream in (1, 2):
+            with self.subTest(stream=stream):
+                fake_git.write_text("#!" + sys.executable + "\nimport os\nwhile True: os.write(" +
+                                    str(stream) + ", b'x' * 64)\n")
+                fake_git.chmod(0o755)
+                children = []
+                def launch(*args, **kwargs):
+                    process = actual_popen(*args, **kwargs)
+                    children.append(process)
+                    return process
+                with patch.dict(os.environ, {"PATH": str(tools)}), \
+                        patch.object(baseline, "GIT_OUTPUT_LIMIT", 32), \
+                        patch.object(baseline.subprocess, "Popen", launch):
+                    with self.assertRaisesRegex(baseline.Refused, "output size exceeded"):
+                        baseline.git(self.area, "synthetic", limit=32)
+                self.assertEqual(len(children), 1)
+                self.assertIsNotNone(children[0].poll(), "owned Git process survived refusal")
+
+
+    def test_git_timeout_stops_child_holding_pipes_after_parent_exit(self):
+        tools = self.area / "timeout-tools"
+        tools.mkdir()
+        pid_file = self.area / "owned-child.pid"
+        fake_git = tools / "git"
+        fake_git.write_text("#!" + sys.executable + "\nimport os,time\nfrom pathlib import Path\n"
+                            "child = os.fork()\nif child == 0:\n    time.sleep(30)\n    os._exit(0)\n"
+                            "Path(" + repr(str(pid_file)) + ").write_text(str(child))\nos._exit(0)\n")
+        fake_git.chmod(0o755)
+        try:
+            with patch.dict(os.environ, {"PATH": str(tools)}), patch.object(baseline, "GIT_TIMEOUT", 2):
+                with self.assertRaisesRegex(baseline.Refused, "timed out"):
+                    baseline.git(self.area, "synthetic")
+            child = int(pid_file.read_text())
+            status = Path("/proc") / str(child) / "stat"
+            # Sending SIGKILL does not synchronously finish the child's exit.
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    state = status.read_text().split(") ", 1)[1].split()[0]
+                except FileNotFoundError:
+                    break
+                if state == "Z":
+                    break
+                if time.monotonic() >= deadline:
+                    self.fail("owned child survived bounded cleanup observation: " + state)
+                time.sleep(0.01)
+        finally:
+            # A failing negative control must not leave its own test child alive.
+            if pid_file.exists():
+                try:
+                    os.kill(int(pid_file.read_text()), 9)
+                except ProcessLookupError:
+                    pass
 
 
 if __name__ == "__main__":

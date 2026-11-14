@@ -1,10 +1,5 @@
 # ForgingAlpha/.github
 
-The [Foundation implementation transition](docs/requirements.md#foundation-implementation-transition)
-defines when the controller, workflow-eligibility and import-responsibility
-changes described here become operative. Existing obligations continue until
-the qualified replacement is human-adopted.
-
 ForgingAlpha's public CI, dependency, security, and release automation control
 plane.
 
@@ -116,12 +111,12 @@ ordinary `ci-markdown` behavior are unchanged.
 
 The [organization baseline contract](actions/ci-org-baseline/README.md) defines the
 strict schema-2 source capability for Astro, Rust and mixed complete component trees.
-The shipped enrollment, runtime catalog and foundation catalog retain their existing
+The shipped enrollment and runtime catalog define the current profile and runtime
 assignments. Source fixtures exercise schema 2; they do not enroll a consumer.
 Rust/mixed remain fixture-only until actual approved runtime and consumer evidence exists.
 
 Admission and common checking process consumer data without executing its scripts.
-They check complete manifests, declared release route, source/foundation/runtime
+They check complete manifests, declared release route, source and runtime
 integrity, policy, controlled Markdown, workflow safety, dependency and update ownership.
 Product static checks and tests run in separate jobs on fresh bound checkouts; a final
 trusted job rederives the plan, requires every applicable job to succeed and refuses
@@ -174,7 +169,6 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-dependabot-coverage` | Declared package coverage for Dependabot-managed consumers |
 | `ci-update-ownership` | Sole normal-updater ownership and security-only Dependabot configuration |
 | `ci-runtime-profile` | Exact consumer mise projection against the central assigned runtime tuple |
-| `ci-foundation` | Existing imported-source integrity before its application adapter |
 | `ci-dependency-review` | Mandatory PR vulnerability review and central approved-license policy |
 | `ci-merge-flow` | Existing dev/main guard and source-repo bridge; successor consolidation/promotion admission remains unqualified |
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
@@ -350,8 +344,6 @@ The durable policy is defined in [Intent](docs/intent.md),
 ## Application development containers
 
 The control-plane [container procedure](https://github.com/ForgingAlpha/control-plane/blob/main/system/runbooks/operate-local-containers.md)
-owns the Compose convention and container responsibilities. Shared mandatory
-checks remain shared-CI owned. Existing imported-source integrity obligations follow the
-[imported-source contract](docs/architecture.md#imported-source-integrity), including
-qualified input removal and reconciliation of actual callers and any enrollment. Selecting Compose
-alone does not remove a required check or prove data preservation.
+owns the Compose convention and container responsibilities. Applications own their
+product commands, tests and deployment configuration. Shared mandatory checks
+remain shared-CI owned.

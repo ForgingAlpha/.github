@@ -8,12 +8,6 @@ tags:
 
 ## Control Plane
 
-The [Foundation implementation transition](requirements.md#foundation-implementation-transition)
-governs applicability of this amendment's controller, workflow-eligibility and
-import-responsibility changes. Before qualified implementation adoption, the
-specified predecessor clauses govern existing operation; the target definitions
-below govern the isolated replacement and its acceptance.
-
 All repositories follow REQ-027 and the shared control-plane development route:
 reviewed disposable exploration and unit refactoring, task PR to dev, whole-batch
 consolidation from frozen dev and a reviewed PR back into dev, fixed-snapshot PR to staging, integrated
@@ -153,7 +147,7 @@ Apply this ordering to every consumer that still invokes the branch-presence-bas
 legacy wrapper, not only this repository.
 
 The central enrollment owner retains repository identity, explicit supported
-profiles and targets, unique results, review, runtime/foundation integrity and
+profiles and targets, unique results, review and runtime integrity and
 exact checking sources. Expand schema and every plan consumer coherently;
 unsupported application or document-bootstrap enrollment must refuse. Equivalent
 repo-owned complete CI can retain its producer while it is qualified for the new
@@ -220,8 +214,7 @@ Bootstrap accepts only declared document/configuration inputs and refuses
 application content and executable lint configuration before invoking shared
 validators. Structural metadata does not prove human approval or Currentness.
 Product profiles retain their own builds, tests, manifests and exact runtime
-inputs. Foundation integrity stays before any copied helper or adapter;
-independent central execution alone cannot establish that ordering.
+inputs.
 The shared-CI owner accounts for common-check invocation and profile configuration.
 For an unmigrated caller, the product owner accounts for build/test composition;
 for a central-product profile the shared-CI owner composes the declared lanes while
@@ -251,7 +244,7 @@ checks run once; every required product lane must finish successfully before the
 product result passes. Failed, cancelled, missing or unexpectedly skipped required
 lanes cannot become an accepted aggregate success. Product owners retain the meaning
 and completeness of their tests and commands; central execution does not redefine
-those obligations. Required foundation/source integrity precedes consumer helpers.
+those obligations.
 Consumer build/test code receives no production credentials or privileged executor.
 CodeQL analysis and configuration remain separate from this required workflow.
 
@@ -304,8 +297,8 @@ Central workflows and fixed first-party composite callers select protected
 `.github/main`. Source becomes active through the human merge; this does not
 enroll a new target, alter selectors or establish actual target enforcement.
 All central helpers and cores resolve from the same defining-workflow checkout.
-Composite execution retains its resolved acquisition SHA and fingerprints for
-the code it executes. Premerge qualification uses a coherent candidate, including
+Composite execution retains its resolved acquisition SHA, identifying the
+Action and bundled helpers it executes. Premerge qualification uses a coherent candidate, including
 its sibling helpers, rather than mixing local candidate code with live main.
 Runner-dependent archive behavior is qualified for supported caller execution;
 a mutable branch label alone is not exact-source evidence.
@@ -400,8 +393,11 @@ source-bound plans/results and fail on disagreement. A later main merge does
 not rewrite an already resolved run or authorize falling back to another ref.
 
 First-party composite and probe references use the fixed main family. Their
-native acquisition evidence identifies each resolved Action revision; helper
-and catalog fingerprints identify the consumed code. Candidate validation
+native acquisition evidence identifies each resolved Action revision and its
+bundled helpers. Central application plans and receipts retain SHA256 fingerprints
+for `actions/ci-org-baseline/scripts/baseline.py`,
+`actions/ci-org-baseline/enrollment.json` and `runtime-profiles/catalog.json`,
+all read from the same exact checking-source checkout. Candidate validation
 must not mix a proposed parent with siblings independently selected from live
 main. The source inventory accounts for active callers, templates, provenance
 resolvers and ownership rules before retiring channel-dependent machinery.
@@ -865,111 +861,28 @@ transitions. Source recovery uses the protected human PR path. Updater, security
 and release automation retains only its separately
 defined non-merge effects. No SSH or personal credentials are available to agents.
 
-## Imported source integrity
+## Application development containers
 
-Application development containers follow the owning control-plane
-[container procedure](https://github.com/ForgingAlpha/control-plane/blob/main/system/runbooks/operate-local-containers.md).
-That owner defines container responsibilities. Applications retain their product
-commands and tests; the shared-CI owner retains shared mandatory checks.
-An existing imported source pair keeps its integrity and update-ownership checks
-until the application owner qualifies removal of all consumed payload/lock inputs
-and the shared-CI owner reconciles the actual caller and enrollment, if present,
-in the existing owning change record. The record binds the exact application
-candidate, removal evidence and retained data/recovery custody. An unenrolled
-application records that absence; it need not enroll merely to remove an import.
-Any required source/caller change uses its human-reviewed source path. File
-absence or a local not-applicable result alone does not establish qualified
-removal. No remaining import or required enrollment becomes not-applicable merely
-by selecting another mechanism.
-
-For an existing imported pair, the standalone `ci-foundation@main` gate runs as
-a required step before its success-dependent application adapter. A centrally
-produced application profile invokes that same verifier and catalog from its
-single coherent checking checkout before any copied helper. It does not resolve
-a second moving source, duplicate the validator or retain an unnecessary caller.
-The gate verifies the checkout without importing or executing copied code and
-does not itself invoke the application adapter.
-
-The actual pair is one payload at `tools/container-foundation/` or `.foundation/`
-and the root `foundation.lock`. The verifier accepts only the sole admitted
-payload location, rejects dual/partial selections and linked targets/ancestors,
-and preserves unrelated `tools/` content. The admitted source's exact
-`foundation-source-v1` definition remains the format authority for existing
-records. The shared-CI owner maintains its verifier against that definition;
-application integration owners retain exact imported bytes and their private
-provenance. Verifier maintenance does not transfer format-definition or export
-production rights. Neither party may redefine source identities, format or layout
-eligibility from a local assertion. No new export producer is selected. Changes
-requiring an unavailable definition or unbound provenance custodian remain
-incomplete until the accountable owner and exact source are resolved.
-
-Each catalog record binds the fixed source repository and numeric ID, full
-human-merged commit, payload tree, export format and SHA256 of the exact lock
-bytes. Admission retains qualified observations of canonical hosted identity,
-human source delivery and required checks, together with independently derived
-private evidence checked against exact canonical blobs, modes and the owned
-export serialization. Retained evidence is usable only for those exact subjects
-and predicates; it does not relax admission or establish a new eligible revision.
-A local origin string, application lock or exporter assertion cannot replace
-those observations. Private
-locks, inventories and derivation evidence stay in private custody. Public
-records contain identity and opaque fingerprints, not private payloads.
-
-Catalog schema 1 permits `payload_paths` only as a nonempty unique subset of the
-two fixed locations. Records without it permit only `.foundation`. Consumer
-metadata cannot add layout eligibility. Execution consumes the catalog from its
-exact resolved checking source, never a second catalog fetched from later main.
-A task-branch record is not approved runtime input. Catalog changes require
-qualified provenance custody, affected-consumer and update-coverage assessment,
-and the existing human-reviewed main merge path. Adding layout eligibility also
-requires qualification of the exact helper at that location. Missing identity,
-source-delivery, check or derivation evidence prevents new admission. Removing a
-record requires disposition of its actual consumers and retained obligations.
-No new source acquisition or import procedure is selected here.
-
-The verifier authenticates lock bytes against its catalog and checks repository,
-numeric ID, commit, tree, format, paths, regular-file bytes, sizes and Git modes.
-Unexpected entries, empty directories, links, special files, path escapes,
-partial imports, malformed or ambiguous metadata and unsupported formats fail
-before candidate execution. A modified payload and rewritten lock cannot redefine
-the expected hash. Callers cannot supply a catalog, source URL, ref or policy
-override. Ordinary checking uses Python's standard library with no private
-source lookup or upstream credential.
-
-Under REQ-011, the application integration owner retains the imported pair's
-reviewed-import update ownership and its migration obligation; the shared owner
-controls admitted catalog records. Renovate and Dependabot do not rewrite the
-pair. The canonical update-ownership checker delegates to the same verifier
-whenever either member exists; enrolled consumers still require the complete
-pair. No new upstream acquisition route is selected. Restore drift only from
-a complete approved pair with retained qualified provenance. A payload defect
-that needs changed source returns to the application owner for its qualified
-migration; changing payload or lock bytes cannot create admission. Other
-dependencies and images retain their actual update owners.
-
-Decisions retain verifier/catalog fingerprints and the actual resolved checking
-source. Hosted composite evidence also retains native Action acquisition identity;
-central local invocation retains its exact checkout. A `main` label or consumer
-workflow SHA is not that evidence. Synthetic self-CI establishes neither private
-consumer execution nor human source admission.
-
-Removing a catalog record withdraws admission under the released policy; a
-consumer cannot provide an older catalog fallback. Human-reviewed source recovery
-must disclose any restored approvals. Restoring an approved pair requires
-compatible application configuration and does not roll back schemas or data.
-Source authenticity, selected revision, working-file integrity, application
-compatibility and host/storage admission remain separate observations. The
-application owns integration and the host owns storage; this verifier is not a
-hostile-process sandbox, NAS qualification or deployment mechanism.
+The control-plane [container procedure](https://github.com/ForgingAlpha/control-plane/blob/main/system/runbooks/operate-local-containers.md)
+owns the Compose convention and container responsibilities. Applications retain
+their product commands, tests and deployment configuration; the shared-CI owner
+retains shared mandatory checks.
 
 ## Consumer qualification
 
 REQ-020 and REQ-028 own coherent candidate validation and affected-consumer
 evidence. The existing change process records the impact assessment and uses the
-actual affected shared checks and enrolled consumer workflows. No automatic
-cross-repository qualification controller or catalog-based exemption is selected.
+actual affected shared checks and enrolled consumer workflows.
 Existing mandatory results retain their actual producers; a change record cannot
 substitute for them. Each consumer retains its product commands, tests, private diagnostics
-and applicable required results. Follow [Consumer qualification](consumer-compatibility.md)
-for exact evidence, standards diagnosis and remediation. A local negative test
+and applicable required results. Diagnosis binds the exact rule, consumer
+configuration and inputs. Fix the consumer when it violates the selected
+contract; fix the checker when it misapplies that contract. Preserve unresolved
+causes and failed results in the owning change record. A local negative test
 does not turn a failed consumer workflow into successful compatibility.
+
+Qualification records the shared candidate, consumer revision, selected checking
+source, required workflows and complete outcomes, including required steps and
+post-job hooks. Reconcile affected qualification when inputs change. Distinguish
+actual consumer execution from synthetic inputs and captured provider responses;
+private source, commands, logs and artifacts stay in consumer custody.

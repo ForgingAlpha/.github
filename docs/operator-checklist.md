@@ -30,7 +30,7 @@ settings retain their own authority.
   makes the shared source active. Keep post-merge failures visible; there is no
   tag promotion, recurring source repin or post-merge source acceptance.
 - Preserve all external Action SHA pins, license/vulnerability checks and exact
-  runtime/foundation catalogs and locks. Internal callers use canonical
+  runtime catalogs and locks. Internal callers use canonical
   `ForgingAlpha/.github` spelling with literal `@main`. Inventory and migrate thin
   consumer references through their own reviewed PRs; local inventory does not
   prove hosted organization coverage or completed migration.
@@ -258,7 +258,7 @@ interfaces. Source qualification alone does not authorize a hosted change.
 
 1. Retain complete consumer tree/base, product-owned required static/test obligations
    (including an attributable explicit no-tests decision when applicable), actual
-   runtime assignment, foundation scope and complete current release-route declaration.
+   runtime assignment and complete current release-route declaration.
    Confirm all tracked Markdown meets the central rules and byte limits; retain any
    additional product rules as selected static checks. Unsupported workspaces, missing
    inputs or unknown scope block that consumer rather than select bootstrap.
@@ -283,8 +283,8 @@ interfaces. Source qualification alone does not authorize a hosted change.
    failed/cancelled/skipped/missing restored run is not recovery. Reconcile unknown
    effects before retrying.
 
-The current source catalogs are unchanged. Actual Rust backend/lock/tool selection,
-consumer route/foundation/review scope and hosted results still need their own evidence.
+Runtime assignments retain their current catalog. Actual Rust backend/lock/tool selection,
+consumer route/review scope and hosted results still need their own evidence.
 The existing legacy guard drift and numeric-tool update-coverage gap remain explicit.
 
 The historical retained Q6 source B was adopted `97a8a94c884f43c039278d117d0d9313d1465ec9`:

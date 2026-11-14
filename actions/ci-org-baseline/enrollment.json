@@ -31,7 +31,6 @@
         "team_id": 20299307,
         "minimum_approvals": 1
       },
-      "foundation": "not-applicable",
       "components": [
         {
           "kind": "astro",

@@ -6,10 +6,6 @@ tags:
 ---
 # ForgingAlpha/.github - Intent
 
-The [Foundation implementation transition](requirements.md#foundation-implementation-transition)
-binds the target outcome to qualified source replacement while preserving the
-specified existing operational obligations. It grants no new operational rights.
-
 ## Purpose
 
 `ForgingAlpha/.github` is the public automation control plane for ForgingAlpha.

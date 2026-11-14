@@ -6,10 +6,6 @@ tags:
 ---
 # ForgingAlpha/.github - Requirements
 
-The [Foundation implementation transition](#foundation-implementation-transition)
-selects the applicable stage for the changed controller, workflow-eligibility and
-import-responsibility provisions. Other requirements apply without that transition.
-
 > These requirements derive from [intent.md](intent.md). Architecture chooses
 > how this repository satisfies them.
 
@@ -88,8 +84,10 @@ An already resolved execution SHALL NOT substitute a later `main` revision.
 
 **Fit:** Central workflow jobs use their defining workflow commit throughout
 admission, product lanes and finalization. Composite execution retains the native
-resolved Action commit and applicable verifier/catalog fingerprints. A branch
-name or consumer commit alone cannot stand in for executed-source identity.
+resolved Action commit. Central application plans and receipts additionally retain
+fingerprints of the exact baseline source, enrollment and runtime catalog from the
+same checking checkout. A branch name or consumer commit alone cannot stand in for
+executed-source identity.
 
 ### REQ-007 - Human-Reviewed Source Recovery
 
@@ -714,7 +712,7 @@ Central enrollment SHALL explicitly select the repository, supported complete
 profile and protected targets. Universal topology SHALL NOT force a repository
 into an unsupported application or bootstrap profile. The owner SHALL qualify
 complete applicable checks, unique result production, security/event consumers,
-review, runtime and foundation obligations on every selected target before
+review and runtime obligations on every selected target before
 retiring predecessor admission. Actual source, enrollment and checking-source
 identity remain separate. Staging qualification follows actual repository
 consumers; it need not require a permanently running environment.
@@ -767,96 +765,14 @@ and consumer owners SHALL diagnose the cause against the exact contract,
 configuration and inputs and retain the reproduction and conclusion in the owning
 change record. An unresolved cause SHALL remain unresolved.
 
-Private execution SHALL require current scoped authority, the applicable
-human-approved qualification policy and effective exact-candidate human approval, and the
-reviewer's current access to the consumer. Review creates no access grant.
 Private source, commands, logs and artifact payloads SHALL stay in consumer
 custody. Public reports SHALL disclose only the exact public subject, bounded
 outcome and permitted detail location. Synthetic or local evidence SHALL NOT be
-reported as native consumer execution. Disposable qualification fixture PRs SHALL
-never be merged.
-
-Source adoption alone grants no credentials, settings or execution authority.
-Candidate jobs SHALL retain only their existing read permissions and SHALL NOT
-receive reporting or orchestration credentials. Any selected write-capable
-reporting or orchestration SHALL execute adopted trusted source, treat candidate
-inputs as data, recheck live inputs and effective human approval before success,
-reconcile unknown writes before retry, and invalidate known-stale results before
-claiming success. The accountable human authority owner retains maintenance and
-revocation of any enrollment, grant, protected projection, installation and key.
-Withdrawal SHALL reconcile outstanding writes and required-result consumers;
-source removal alone SHALL NOT discharge those duties. Required-check
-enforcement SHALL follow native qualification of its exact issuer, permissions,
-protection and ordinary operation. The owner SHALL disclose observation delays
-and outages; no cross-repository atomic freshness or zero-cost guarantee is implied.
+reported as native consumer execution. Source adoption alone grants no
+credentials, settings or execution authority.
 
 **Fit:** Conforming input passes and violating input fails through the actual
 checker and its applicable required result producer. A negative assertion may
 pass while the consumer result remains failed. Corrected inputs require their
 corresponding evidence. Impact assessment cannot waive a changed required behavior
 or an existing mandatory check; it cannot claim execution that did not occur.
-
-## Foundation implementation transition
-
-This bounded transition applies only to the Foundation controller, its fixed
-first-party workflow eligibility, initial-admission order and imported-source
-responsibilities changed by this amendment. It does not change the repository
-route, global governing-adoption rules or any other required check.
-
-Human adoption of this amendment into protected main makes its target contract
-Current for preparing, implementing and qualifying that source replacement under
-the ordinary Brief, Fact and review process. It does not itself withdraw the
-existing operational contract. Until the qualified implementation is human-adopted
-into protected main, the following exact predecessor clauses continue to govern
-existing behavior and its outstanding obligations within this bounded scope:
-
-- [Intent: the fixed first-party workflow and initial-admission provisions](https://github.com/ForgingAlpha/.github/blob/d038e8bdfaecde0f645f6e9b5272934b72778327/docs/intent.md).
-- [Requirements: REQ-020's fixed-member order, REQ-023's exact workflow member and REQ-028](https://github.com/ForgingAlpha/.github/blob/d038e8bdfaecde0f645f6e9b5272934b72778327/docs/requirements.md).
-- [Architecture: the corresponding Main-Based Shared Source and Shared CI Profiles provisions, Selected Container Foundation Source, and Foundation consumer compatibility](https://github.com/ForgingAlpha/.github/blob/d038e8bdfaecde0f645f6e9b5272934b72778327/docs/architecture.md).
-- [Consumer compatibility: existing plan, evaluator, result, private-execution and recovery obligations](https://github.com/ForgingAlpha/.github/blob/d038e8bdfaecde0f645f6e9b5272934b72778327/docs/consumer-compatibility.md).
-- [Source verification: existing import admission, update, layout and custody obligations](https://github.com/ForgingAlpha/.github/blob/d038e8bdfaecde0f645f6e9b5272934b72778327/actions/ci-foundation/README.md).
-
-These clauses govern the existing implementation; the changed target provisions
-govern its isolated replacement and acceptance. This is one conditional current
-contract, not a choice of rules. Required checks evaluate the exact subject under
-its applicable stage. The target's removal of an allowance is not misreported as
-the current validator's behavior, and a passing predecessor case does not qualify
-the replacement. Unchanged obligations continue without a migration exemption.
-
-The shared-CI owner owns the source replacement and affected-check mapping.
-Existing consumer owners retain their callers, product tests and private evidence;
-the accountable human authority owners retain actual enrollment, grants,
-protected projections, installations and keys. The pinned clauses do not restore
-withdrawn rights, freeze current approval or grant state, create a participant,
-or authorize setup, dispatch, installation or protected cleanup. Existing live
-approval, access and revocation predicates still apply. Unperformed qualification
-is not declared passed and no obsolete experiment must be replayed solely because
-its instructions remain in the pinned source.
-
-Before the replacement may be Ready or human-merged, its existing change record
-SHALL bind the exact integrated candidate, affected consumers and required-result
-producers; current authority and outstanding writes/results; retained evidence
-and accountable custody; and any separately authorized withdrawal or preservation
-needed for removal. Unknown facts SHALL keep the dependent removal incomplete.
-An owner disposition SHALL preserve or lawfully withdraw actual obligations; a
-task label, deleted repository or source deletion SHALL NOT discharge them.
-The proposal SHALL satisfy ordinary exact-candidate review, checks and affected-
-consumer qualification, including refusal of the former workflow allowance and
-preservation of remaining dependency, import and shared-helper behavior.
-
-The implementation proposal SHALL remove the controller, its sole-purpose
-dependencies and fixed workflow allowance together, and reconcile their tests
-and documentation in the same qualified candidate. It SHALL remove this bounded
-transition and its applicability references in that same proposal. The exact
-human-reviewed main merge then makes the replacement the operative source;
-there is no later source activation flag, agent decision or recurring approval.
-Non-source effects remain subject to their own authorization and qualification.
-If any prerequisite is missing, the predecessor obligations remain and the
-replacement stays incomplete. Recovery uses the ordinary human-reviewed source
-path and cannot silently restore withdrawn privileges or erase prior outcomes.
-
-The imported-source verifier, admitted catalog and exact export definitions
-remain governed after this transition. Removing the controller does not retire
-them, transfer their ownership or qualify a catalog change. Missing definition
-or provenance custody blocks only the operation that depends on it; existing
-records, actual consumers and their preservation duties remain intact.
