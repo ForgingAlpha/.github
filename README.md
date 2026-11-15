@@ -253,6 +253,14 @@ auto-merge are disabled; classification or a green check does not authorize a me
 | Major | 30 days | Human-merged PR to the ordinary target under REQ-027 |
 | Security | No cooldown | Human-merged classified source PR; separate-dev sources additionally require an exact, human-merged production projection |
 
+Eligible npm minor and patch updates for the named lint tools share a `linting`
+proposal; Prettier and its Astro plugin share a separate `formatting` proposal.
+The exact members are defined in [the central preset](renovate-config.json).
+Major updates remain outside these groups. Each release retains its own minimum
+age and the existing Renovate buffer; a pending member cannot bypass eligibility
+through a group. Grouped packages still require combined checks and human review;
+a shared proposal does not establish compatibility.
+
 During their retained predecessor route, control-plane proposals target protected
 `main`; after migration ordinary proposals follow REQ-027's dev/staging/main route.
 Runtime projections

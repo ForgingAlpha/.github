@@ -43,6 +43,42 @@
       "minimumReleaseAge": "30 days"
     },
     {
+      "description": "Group related ESLint and Astro lint minor and patch updates",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchPackageNames": [
+        "@eslint/js",
+        "@typescript-eslint/eslint-plugin",
+        "@typescript-eslint/parser",
+        "astro-eslint-parser",
+        "eslint",
+        "eslint-plugin-astro",
+        "globals",
+        "typescript-eslint"
+      ],
+      "groupName": "linting"
+    },
+    {
+      "description": "Group related Prettier minor and patch updates",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchPackageNames": [
+        "prettier",
+        "prettier-plugin-astro"
+      ],
+      "groupName": "formatting"
+    },
+    {
       "description": "Keep Node engine declarations owned by central runtime profiles",
       "matchManagers": ["npm"],
       "matchDepTypes": ["engines"],
