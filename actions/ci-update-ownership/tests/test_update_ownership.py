@@ -223,9 +223,10 @@ class UpdateOwnershipTest(unittest.TestCase):
         config = update_ownership.load_json(PRESET)
         self.assertIs(config["automerge"], False)
         self.assertIs(config["platformAutomerge"], False)
+        cooldowns = [rule for rule in config["packageRules"] if "minimumReleaseAge" in rule]
+        self.assertEqual(len(cooldowns), 3)
         self.assertEqual(
-            {rule["matchUpdateTypes"][0]: rule["minimumReleaseAge"]
-             for rule in config["packageRules"] if "matchUpdateTypes" in rule},
+            {rule["matchUpdateTypes"][0]: rule["minimumReleaseAge"] for rule in cooldowns},
             {"patch": "3 days", "minor": "7 days", "major": "30 days"},
         )
         update_ownership.validate_central_preset(config)
@@ -238,6 +239,83 @@ class UpdateOwnershipTest(unittest.TestCase):
             rule.pop("description", None)
         config["packageRules"][:4] = reversed(config["packageRules"][:4])
         update_ownership.validate_central_preset(config)
+
+    def test_central_preset_limits_related_groups_to_named_npm_minor_and_patch_updates(self):
+        config = update_ownership.load_json(PRESET)
+        groups = [rule for rule in config["packageRules"] if "groupName" in rule]
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(
+            {rule["groupName"]: rule["matchPackageNames"] for rule in groups},
+            {
+                "linting": [
+                    "@eslint/js", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser",
+                    "astro-eslint-parser", "eslint", "eslint-plugin-astro", "globals", "typescript-eslint",
+                ],
+                "formatting": ["prettier", "prettier-plugin-astro"],
+            },
+        )
+        for rule in groups:
+            self.assertEqual(rule["matchManagers"], ["npm"])
+            self.assertEqual(rule["matchUpdateTypes"], ["minor", "patch"])
+            self.assertEqual(
+                set(rule) - {"description"},
+                {"matchManagers", "matchUpdateTypes", "matchPackageNames", "groupName"},
+            )
+        update_ownership.validate_central_preset(config)
+
+    def test_central_preset_rejects_missing_duplicate_or_changed_related_groups(self):
+        valid = update_ownership.load_json(PRESET)
+        group_indexes = [index for index, rule in enumerate(valid["packageRules"]) if "groupName" in rule]
+        for index in group_indexes:
+            for mutation in (
+                "missing", "duplicate", "extra-member", "missing-member", "regex", "manager",
+                "major", "missing-types", "name", "slug", "overlap",
+            ):
+                with self.subTest(group=valid["packageRules"][index]["groupName"], mutation=mutation):
+                    config = copy.deepcopy(valid)
+                    rule = config["packageRules"][index]
+                    if mutation == "missing":
+                        config["packageRules"].pop(index)
+                    elif mutation == "duplicate":
+                        config["packageRules"].insert(-2, copy.deepcopy(rule))
+                    elif mutation == "extra-member":
+                        rule["matchPackageNames"].append("eslint-plugin-unobserved")
+                    elif mutation == "missing-member":
+                        rule["matchPackageNames"].pop()
+                    elif mutation == "regex":
+                        rule["matchPackageNames"] = ["/^eslint/", "/^prettier/"]
+                    elif mutation == "manager":
+                        rule["matchManagers"] = ["github-actions"]
+                    elif mutation == "major":
+                        rule["matchUpdateTypes"].append("major")
+                    elif mutation == "missing-types":
+                        rule.pop("matchUpdateTypes")
+                    elif mutation == "name":
+                        rule["groupName"] = "all development dependencies"
+                    elif mutation == "slug":
+                        rule["groupSlug"] = "unreviewed"
+                    else:
+                        other = next(i for i in group_indexes if i != index)
+                        rule["matchPackageNames"].append(valid["packageRules"][other]["matchPackageNames"][0])
+                    with self.assertRaises(update_ownership.OwnershipError):
+                        update_ownership.validate_central_preset(config)
+
+    def test_central_preset_rejects_policy_overrides_in_related_groups(self):
+        valid = update_ownership.load_json(PRESET)
+        for index, rule in enumerate(valid["packageRules"]):
+            if "groupName" not in rule:
+                continue
+            for key, value in (
+                ("automerge", True), ("platformAutomerge", True), ("autoApprove", True),
+                ("extends", [":automergeAll"]), ("group", {"automerge": True}),
+                ("minimumReleaseAge", "0 days"), ("minimumReleaseAgeBuffer", "0 minutes"),
+                ("enabled", True), ("schedule", ["every weekend"]),
+            ):
+                with self.subTest(group=rule["groupName"], key=key):
+                    config = copy.deepcopy(valid)
+                    config["packageRules"][index][key] = value
+                    with self.assertRaises(update_ownership.OwnershipError):
+                        update_ownership.validate_central_preset(config)
 
     def test_central_preset_requires_explicit_boolean_merge_disables(self):
         valid = update_ownership.load_json(PRESET)

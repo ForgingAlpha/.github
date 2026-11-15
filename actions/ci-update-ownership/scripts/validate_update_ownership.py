@@ -191,6 +191,21 @@ def validate_central_preset(config: dict[str, Any]) -> None:
     }
     admitted_rules.update({
         "mise": {"matchManagers": ["mise"], "enabled": False},
+        "linting group": {
+            "matchManagers": ["npm"],
+            "matchUpdateTypes": ["minor", "patch"],
+            "matchPackageNames": [
+                "@eslint/js", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser",
+                "astro-eslint-parser", "eslint", "eslint-plugin-astro", "globals", "typescript-eslint",
+            ],
+            "groupName": "linting",
+        },
+        "formatting group": {
+            "matchManagers": ["npm"],
+            "matchUpdateTypes": ["minor", "patch"],
+            "matchPackageNames": ["prettier", "prettier-plugin-astro"],
+            "groupName": "formatting",
+        },
         "Node engine": {
             "matchManagers": ["npm"],
             "matchDepTypes": ["engines"],
@@ -215,7 +230,7 @@ def validate_central_preset(config: dict[str, Any]) -> None:
             if policy == expected and ("enabled" not in policy or policy["enabled"] is False)
         ]
         if not matches:
-            raise OwnershipError(f"central package rule {index} is not an admitted cooldown or ownership exclusion")
+            raise OwnershipError(f"central package rule {index} is not an admitted cooldown, related group, or ownership exclusion")
         name = matches[0]
         if name in observed:
             raise OwnershipError(f"central Renovate preset repeats the {name} rule")
