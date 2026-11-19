@@ -149,11 +149,21 @@ These additional steps apply only when the classified source merges into dev.
   base branch; avoid a competing generated config. Change sole update ownership
   with no overlap or unmanaged interval.
 - Inspect a hosted job for the resolved preset, disabled bot/platform auto-merge,
-  exact 3/7/30-day cooldowns, proposal limits, disabled vulnerability/mise/Node
-  engine lanes and first-party Action exclusion. An unrestricted run window
-  does not prove daily execution; verify actual hosted runs.
+  3/7/30-day cooldowns, existing proposal limits, runtime exclusions and
+  the first-party Action exclusion. Verify daily evaluation. Check that eligible
+  patches, minors and digest refreshes share one open `weekly-dependencies`
+  branch during Tuesday in `America/New_York`. Check an out-of-window run and
+  a pending-age dependency. Majors and initial pins stay outside that batch.
+  Reconcile any already-open updater PRs against the new proposals.
 - Keep Dependabot security remediation enabled with normal-update capacity zero
   after Renovate enrollment. Verify every dependency surface has one owner.
+  Apply the organization security configuration to existing eligible repositories
+  and set it as the default for new repositories. Confirm alert and security PR
+  enablement, the source target, and the production route for each supported
+  ecosystem. A local template alone cannot confirm those hosted settings.
+- For new repositories, use the [enrollment templates](../templates/dependabot/README.md)
+  and include the shared ownership and coverage checks in required CI as soon
+  as the repository gains a package, image, or externally versioned Action.
 - Runtime profile enrollment validates the exact central assignment and locked
   consumer projection. Do not claim automatic runtime projection writes until
   the constrained resolver, writer and rollout gates are qualified. Record

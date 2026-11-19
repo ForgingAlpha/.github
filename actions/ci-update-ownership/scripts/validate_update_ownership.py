@@ -187,24 +187,17 @@ def validate_central_preset(config: dict[str, Any]) -> None:
         raise OwnershipError("central Renovate preset must define package rules")
     admitted_rules = {
         update_type: {"matchUpdateTypes": [update_type], "minimumReleaseAge": age}
-        for update_type, age in {"patch": "3 days", "minor": "7 days", "major": "30 days"}.items()
+        for update_type, age in {"patch": "3 days", "minor": "7 days"}.items()
     }
     admitted_rules.update({
         "mise": {"matchManagers": ["mise"], "enabled": False},
-        "linting group": {
-            "matchManagers": ["npm"],
-            "matchUpdateTypes": ["minor", "patch"],
-            "matchPackageNames": [
-                "@eslint/js", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser",
-                "astro-eslint-parser", "eslint", "eslint-plugin-astro", "globals", "typescript-eslint",
-            ],
-            "groupName": "linting",
-        },
-        "formatting group": {
-            "matchManagers": ["npm"],
-            "matchUpdateTypes": ["minor", "patch"],
-            "matchPackageNames": ["prettier", "prettier-plugin-astro"],
-            "groupName": "formatting",
+        "major": {"matchUpdateTypes": ["major"], "minimumReleaseAge": "30 days", "groupName": None},
+        "weekly dependencies": {
+            "matchUpdateTypes": ["minor", "patch", "digest"],
+            "groupName": "weekly dependencies",
+            "groupSlug": "weekly-dependencies",
+            "schedule": ["* * * * 2"],
+            "updateNotScheduled": False,
         },
         "Node engine": {
             "matchManagers": ["npm"],
@@ -227,10 +220,11 @@ def validate_central_preset(config: dict[str, Any]) -> None:
         policy = {key: value for key, value in rule.items() if key != "description"}
         matches = [
             name for name, expected in admitted_rules.items()
-            if policy == expected and ("enabled" not in policy or policy["enabled"] is False)
+            if policy == expected
+            and all(type(policy[key]) is type(value) for key, value in expected.items())
         ]
         if not matches:
-            raise OwnershipError(f"central package rule {index} is not an admitted cooldown, related group, or ownership exclusion")
+            raise OwnershipError(f"central package rule {index} is not an admitted cooldown, weekly batch, or ownership exclusion")
         name = matches[0]
         if name in observed:
             raise OwnershipError(f"central Renovate preset repeats the {name} rule")

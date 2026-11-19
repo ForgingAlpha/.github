@@ -629,8 +629,13 @@ annotated custom managers own irreducible version literals. Exact ranges and
 digests remain pinned. Renovate vulnerability remediation is disabled.
 
 Normal updates are evaluated daily. Patches, minors, and majors become eligible
-after three, seven, and thirty days respectively. Renovate proposes a pull
-request to dev under REQ-027, followed by whole-batch consolidation into dev and fixed-snapshot integration into
+after three, seven, and thirty days respectively. The shared preset applies a
+Tuesday `America/New_York` package schedule to minor, patch and digest updates.
+All managers contribute eligible updates to the same stable branch per target.
+Automatic refreshes wait for the next window. An explicit human rebase request
+can refresh an existing batch. Major upgrades retain individual proposals after
+their cooldown. Dependabot security processing has its own event path.
+Renovate proposes ordinary pull requests to dev under REQ-027, followed by whole-batch consolidation into dev and fixed-snapshot integration into
 staging and staging-to-main promotion. Unmigrated repositories retain their
 owner-bound prior route until replacement qualifies. A human merges every PR
 after exact-head CI and applicable approval. Root bot and platform auto-merge

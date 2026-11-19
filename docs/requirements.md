@@ -149,6 +149,11 @@ derived projections rather than independent owners.
 
 Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
 of three days for patches, seven days for minors, and thirty days for majors.
+Eligible patches, minors, and routine digest refreshes SHALL share one open
+proposal per repository and ordinary target. Renovate SHALL create and
+automatically refresh that batch during Tuesday in `America/New_York`.
+Major upgrades SHALL receive separate proposals when eligible. Dependabot
+security proposals follow REQ-013 independently of this schedule.
 
 **Fit:** Eligible patch, minor, and major proposals follow REQ-027's ordinary
 route: task proposals to `dev`, reviewed whole-batch consolidation back into `dev`, fixed-snapshot proposals to `staging`,

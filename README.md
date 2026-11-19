@@ -246,20 +246,23 @@ Dependabot prepares officially associated security remediation.
 An applicable authorized human performs every PR merge. Bot and platform
 auto-merge are disabled; classification or a green check does not authorize a merge.
 
-| Update | Minimum age | Target and merge |
+| Update | Minimum release age | Proposal |
 | --- | ---: | --- |
-| Patch | 3 days | Human-merged PR to the ordinary target under REQ-027 |
-| Minor | 7 days | Human-merged PR to the ordinary target under REQ-027 |
-| Major | 30 days | Human-merged PR to the ordinary target under REQ-027 |
-| Security | No cooldown | Human-merged classified source PR; separate-dev sources additionally require an exact, human-merged production projection |
+| Routine patch | 3 days | Tuesday batch |
+| Routine minor | 7 days | Tuesday batch |
+| Routine digest refresh | No semantic release cooldown | Tuesday batch |
+| Major | 30 days | Separate upgrade for human review |
+| Security | No cooldown | Dependabot security PR as soon as a supported fix is available |
 
-Eligible npm minor and patch updates for the named lint tools share a `linting`
-proposal; Prettier and its Astro plugin share a separate `formatting` proposal.
-The exact members are defined in [the central preset](renovate-config.json).
-Major updates remain outside these groups. Each release retains its own minimum
-age and the existing Renovate buffer; a pending member cannot bypass eligibility
-through a group. Grouped packages still require combined checks and human review;
-a shared proposal does not establish compatibility.
+Renovate evaluates normal updates daily. On Tuesdays in `America/New_York`
+it creates or refreshes one open `weekly-dependencies` branch per repository
+and target for eligible patches, minors and digest refreshes across managers.
+A release that is still inside its cooldown or Renovate's release-age buffer
+waits for a later run. An empty batch produces no PR. Automatic updates and
+rebases of an open batch wait for the Tuesday window. A maintainer can request
+a rebase explicitly. Initial pins, replacements and rollbacks follow their
+existing separate handling. Dependabot security proposals proceed independently
+of the weekly window. See [the shared preset](renovate-config.json).
 
 During their retained predecessor route, control-plane proposals target protected
 `main`; after migration ordinary proposals follow REQ-027's dev/staging/main route.
@@ -281,8 +284,8 @@ implementation/qualification obligations described in Architecture; this contrac
 does not establish that either security path is operational in a consumer.
 
 Installations, hosted settings, caller enrollment and daily execution need
-separate verification. An unrestricted Renovate run window permits daily
-execution but does not prove it. Follow the
+separate verification. Inspect hosted runs to confirm daily evaluation and
+the first Tuesday batch for each enrolled consumer. Follow the
 [operator checklist](docs/operator-checklist.md) for enrollment and rollout.
 
 ## Active Shared Source And Recovery
