@@ -63,11 +63,13 @@ runs:
 
     - name: Validate source-truth baseline structure
       env:
+        POLICY_ACTION_REPOSITORY: ${{ github.action_repository }}
+        POLICY_ACTION_REF: ${{ github.action_ref }}
         ALPHAAPPS_POLICY_BASE_REF: ${{ inputs.base-ref }}
         ALPHAAPPS_POLICY_REPO_KIND: ${{ inputs.repo-kind }}
       run: |
         set -euo pipefail
-        python3 "$GITHUB_ACTION_PATH/scripts/validate_product_lifecycle_baseline.py"
+        python3 -I -B "$GITHUB_ACTION_PATH/scripts/validate_product_lifecycle_baseline.py"
       shell: bash
 
     - name: Validate repository ownership contract
