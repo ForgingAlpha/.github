@@ -1,7 +1,7 @@
 # Organization baseline Fact Contract
 
 This derived implementation contract follows the current owning
-[Intent](../../docs/intent.md), [Requirements](../../docs/requirements.md) and
+[Intent](../../README.md#intent), [Requirements](../../docs/requirements.md) and
 [Architecture](../../docs/architecture.md), including protected-main source
 adoption, exact execution evidence and human-reviewed recovery. It does not grant
 runtime assignments, consumer enrollment or hosted settings authority. Source

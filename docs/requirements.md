@@ -8,7 +8,7 @@ tags:
 ---
 # ForgingAlpha/.github - Requirements
 
-> These requirements derive from [intent.md](intent.md). Architecture chooses
+> These requirements derive from [Intent](../README.md#intent). Architecture chooses
 > how this repository satisfies them.
 
 ## Shared CI
