@@ -358,11 +358,8 @@ def lint_documents(root, texts):
     temporary = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()).resolve()
     require(all(not temporary.is_relative_to(location) for location in (root, SOURCE)),
             "checking tools must install outside consumer/trusted checkouts")
-    try:
-        checked(["node", str(SOURCE / "actions/ci-markdown/scripts/lint_bootstrap.mjs")], SOURCE,
-                timeout=180, data=json.dumps(texts, ensure_ascii=False).encode())
-    except Refused:
-        raise Refused("central data-only Markdown validation failed") from None
+    checked(["node", str(SOURCE / "actions/ci-markdown/scripts/lint_bootstrap.mjs")], SOURCE,
+            timeout=180, data=json.dumps(texts, ensure_ascii=False).encode())
 
 
 def run(root, event, entries, api):
@@ -387,7 +384,10 @@ def run(root, event, entries, api):
     result = subprocess.run([sys.executable, "-I", "-B", str(SOURCE / "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")], cwd=root, env=safe, timeout=45, check=False)
     require(result.returncode == 0, "structural lifecycle validation failed")
     team_configuration(api.rules(entry["repository"], branch), entry)
-    lint_documents(root, strings)
+    try:
+        lint_documents(root, strings)
+    except Refused:
+        raise Refused("central data-only Markdown validation failed") from None
     prove_pr(api, event, entry)
     team_configuration(api.rules(entry["repository"], branch), entry)
     admit_tree(root, head)
