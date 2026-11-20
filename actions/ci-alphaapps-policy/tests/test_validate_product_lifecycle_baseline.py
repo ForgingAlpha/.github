@@ -1,3 +1,5 @@
+import hashlib
+import importlib.util
 import os
 import subprocess
 import sys
@@ -12,6 +14,87 @@ SCRIPT = (
     / "scripts"
     / "validate_product_lifecycle_baseline.py"
 )
+
+
+spec = importlib.util.spec_from_file_location("tested_lifecycle_policy", SCRIPT)
+policy = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = policy
+spec.loader.exec_module(policy)
+
+
+class ReadmeIntentTest(unittest.TestCase):
+    def test_exact_bytes_and_independent_navigation(self):
+        metadata = b"---\nstatus: provisional\n---\n"
+        section = b"## Intent\n\n### Purpose\n\nKeep the exact spacing.  \n"
+        suffix = b"## Operations\n\nHow to operate.\n"
+        readme = metadata + b"# Fixture\n\n" + section + b"\n\n" + suffix
+        parsed = policy.readme_intent(readme)
+        self.assertEqual(parsed.canonical, metadata + section)
+        self.assertEqual(parsed.sha256, hashlib.sha256(metadata + section).hexdigest())
+        self.assertEqual(parsed.outside, (b"# Fixture\n\n", suffix))
+        navigation = policy.readme_intent(readme.replace(b"How to operate", b"Do something else"))
+        self.assertEqual(parsed.sha256, navigation.sha256)
+        self.assertNotEqual(parsed.outside, navigation.outside)
+        self.assertNotEqual(parsed.sha256, policy.readme_intent(readme.replace(b"spacing", b"wording")).sha256)
+
+    def test_heading_examples_and_empty_sections_do_not_supply_intent(self):
+        for source in (
+            b"````markdown\n## Intent\nExample\n```\nStill an example\n````",
+            b"<!--\n## Intent\nExample\n-->", b"> ## Intent\n> Example",
+            b"<pre>\n## Intent\nExample\n</pre>", b"    ## Intent\n    Example",
+            b"## Intent\n<!-- invisible -->\n## Next\nOrdinary",
+            b"## Intent\n\n### Purpose\n## Next\nOrdinary",
+            b"## Intent\nFirst\n## Elsewhere\n## Intent\nSecond",
+            b"## Intent\n\n```text\nOnly an example\n```", b"## Intent\n<div>\nHidden\n</div>",
+            b"## Intent\nPurpose\n```", b"# Repo\n\n## Intent\nName\n======",
+            b"\xef\xbb\xbf## Intent\nPurpose", b"## Intent\r\nPurpose",
+            b"---\nstatus: approved\nstatus: provisional\n---\n## Intent\nHello",
+        ):
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                policy.readme_intent(source)
+
+    def test_nested_list_headings_and_lazy_quote_text(self):
+        body = b"## Intent\n- Record outcomes.\n  ## Heading in list\n  ```md\n  ## Intent\n  ```\n\nEnd of list.\n"
+        for boundary in (b"# Next", b" ## Map", b"   #\tOther"):
+            self.assertEqual(policy.readme_intent(body + b"\n" + boundary + b"\nNavigation").canonical, body)
+        for text in (b"> Example\nlazy continuation", b"- ### Heading only", b"- > Quoted only"):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                policy.readme_intent(b"## Intent\n" + text)
+
+    def test_reference_definitions_and_list_markers_do_not_supply_intent(self):
+        for body in (
+            "1.\n2) ", "1. ***", "[manual]: https://example.org/guide",
+            '[manual]:\n  <guide.md>\n  "Reference title"',
+            "[manual]: guide.md 'Title with\nanother line'",
+            "1. [manual]: <guide.md>",
+        ):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                policy.readme_intent(f"## Intent\n{body}\n".encode())
+        for body in ("1. Preserve the records.", "[guide]: help.md\nKeep the guide current.",
+                     "[The guide](help.md) describes our purpose."):
+            readme = f"## Intent\n{body}\n".encode()
+            with self.subTest(body=body):
+                self.assertEqual(policy.readme_intent(readme).canonical, readme)
+
+    def test_thematic_break_and_quote_end_a_root_list(self):
+        for separator in ("> Example", "***", "- - -"):
+            section = f"## Intent\nA purpose.\n01. Outcome\n    ## Nested\n{separator}\n".encode()
+            with self.subTest(separator=separator):
+                self.assertEqual(policy.readme_intent(section + b"  ## Map\nNavigation").canonical, section)
+
+    def test_only_a_visible_earlier_heading_claims_the_intent_anchor(self):
+        selected = b"## Intent\nPreserve the records.\n"
+        for heading in (b"# Intent", b"### INTENT ###", b"###### IntEnt"):
+            with self.subTest(heading=heading), self.assertRaises(ValueError):
+                policy.readme_intent(heading + b"\n\n" + selected)
+        for example in (b"```md\n# Intent\n```\n", b"<!--\n### Intent\n-->\n"):
+            with self.subTest(example=example):
+                self.assertEqual(policy.readme_intent(example + selected).canonical, selected)
+        self.assertEqual(policy.readme_intent(selected + b"# Intent\nDifferent section.").canonical, selected)
+
+    def test_example_heading_inside_real_section_does_not_end_it(self):
+        text = b"## Intent\nThe operative statement.\n\n~~~md\n## Example\n~~~\n\nMore.\n"
+        self.assertEqual(policy.readme_intent(text + b"## Navigation\nMap.").canonical, text)
 
 
 class ProductLifecycleBaselineValidatorTest(unittest.TestCase):
@@ -118,6 +201,16 @@ class ProductLifecycleBaselineValidatorTest(unittest.TestCase):
             stderr=subprocess.PIPE,
             check=False,
         )
+
+    def test_readme_and_candidate_enrollment_cannot_select_composite_layout(self):
+        self.write_approved_baseline()
+        (self.repo / "docs/intent.md").unlink()
+        self.write("README.md", "---\nstatus: approved\n---\n# Project\n\n## Intent\n\nOperate.\n")
+        self.write(".github/enrollment.json", '{"readme_intent_scopes":{"main":["."]}}\n')
+        self.commit_all("candidate layout claim")
+        result = self.run_validator(ALPHAAPPS_POLICY_LAYOUT="readme", README_INTENT_SCOPES=".")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("docs/intent.md", result.stderr)
 
     def test_approved_baseline_allows_ordinary_change(self):
         self.start_feature_with_approved_baseline()

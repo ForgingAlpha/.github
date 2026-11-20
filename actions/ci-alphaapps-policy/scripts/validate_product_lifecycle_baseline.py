@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -257,6 +258,258 @@ def frontmatter_values(lines: list[str]) -> dict:
     if not isinstance(values, dict):
         raise ValueError("YAML frontmatter must be a mapping")
     return values
+
+
+@dataclass(frozen=True)
+class ReadmeIntent:
+    metadata: dict
+    canonical: bytes
+    outside: tuple[bytes, bytes]
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical).hexdigest()
+
+
+def leading_metadata(lines: list[str]) -> tuple[dict, int]:
+    if not lines or lines[0] != "---":
+        return {}, 0
+    try:
+        end = lines.index("---", 1, MAX_FRONTMATTER_LINES + 2)
+    except ValueError:
+        raise ValueError("missing closing YAML frontmatter delimiter") from None
+    return frontmatter_values(lines[1:end]), end + 1
+
+
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)")
+_SETEXT = re.compile(r"^ {0,3}(?:=+|-+)[ \t]*$")
+_THEMATIC = re.compile(r"^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$")
+_LIST = re.compile(r"^ {0,3}([-+*]|[0-9]{1,9}[.)])( +|$)")
+_REFERENCE = re.compile(r"^\[((?:\\.|[^\[\]\\]){1,999})\]:[ \t]*")
+_OPEN_LABEL = re.compile(r"^\[(?:\\.|[^\[\]\\])*$")
+_TAG = re.compile(r"^ {0,3}</?([a-z][a-z0-9-]*)(?=[ \t>]|/>|$)", re.I | re.ASCII)
+_BLOCK_TAGS = frozenset("""
+    address article aside base basefont blockquote body caption center col colgroup
+    dd details dialog dir div dl dt fieldset figcaption figure footer form frame
+    frameset h1 h2 h3 h4 h5 h6 head header hr html iframe legend li link main menu
+    menuitem nav noframes ol optgroup option p param search section summary table tbody
+    td tfoot th thead title tr track ul
+""".split())
+_RAW_TAG = re.compile(r"^ {0,3}<(script|pre|style|textarea)(?=[ \t>]|$)", re.I | re.ASCII)
+_RAW_END = re.compile(r"</(?:script|pre|style|textarea)>", re.I | re.ASCII)
+_BLANK = re.compile(r"^[ \t]*$")
+_HTML_DELIMITERS = (
+    (re.compile(r"^ {0,3}<!--"), re.compile("-->")),
+    (re.compile(r"^ {0,3}<\?"), re.compile(r"\?>")),
+    (re.compile(r"^ {0,3}<!\[CDATA\["), re.compile(r"\]\]>")),
+    (re.compile(r"^ {0,3}<![a-zA-Z]"), re.compile(">")),
+    (_RAW_TAG, _RAW_END),
+)
+_ATTR_VALUE = r"""(?:[^\x00-\x20"'=<>`]+|'[^']*'|"[^"]*")"""
+_ATTR = rf"(?:[ \t]+[a-zA-Z_:][a-zA-Z0-9_.:-]*(?:[ \t]*=[ \t]*{_ATTR_VALUE})?)"
+_WHOLE_TAG = re.compile(
+    rf"^ {{0,3}}(?:<[a-zA-Z][a-zA-Z0-9-]*{_ATTR}*[ \t]*/?>|</[a-zA-Z][a-zA-Z0-9-]*[ \t]*>)[ \t]*$"
+)
+
+
+def _html_end(line: str, previous_text: bool):
+    for opening, closing in _HTML_DELIMITERS:
+        if opening.match(line):
+            return closing
+    tag = _TAG.match(line)
+    if tag and tag[1].lower() in _BLOCK_TAGS:
+        return _BLANK
+    if _WHOLE_TAG.fullmatch(line):
+        # A standalone inline/custom tag can start a raw block only outside
+        # a paragraph. Avoid guessing paragraph continuation across containers.
+        if previous_text:
+            raise ValueError("ambiguous standalone HTML tag after README text")
+        return _BLANK
+    return None
+
+
+def _has_prose(text: str) -> bool:
+    visible = re.sub(r"<!--.*?-->|<[^>]*>", "", text)
+    return bool(re.search(r"[^\W_]", visible))
+
+
+def _reference_end(lines: list[str], index: int, text: str) -> int | None:
+    """Find the end of a link reference definition, including a continued title."""
+    if not text.startswith("["):
+        return None
+    last = index
+    while len(text) <= 1000 and _OPEN_LABEL.fullmatch(text):
+        if last + 1 == len(lines) or not lines[last + 1].strip():
+            return None
+        last += 1
+        text += "\n" + lines[last].lstrip(" \t")
+    label = _REFERENCE.match(text)
+    if not label:
+        return None
+    destination = text[label.end():].rstrip(" \t")
+    if not destination and last + 1 < len(lines) and lines[last + 1].strip():
+        last += 1
+        destination = lines[last].strip(" \t")
+    # Destinations ending at whitespace can be followed by a quoted title.
+    target = re.match(r"(?:<(?:\\.|[^<>\\])*>|(?:\\.|[^\s<>\\])+)(?:[ \t]+|$)", destination)
+    if not target:
+        return None
+    title = destination[target.end():]
+    if not title and last + 1 < len(lines):
+        following = lines[last + 1].strip(" \t")
+        if following.startswith(('"', "'", "(")):
+            title = following
+            last += 1
+    if title:
+        closer = {'"': '"', "'": "'", "(": ")"}.get(title[0])
+        if closer is None:
+            return None
+        segment = title[1:]
+        while not re.search(rf"(?<!\\){re.escape(closer)}[ \t]*$", segment):
+            if last + 1 == len(lines) or not lines[last + 1].strip():
+                raise ValueError("ambiguous README link reference title")
+            last += 1
+            segment = lines[last]
+    return last
+
+
+def _readme_lines(lines: list[str], first: int):
+    """Yield root headings and visible prose at their original line indices."""
+    fence = html_end = None
+    previous_text = False
+    list_indent = 0
+    quote = False
+    definition_end = -1
+    for index in range(first, len(lines)):
+        line = lines[index]
+        if index <= definition_end:
+            if _ATX.match(line) or _FENCE.match(line) or _SETEXT.fullmatch(line):
+                raise ValueError("ambiguous Markdown block inside a README link definition")
+            previous_text = False
+            continue
+        if html_end is not None:
+            if html_end.search(line):
+                html_end = None
+            continue
+
+        marker = _FENCE.match(line)
+        if fence is not None:
+            if marker and marker[1].startswith(fence) and not marker[2].strip(" \t"):
+                fence = None
+            continue
+
+        expanded = line.expandtabs(4)
+        content = expanded.lstrip(" ")
+        indent = len(expanded) - len(content)
+        if not content:
+            previous_text = quote = False
+            continue
+        if list_indent and indent >= list_indent:
+            # Nested fences, HTML and headings cannot govern a root boundary.
+            previous_text = True
+            continue
+        if indent >= 4 or content.startswith(">"):
+            quote = content.startswith(">")
+            if quote:
+                list_indent = 0
+            previous_text = True
+            continue
+
+        if previous_text and _SETEXT.fullmatch(line):
+            raise ValueError("unsupported Setext heading in README")
+        if _THEMATIC.fullmatch(line):
+            list_indent = 0
+            previous_text = quote = False
+            continue
+        item = _LIST.match(expanded)
+        if item and previous_text and not list_indent:
+            # Only a nonempty bullet or a list starting at one can interrupt a paragraph.
+            if not expanded[item.end():] or (item[1][0].isdigit() and int(item[1][:-1]) != 1):
+                item = None
+        if item:
+            padding = len(item[2])
+            list_indent = item.start(2) + (padding if 1 <= padding <= 4 else 1)
+            item_text = expanded[list_indent:]
+            while nested := _LIST.match(item_text):
+                item_text = item_text[nested.end():]
+            if (not item_text.startswith((" ", ">", "<", "#", "`", "~"))
+                    and _reference_end(lines, index, item_text) is None and _has_prose(item_text)):
+                yield index, None
+            previous_text = True
+            quote = False
+            continue
+        if not previous_text:
+            list_indent = 0
+        if marker:
+            if marker[1].startswith("`") and "`" in marker[2]:
+                raise ValueError("ambiguous README backtick fence")
+            fence = marker[1]
+            previous_text = quote = False
+            list_indent = 0
+            continue
+
+        if line.lstrip(" ").startswith("<"):
+            html_end = _html_end(line, previous_text)
+            if html_end is not None:
+                if html_end.search(line):
+                    html_end = None
+                previous_text = quote = False
+                list_indent = 0
+                continue
+
+        heading = _ATX.match(line)
+        if heading:
+            yield index, heading
+            previous_text = quote = False
+            list_indent = 0
+        else:
+            if not quote:
+                reference_end = _reference_end(lines, index, content)
+                if reference_end is not None:
+                    definition_end = reference_end
+                elif _has_prose(content):
+                    yield index, None
+            previous_text = True
+    if fence is not None or html_end not in (None, _BLANK):
+        raise ValueError("unterminated README example or HTML block")
+
+
+def readme_intent(data: bytes) -> ReadmeIntent:
+    """Read the sole top-level Intent section. Canonical bytes exclude navigation."""
+    text = data.decode("utf-8")
+    if "\r" in text or "\x00" in text or text.startswith("\ufeff"):
+        raise ValueError("README must use UTF-8 without BOM and LF line endings")
+    lines = text.split("\n")
+    if lines[0].rstrip(" \t") == "---" and lines[0] != "---":
+        raise ValueError("malformed README frontmatter delimiter")
+    metadata, first = leading_metadata(lines)
+    start = end = None
+    meaningful = False
+    for index, heading in _readme_lines(lines, first):
+        if heading is None:
+            if start is not None and end is None:
+                meaningful = True
+            continue
+        title = re.sub(r"[ \t]+#+[ \t]*$", "", heading[2] or "").strip(" \t")
+        if start is None and heading[1] != "##" and title.casefold() == "intent":
+            raise ValueError("another README heading claims the Intent anchor")
+        if len(heading[1]) > 2:
+            continue
+        if start is not None and end is None:
+            end = index
+        if heading[1] == "##" and title.casefold() == "intent":
+            if lines[index] != "## Intent" or start is not None:
+                raise ValueError("ambiguous or duplicate README Intent heading")
+            start = index
+    if start is None or not meaningful:
+        raise ValueError("missing or empty README Intent section")
+    selected = "\n".join(lines[:first] + lines[start:end])
+    # Keep the preamble and suffix separate so moving the section across them
+    # cannot hide an edit to non-definition text.
+    prefix = "\n".join(lines[first:start] + [""]).encode()
+    suffix = "\n".join(lines[end:]).encode() if end is not None else b""
+    return ReadmeIntent(metadata, (selected.rstrip("\n") + "\n").encode(), (prefix, suffix))
 
 
 def canonical_control_plane(repo: Path) -> bool:

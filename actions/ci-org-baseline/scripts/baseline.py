@@ -172,7 +172,86 @@ def select(entries, name, repository_id, branch):
     return matches[0]
 
 
-def admit_tree(root, expected_head):
+def intent_scopes(entry, branch):
+    # entry comes exclusively from the defining workflow's immutable source checkout.
+    return entry.get("readme_intent_scopes", {}).get(branch, [])
+
+
+def required_documents(scopes):
+    required = set(REQUIRED)
+    for scope in scopes:
+        directory = PurePosixPath(scope)
+        if scope == ".":
+            required.remove("docs/intent.md")
+        for name in ("README.md", "docs/requirements.md", "docs/architecture.md"):
+            required.add(str(directory / name))
+    return required
+
+
+def governing_blob(root, revision, path):
+    record = git(root, "ls-tree", "-z", revision, "--", path)
+    require(record.startswith(b"100644 blob ") and record.endswith(b"\t" + path.encode() + b"\0")
+            and record.count(b"\0") == 1, "missing or nonregular selected source: " + path)
+    return git(root, "cat-file", "blob", revision + ":" + path, limit=512 * 1024)
+
+
+def selected_documents(root, revision, scope, optional_status):
+    directory = PurePosixPath(scope)
+    readme = str(directory / "README.md")
+    intent = policy.readme_intent(governing_blob(root, revision, readme))
+    require(intent.canonical.startswith(b"---\n"), "missing YAML frontmatter: " + readme)
+    metadata = {"intent": intent.metadata}
+    digests = {"intent": intent.sha256}
+    for kind in ("requirements", "architecture"):
+        path = str(directory / "docs" / (kind + ".md"))
+        data = governing_blob(root, revision, path)
+        lines = data.decode("utf-8").splitlines()
+        values, end = policy.leading_metadata(lines)
+        require(end, "missing YAML frontmatter: " + path)
+        for upstream in metadata:
+            if upstream in values:
+                expected_id = metadata[upstream].get("id")
+                require(isinstance(expected_id, str) and expected_id and values[upstream] == expected_id,
+                        "wrong upstream identity: " + path)
+            if upstream + "_sha256" in values:
+                require(values[upstream + "_sha256"] == digests[upstream], "wrong upstream digest: " + path)
+        metadata[kind] = values
+        digests[kind] = hashlib.sha256(data).hexdigest()
+    for kind, values in metadata.items():
+        if optional_status and "status" not in values:
+            continue
+        require(values.get("status") in ("approved", "provisional"), "missing or invalid status: " + kind)
+    return intent, metadata
+
+
+def validate_selected_sources(root, entry, branch, base, head):
+    scopes = intent_scopes(entry, branch)
+    for scope in scopes:
+        optional_status = scope == "." and entry["repository"] == "ForgingAlpha/control-plane"
+        prior, prior_metadata = selected_documents(root, base, scope, optional_status)
+        current, metadata = selected_documents(root, head, scope, optional_status)
+        for kind, values in prior_metadata.items():
+            for key in ("id", "intent", "requirements"):
+                if key in values:
+                    require(metadata[kind].get(key) == values[key], "changed governing identity: " + kind)
+            for key in ("intent_sha256", "requirements_sha256"):
+                if key in values:
+                    require(key in metadata[kind], "removed governing digest binding: " + kind)
+        provisional_base = any(v.get("status") == "provisional" for v in prior_metadata.values())
+        provisional_head = any(v.get("status") == "provisional" for v in metadata.values())
+        if provisional_base or provisional_head:
+            require(prior.outside == current.outside, "provisional scope changed README outside Intent")
+            # --no-renames exposes both endpoints for path classification.
+            changed = git(root, "diff", "--no-renames", "--name-only", "-z", base, head, "--")
+            directory = PurePosixPath(scope)
+            allowed = {str(directory / name) for name in ("README.md", "docs/requirements.md", "docs/architecture.md")}
+            paths = [name.decode("utf-8") for name in changed.split(b"\0") if name]
+            require(all(path in allowed for path in paths), "provisional scope changed non-definition paths")
+        # Organization profiles have always required complete metadata even for bootstrap.
+        require(not provisional_head, "complete approved structural governing metadata required")
+
+
+def admit_tree(root, expected_head, scopes=()):
     require(root == root.resolve() and git(root, "rev-parse", "--show-toplevel").decode().strip() == str(root), "explicit physical consumer root required")
     require(SHA.fullmatch(expected_head or "") and git(root, "rev-parse", "HEAD").decode().strip() == expected_head, "consumer checkout is not the exact PR head")
     require(git(root, "rev-parse", "--show-object-format").strip() == b"sha1", "unsupported Git object format")
@@ -221,7 +300,7 @@ def admit_tree(root, expected_head):
             require(isinstance(decode(data), dict), "declared JSON input must be an object")
         if mode == "100644" and name.endswith((".md", ".markdown")):
             texts[name] = text
-    require(REQUIRED <= seen, "missing required project/governing inputs")
+    require(required_documents(scopes) <= seen, "missing required project/governing inputs")
     target = root / "PROJECT.md"
     require(stat.S_ISREG(target.lstat().st_mode) and "PROJECT.md" in texts, "instruction projection target must be tracked regular Markdown")
     return texts
@@ -346,17 +425,21 @@ def run(root, event, entries, api):
     origin = git(root, "remote", "get-url", "origin").decode().strip()
     require(origin in (f'https://github.com/{entry["repository"]}', f'https://github.com/{entry["repository"]}.git'), "consumer origin mismatch")
     require(git(root, "rev-parse", f"refs/remotes/origin/{branch}").decode().strip() == base, "checkout base does not match current PR base")
-    strings = admit_tree(root, head)
-    statuses = policy.baseline_statuses(root)
-    require(not policy.incomplete_baseline(statuses), "complete approved structural governing metadata required; definition-only fallback is unsupported")
+    scopes = intent_scopes(entry, branch)
+    strings = admit_tree(root, head, scopes)
+    validate_selected_sources(root, entry, branch, base, head)
+    if "." not in scopes:
+        statuses = policy.baseline_statuses(root)
+        require(not policy.incomplete_baseline(statuses), "complete approved structural governing metadata required; definition-only fallback is unsupported")
     # Exact head checkout, not a synthetic merge; disable the legacy HEAD^2 heuristic.
     safe = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     safe.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1",
                 GIT_TERMINAL_PROMPT="0", GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="core.fsmonitor", GIT_CONFIG_VALUE_0="false",
                 GIT_CONFIG_KEY_1="core.hooksPath", GIT_CONFIG_VALUE_1="/dev/null", ALPHAAPPS_POLICY_BASE_REF=base,
                 ALPHAAPPS_POLICY_REPO_KIND="code", GITHUB_EVENT_NAME="org_baseline_exact_head")
-    result = subprocess.run([sys.executable, "-I", "-B", str(SOURCE / "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")], cwd=root, env=safe, timeout=45, check=False)
-    require(result.returncode == 0, "structural lifecycle validation failed")
+    if "." not in scopes:
+        result = subprocess.run([sys.executable, "-I", "-B", str(SOURCE / "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")], cwd=root, env=safe, timeout=45, check=False)
+        require(result.returncode == 0, "structural lifecycle validation failed")
     team_configuration(api.rules(entry["repository"], branch), entry)
     temporary = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()).resolve()
     require(all(temporary != location and location not in temporary.parents for location in (root, SOURCE)),
@@ -367,7 +450,7 @@ def run(root, event, entries, api):
     require(lint.returncode == 0, "central data-only Markdown validation failed")
     prove_pr(api, event, entry)
     team_configuration(api.rules(entry["repository"], branch), entry)
-    admit_tree(root, head)
+    admit_tree(root, head, scopes)
     return public_receipt(root, event, entries, os.environ.get("BASELINE_SOURCE_SHA"))
 
 
@@ -433,7 +516,20 @@ def application_catalog(data):
     require(isinstance(entries, list) and 0 < len(entries) <= 32, "invalid enrollment inventory")
     names, ids = set(), set()
     for entry in entries:
-        shape(entry, "repository repository_id branches profile producer qualification_subject release_route review_policy components", "schema-2 enrollment")
+        fields = "repository repository_id branches profile producer qualification_subject release_route review_policy components"
+        if isinstance(entry, dict) and "readme_intent_scopes" in entry:
+            fields += " readme_intent_scopes"
+            selection = entry["readme_intent_scopes"]
+            require(isinstance(selection, dict) and selection, "missing trusted README scope selection")
+            for branch, scopes in selection.items():
+                require(branch in entry.get("branches", []) and isinstance(scopes, list) and scopes,
+                        "invalid README scope selection")
+                for scope in scopes:
+                    safe_path(scope, allow_root=True)
+                    require(scope == "." or re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", scope),
+                            "invalid README component scope")
+                require(len(set(scopes)) == len(scopes), "duplicate README scope selection")
+        shape(entry, fields, "schema-2 enrollment")
         name = entry["repository"]
         require(isinstance(name, str) and re.fullmatch(r"ForgingAlpha/[A-Za-z0-9_.-]+", name) and name != SOURCE_REPOSITORY, "invalid consumer identity")
         require(positive(entry["repository_id"]) and name not in names and entry["repository_id"] not in ids, "ambiguous enrollment")
@@ -497,7 +593,7 @@ def application_catalog(data):
 def bootstrap_entry(entry):
     if "review_policy" not in entry:
         return entry
-    return {key: entry[key] for key in ("repository", "repository_id", "branches", "profile")} | {
+    return {key: entry[key] for key in ("repository", "repository_id", "branches", "profile", "readme_intent_scopes") if key in entry} | {
         key: entry["review_policy"][key] for key in ("team_id", "minimum_approvals")}
 
 
@@ -529,7 +625,7 @@ def yaml_data(data):
     return value
 
 
-def clean_inventory(root, head):
+def clean_inventory(root, head, scopes=()):
     require(root == root.resolve() and git(root, "rev-parse", "--show-toplevel").decode().strip() == str(root), "explicit physical consumer root required")
     require(isinstance(head, str) and SHA.fullmatch(head) and git(root, "rev-parse", "HEAD").decode().strip() == head, "consumer checkout differs from PR head")
     require(git(root, "rev-parse", "--show-object-format").strip() == b"sha1", "unsupported Git object format")
@@ -555,7 +651,7 @@ def clean_inventory(root, head):
         else:
             require(stat.S_ISREG(target.lstat().st_mode), "nonregular application input")
         inventory[name] = (mode, oid)
-    require(REQUIRED <= set(inventory), "missing required governing/project input")
+    require(required_documents(scopes) <= set(inventory), "missing required governing/project input")
     return inventory
 
 
@@ -702,7 +798,7 @@ def application_integrity(root, inventory, entry, runtime_data=None):
 def app_plan(root, event, entry, source_sha, runtime_data=None):
     pr = event["pull_request"]
     base, head, branch = pr["base"]["sha"], pr["head"]["sha"], pr["base"]["ref"]
-    inventory = clean_inventory(root, head)
+    inventory = clean_inventory(root, head, intent_scopes(entry, branch))
     manifests = classify(root, inventory, entry)
     producer_check(root, inventory, entry, branch)
     route = declared_route(root, entry, base, head)
@@ -794,8 +890,11 @@ def literal_values():
 def application_common(root, event, entry, api, plan):
     safe = clean_env()
     safe.update(ALPHAAPPS_POLICY_BASE_REF=plan["base"], ALPHAAPPS_POLICY_REPO_KIND="code", GITHUB_EVENT_NAME="org_baseline_exact_head")
-    require(not policy.incomplete_baseline(policy.baseline_statuses(root)), "complete approved structural governing metadata required")
-    checked(source_script("actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py"), root, safe)
+    scopes = intent_scopes(entry, plan["branch"])
+    validate_selected_sources(root, entry, plan["branch"], plan["base"], plan["head"])
+    if "." not in scopes:
+        require(not policy.incomplete_baseline(policy.baseline_statuses(root)), "complete approved structural governing metadata required")
+        checked(source_script("actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py"), root, safe)
     if entry["review_policy"]["kind"] == "codeowners":
         checked(source_script("actions/ci-alphaapps-policy/scripts/validate_codeowners_contract.py"), root, safe)
     else:
@@ -806,7 +905,7 @@ def application_common(root, event, entry, api, plan):
                      DECLARED_ROUTE=plan["route"], HEAD_REF=event["pull_request"]["head"]["ref"], HEAD_REPOSITORY=entry["repository"],
                      BASE_REF=plan["branch"], GITHUB_REPOSITORY=entry["repository"], PR_NUMBER=str(event["number"]))
     checked(["bash", str(SOURCE / "actions/ci-merge-flow/scripts/check_merge_flow.sh"), "declared-route"], root, guard_env)
-    inventory = clean_inventory(root, plan["head"])
+    inventory = clean_inventory(root, plan["head"], scopes)
     texts, total = {}, 0
     for name in sorted(inventory):
         if name.endswith((".md", ".markdown")) and inventory[name][0] != "120000":
@@ -997,7 +1096,7 @@ def current_checks(api, event, entry):
 def make_plan(root, event, entry, source_sha):
     if entry["profile"] != "documentation-bootstrap":
         return app_plan(root, event, entry, source_sha)
-    admit_tree(root, event["pull_request"]["head"]["sha"])
+    admit_tree(root, event["pull_request"]["head"]["sha"], intent_scopes(entry, event["pull_request"]["base"]["ref"]))
     return {**public_receipt(root, event, [bootstrap_entry(entry)], source_sha), "producer": "bootstrap", "components": [], "required_jobs": ["baseline"]}
 
 

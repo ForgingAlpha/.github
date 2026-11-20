@@ -43,6 +43,18 @@ def successful_needs(plan, **receipts):
 
 
 class CatalogTests(unittest.TestCase):
+    def test_only_central_schema_can_select_specific_readme_scopes(self):
+        source = baseline.decode((ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes())
+        entry = copy.deepcopy(source["repositories"][0])
+        self.assertNotIn("readme_intent_scopes", entry)
+        for invalid in ({}, {"unknown": ["."]}, {"dev": []}, {"dev": ["../up"]}, {"dev": ["sub", "sub"]}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                baseline.catalog({"schema_version": 2, "repositories": [{**entry, "readme_intent_scopes": invalid}]})
+        entry["readme_intent_scopes"] = {"dev": [".", "sub"]}
+        parsed = baseline.catalog({"schema_version": 2, "repositories": [entry]})[0]
+        self.assertEqual(baseline.intent_scopes(parsed, "dev"), [".", "sub"])
+        self.assertEqual(baseline.intent_scopes(parsed, "main"), [])
+
     def test_actual_enrollment_validates_independently(self):
         entries = baseline.catalog(baseline.decode(
             (ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))
@@ -126,6 +138,145 @@ class AdmissionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.fixture = Fixture(Path(self.temp.name) / "consumer")
+
+    def write_selected_scope(self, scope=".", status="approved"):
+        f = self.fixture
+        directory = Path(scope)
+        front = f"---\nstatus: {status}\n" if status else "---\n"
+        readme = front + "id: goal\n---\n# Fixture\n\n## Intent\n\nKeep records.\n\n## Map\n\nIndex.\n"
+        digest = baseline.policy.readme_intent(readme.encode()).sha256
+        requirements = front + f"id: needs\nintent: goal\nintent_sha256: {digest}\n---\n# Requirements\n"
+        req_digest = hashlib.sha256(requirements.encode()).hexdigest()
+        architecture = front + f"id: design\nrequirements: needs\nrequirements_sha256: {req_digest}\n---\n# Architecture\n"
+        for name, text in [("README.md", readme), ("docs/requirements.md", requirements), ("docs/architecture.md", architecture)]:
+            f.write(directory / name, text)
+        return readme
+
+    def set_selected_base(self):
+        f = self.fixture
+        f.commit()
+        f.base = f.head
+        f.git("update-ref", "refs/remotes/origin/" + f.branch, f.base)
+
+    def test_immutable_owner_selection_checks_real_bootstrap_and_both_separate_files(self):
+        f = self.fixture
+        self.write_selected_scope()
+        self.set_selected_base()
+        (f.root / "docs/intent.md").unlink()
+        f.commit()
+        entry = {**ENTRY, "readme_intent_scopes": {"dev": ["."]}}
+        env = {"GITHUB_REPOSITORY": entry["repository"], "GITHUB_REPOSITORY_ID": str(entry["repository_id"])}
+        with patch.dict(os.environ, env):
+            receipt = baseline.run(f.root, f.event(), [entry], FakeApi(f))
+            self.assertEqual(receipt["head"], f.head)
+            with self.assertRaisesRegex(ValueError, "missing required"):
+                baseline.run(f.root, f.event(), [ENTRY], FakeApi(f))
+            for name in ("requirements", "architecture"):
+                path = "docs/" + name + ".md"
+                (f.root / path).unlink()
+                f.commit()
+                with self.subTest(path=path), self.assertRaisesRegex(ValueError, "missing required"):
+                    baseline.run(f.root, f.event(), [entry], FakeApi(f))
+                f.git("restore", "--source", f.base, "--", path)
+
+    def test_selected_admission_refuses_approved_but_invisible_intent(self):
+        f = self.fixture
+        readme = self.write_selected_scope()
+        self.set_selected_base()
+        entry = {**ENTRY, "readme_intent_scopes": {"dev": ["."]}}
+        runtime_identity = {"GITHUB_REPOSITORY": entry["repository"], "GITHUB_REPOSITORY_ID": str(entry["repository_id"])}
+        with patch.dict(os.environ, runtime_identity):
+            for body in ("1.", "[manual]: guide.md", '[manual]:\n  <guide.md>\n  "Reference title"'):
+                f.write("README.md", readme.replace("Keep records.", body))
+                f.commit()
+                with self.subTest(body=body), self.assertRaisesRegex(ValueError, "empty README Intent"):
+                    baseline.run(f.root, f.event(), [entry], FakeApi(f))
+
+    def test_selected_component_has_its_own_chain_and_branch(self):
+        f = self.fixture
+        self.write_selected_scope()
+        self.write_selected_scope("sub")
+        self.set_selected_base()
+        entry = {**ENTRY, "readme_intent_scopes": {"dev": [".", "sub"]}}
+        f.write("sub/README.md", "# Component\n")
+        f.commit()
+        baseline.validate_selected_sources(f.root, entry, "main", f.base, f.head)
+        baseline.validate_selected_sources(f.root, {**ENTRY, "readme_intent_scopes": {"dev": ["."]}}, "dev", f.base, f.head)
+        with self.assertRaisesRegex(ValueError, "missing or empty"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+
+    def test_existing_digest_and_identity_bindings_cannot_be_removed_or_stale(self):
+        f = self.fixture
+        text = self.write_selected_scope()
+        self.set_selected_base()
+        entry = {**ENTRY, "readme_intent_scopes": {"dev": ["."]}}
+        f.write("README.md", text.replace("Keep records.", "Keep logs."))
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "upstream digest"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+        f.write("README.md", text)
+        path = f.root / "docs/requirements.md"
+        metadata = path.read_text()
+        f.write("docs/requirements.md", metadata.replace("intent: goal\n", "intent: another\n"))
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "upstream identity"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+        req = "\n".join(line for line in metadata.split("\n") if not line.startswith("intent_sha256:"))
+        f.write("docs/requirements.md", req)
+        f.write("docs/architecture.md", (f.root / "docs/architecture.md").read_text().replace(
+            hashlib.sha256(metadata.encode()).hexdigest(), hashlib.sha256(req.encode()).hexdigest()))
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "removed governing"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+
+    def test_provisional_scope_preserves_ordinary_text_and_strict_consumer_profile(self):
+        f = self.fixture
+        text = self.write_selected_scope(status="provisional")
+        self.set_selected_base()
+        entry = {**ENTRY, "readme_intent_scopes": {"dev": ["."]}}
+        with self.assertRaisesRegex(ValueError, "complete approved"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+        f.write("README.md", text.replace("Index.", "Run the service."))
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "outside Intent"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+        self.write_selected_scope(status="approved")
+        f.write("src/example.py", "implementation\n")
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "non-definition paths"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+
+    def test_selected_source_refuses_legacy_fallback_and_nonregular_git_objects(self):
+        f = self.fixture
+        self.write_selected_scope()
+        self.set_selected_base()
+        entry = {**ENTRY, "readme_intent_scopes": {"dev": ["."]}}
+        path = f.root / "README.md"
+        path.unlink()
+        path.symlink_to("docs/intent.md")
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "nonregular selected source"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+        path.unlink()
+        f.write("README.md", "# Project\n\n```md\n## Intent\n```\n")
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "missing or empty"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+
+    def test_optional_status_uses_owner_bound_canonical_root(self):
+        f = self.fixture
+        self.write_selected_scope(status=None)
+        self.set_selected_base()
+        entry = {**ENTRY, "readme_intent_scopes": {"dev": ["."]}}
+        f.git("remote", "set-url", "origin", "https://github.com/ForgingAlpha/control-plane")
+        with self.assertRaisesRegex(ValueError, "missing or invalid status"):
+            baseline.validate_selected_sources(f.root, entry, "dev", f.base, f.head)
+        canonical = {**entry, "repository": "ForgingAlpha/control-plane"}
+        baseline.validate_selected_sources(f.root, canonical, "dev", f.base, f.head)
+        f.write("README.md", "# Fixture\n\n## Intent\n\nKeep records.\n")
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "missing YAML frontmatter"):
+            baseline.validate_selected_sources(f.root, canonical, "dev", f.base, f.head)
 
     def test_real_git_docs_and_verified_projection_aliases(self):
         texts = baseline.admit_tree(self.fixture.root, self.fixture.head)
