@@ -6,7 +6,7 @@ tags:
 ---
 # ForgingAlpha/.github - Requirements
 
-> These requirements derive from [intent.md](intent.md). Architecture chooses
+> These requirements derive from [Intent](../README.md#intent). Architecture chooses
 > how this repository satisfies them.
 
 ## Shared CI
@@ -33,9 +33,7 @@ indistinguishable results or weaken required checks while changing producers.
 
 ### REQ-002 - Approved Source Truth
 
-Active repositories SHALL validate approved `docs/intent.md`,
-`docs/requirements.md`, and `docs/architecture.md` before ordinary changes
-merge.
+Active repositories SHALL validate approved Intent, Requirements, and Architecture before ordinary changes merge. For a repository and scope enrolled in the README convention, the sole Intent source is the owning `README.md#intent`. Requirements and Architecture remain in `docs/requirements.md` and `docs/architecture.md`. Other repositories retain the three-file layout. The owning governing decision selects the format for each scope. For the organization workflow, CI reads the repository, target branch, and component selection from the defining workflow’s immutable `actions/ci-org-baseline/enrollment.json`. The shared CI owner maintains that record under human review. A candidate cannot enroll itself; changing a README or a status field grants no approval.
 
 **Fit:** Missing, provisional, or malformed source truth produces actionable
 failure output while a definition-only change can repair it. The exact canonical
