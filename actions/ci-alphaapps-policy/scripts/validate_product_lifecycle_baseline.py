@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import os
 import re
 import subprocess
@@ -381,13 +382,15 @@ def _reference_end(lines: list[str], index: int, text: str) -> int | None:
     return last
 
 
-def _readme_lines(lines: list[str], first: int):
+def _readme_lines(lines: list[str], first: int, containers: list[list[str]] | None = None):
     """Yield root headings and visible prose at their original line indices."""
     fence = html_end = None
     previous_text = False
     list_indent = 0
     quote = False
     definition_end = -1
+    list_lines = None
+    last_quote = -2
     for index in range(first, len(lines)):
         line = lines[index]
         if index <= definition_end:
@@ -410,16 +413,26 @@ def _readme_lines(lines: list[str], first: int):
         content = expanded.lstrip(" ")
         indent = len(expanded) - len(content)
         if not content:
+            if list_indent and list_lines is not None:
+                list_lines.append("")
             previous_text = quote = False
             continue
         if list_indent and indent >= list_indent:
             # Nested fences, HTML and headings cannot govern a root boundary.
+            if list_lines is not None:
+                list_lines.append(expanded[list_indent:])
             previous_text = True
             continue
         if indent >= 4 or content.startswith(">"):
-            quote = content.startswith(">")
+            quote = indent < 4 and content.startswith(">")
             if quote:
                 list_indent = 0
+                if containers is not None:
+                    if last_quote != index - 1:
+                        quote_lines = []
+                        containers.append(quote_lines)
+                    quote_lines.append(content[1:].removeprefix(" "))
+                    last_quote = index
             previous_text = True
             continue
 
@@ -438,6 +451,9 @@ def _readme_lines(lines: list[str], first: int):
             padding = len(item[2])
             list_indent = item.start(2) + (padding if 1 <= padding <= 4 else 1)
             item_text = expanded[list_indent:]
+            if containers is not None:
+                list_lines = [item_text]
+                containers.append(list_lines)
             while nested := _LIST.match(item_text):
                 item_text = item_text[nested.end():]
             if (not item_text.startswith((" ", ">", "<", "#", "`", "~"))
@@ -482,6 +498,36 @@ def _readme_lines(lines: list[str], first: int):
         raise ValueError("unterminated README example or HTML block")
 
 
+# Recognize ordinary link labels without rendering their targets. Ambiguous rich
+# heading syntax in the preamble must never silently take the published anchor.
+_HEADING_LINK = re.compile(r"\[([^\[\]\\]*)\](?:\([^()\\]*\)|\[[^\[\]\\]*\])")
+
+
+def _check_anchor_heading(title: str) -> None:
+    visible = html.unescape(_HEADING_LINK.sub(r"\1", title)).strip().lower()
+    if "![" in title or re.search(r":[A-Za-z0-9_+-]+:", title) or any(char in visible for char in "<>[]$"):
+        raise ValueError("ambiguous inline markup in a README heading before Intent")
+    # Emphasis, backticks and punctuation can disappear in GitHub's anchor.
+    # Keep visible spaces and hyphens, which distinguish e.g. 'In tent'.
+    candidate = "".join(char for char in visible if char.isalnum() or char in " -")
+    if candidate.strip() == "intent":
+        raise ValueError("another README heading can claim the Intent anchor")
+
+
+def _check_earlier_anchors(preamble: list[str], depth: int = 0) -> None:
+    if depth > 32:
+        raise ValueError("excessive README Markdown container nesting before Intent")
+    containers = []
+    for _, heading in _readme_lines(preamble, 0, containers):
+        if heading:
+            title = re.sub(r"[ \t]+#+[ \t]*$", "", heading[2] or "")
+            _check_anchor_heading(title)
+    # A heading inside a quote or list can claim a rendered anchor while never
+    # selecting or ending a governing section. Preserve its own fence/HTML state.
+    for body in containers:
+        _check_earlier_anchors(body, depth + 1)
+
+
 def readme_intent(data: bytes) -> ReadmeIntent:
     """Read the sole top-level Intent section. Canonical bytes exclude navigation."""
     text = data.decode("utf-8")
@@ -511,6 +557,7 @@ def readme_intent(data: bytes) -> ReadmeIntent:
             start = index
     if start is None or not meaningful:
         raise ValueError("missing or empty README Intent section")
+    _check_earlier_anchors(lines[first:start])
     selected = "\n".join(lines[:first] + lines[start:end])
     # Keep the preamble and suffix separate so moving the section across them
     # cannot hide an edit to non-definition text.
@@ -598,6 +645,22 @@ def deleted_baseline_from_statuses(statuses: list[tuple[str, str, str | None]]) 
 
 
 def validate(repo: Path) -> int:
+    # Load only the sibling shipped with this checking action, including under
+    # isolated Python. Never resolve a checking module through the consumer cwd.
+    import importlib.util
+
+    module_path = Path(__file__).resolve().with_name("standalone_readme_intent.py")
+    spec = importlib.util.spec_from_file_location("alphaapps_standalone_intent", module_path)
+    standalone = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = standalone
+    spec.loader.exec_module(standalone)
+    try:
+        if standalone.maybe_validate(repo, sys.modules[__name__]):
+            return 0
+    except (ValueError, OSError, UnicodeError, subprocess.SubprocessError) as error:
+        fail("Protected-base README Intent validation refused", str(error),
+             "preserve the protected source selection and exact source bindings; first migrations require "
+             "approved definitions, and later provisional repairs must change only selected definitions.")
     repo_name = alphaapps_repo_name(repo)
     if repo_name is None:
         print("✓ Source-truth baseline validation skipped: non-ForgingAlpha repo")

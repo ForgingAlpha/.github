@@ -92,6 +92,26 @@ class ReadmeIntentTest(unittest.TestCase):
                 self.assertEqual(policy.readme_intent(example + selected).canonical, selected)
         self.assertEqual(policy.readme_intent(selected + b"# Intent\nDifferent section.").canonical, selected)
 
+    def test_earlier_formatted_and_container_headings_can_claim_the_anchor(self):
+        selected = b"## Intent\nPreserve records.\n"
+        headings = (
+            b"# **Intent**", b"### [Intent](guide.md)", b"## In!tent?",
+            b"# `Intent`", b"#### __INTENT__", b"> ### Intent", b"   > ### Intent",
+            b"- ### **Intent**", b"- First item\n  ## [Intent](guide.md)",
+        )
+        for preceding in headings:
+            with self.subTest(preceding=preceding), self.assertRaises(ValueError):
+                policy.readme_intent(preceding + b"\n\n" + selected)
+        for harmless in (
+            b"# Intent guide", b"    > ### Intent", b"\t> ### Intent", b"<!--\n> ### Intent\n-->",
+            b"```markdown\n- ### **Intent**\n```",
+            b"> ```md\n> ### Intent\n> ```",
+            b"- ```md\n  ### Intent\n  ```",
+        ):
+            with self.subTest(harmless=harmless):
+                self.assertEqual(policy.readme_intent(harmless + b"\n\n" + selected).canonical, selected)
+        self.assertEqual(policy.readme_intent(selected + b"# **Intent**\nLater.").canonical, selected)
+
     def test_inline_comment_endings_and_ambiguous_block_closures(self):
         for terminator in (b"-->", b"--!>"):
             inline = b"## Intent\n! <!-- hidden > words " + terminator
@@ -202,7 +222,10 @@ class ProductLifecycleBaselineValidatorTest(unittest.TestCase):
         self.git("commit", "-m", message)
 
     def run_validator(self, *, auto_base=False, python_flags=(), **overrides):
-        env = os.environ.copy()
+        # Synthetic repositories have no relationship to a hosting CI event.
+        # Standalone route tests supply their own complete provider evidence.
+        env = {key: value for key, value in os.environ.items()
+               if not key.startswith(("GITHUB_", "POLICY_ACTION_"))}
         env["ALPHAAPPS_POLICY_BASE_REF"] = "auto" if auto_base else "main"
         env.update(overrides)
         return subprocess.run(
