@@ -641,6 +641,13 @@ central source, validate its governing documents and tracked Markdown, and admit
 only its declared non-executable inputs. Application profiles SHALL fail when
 their expected manifests or commands are missing rather than select bootstrap.
 
+For a private repository's first definitions, the protection operator MAY enroll
+one open same-repository PR against its README-only initial `dev` commit. The
+enrollment SHALL bind the exact head, governing scopes and required human team.
+CI SHALL verify each scope's provisional README Intent, separate Requirements
+and Architecture, their source identities and upstream digests, and the entire
+document-only tree. A change of head or movement beyond the seed ends eligibility.
+
 **Fit:** Unknown enrollment, changed repository identity, application code,
 executable lint configuration, custom formatters/rules, untracked required
 inputs, malformed configuration and unavailable required evidence fail with

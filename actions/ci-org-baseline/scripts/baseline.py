@@ -137,6 +137,9 @@ def decode(data):
 policy = load_checking_module("org_baseline_policy", "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")
 
 
+first_definition = load_checking_module("org_first_definition", "actions/ci-org-baseline/scripts/first_definition.py")
+
+
 def positive(value):
     return type(value) is int and value > 0
 
@@ -172,7 +175,7 @@ def select(entries, name, repository_id, branch):
     return matches[0]
 
 
-def admit_tree(root, expected_head):
+def admit_tree(root, expected_head, *, definition_scopes=None):
     require(root == root.resolve() and git(root, "rev-parse", "--show-toplevel").decode().strip() == str(root), "explicit physical consumer root required")
     require(SHA.fullmatch(expected_head or "") and git(root, "rev-parse", "HEAD").decode().strip() == expected_head, "consumer checkout is not the exact PR head")
     require(git(root, "rev-parse", "--show-object-format").strip() == b"sha1", "unsupported Git object format")
@@ -183,7 +186,8 @@ def admit_tree(root, expected_head):
     require(raw.endswith(b"\0"), "empty or incomplete tracked inventory")
     records = raw[:-1].split(b"\0")
     require(len(records) <= 512, "bootstrap exceeds 512 tracked inputs")
-    texts, seen, total = {}, set(), 0
+    texts, seen, links, total = {}, set(), set(), 0
+    data_dirs = tuple(("" if scope == "." else scope + "/") + "docs/" for scope in definition_scopes or ())
     for record in records:
         meta, name_bytes = record.split(b"\t", 1)
         mode, kind, oid = meta.decode("ascii").split(" ")
@@ -193,8 +197,15 @@ def admit_tree(root, expected_head):
                 all(p not in {".", ".."} for p in parts) and not any(ord(c) < 32 or ord(c) == 127 or c == "\\" for c in name), "unsafe tracked path")
         require(name not in seen, "duplicate tracked path")
         seen.add(name)
-        require(name == ".gitignore" or (not any(p.startswith(".") for p in parts) and
-                (name.endswith((".md", ".markdown")) or name in DATA_PATHS)), "undeclared executable/config/application input: " + repr(name))
+        hidden = any(part.startswith(".") for part in parts)
+        markdown = name.endswith((".md", ".markdown"))
+        if definition_scopes is None:
+            data_input = name in DATA_PATHS
+            allowed = name == ".gitignore" or (not hidden and (markdown or data_input))
+        else:
+            data_input = name.startswith(data_dirs) and name.endswith(".json") and not first_definition.json_config(parts[-1])
+            allowed = not hidden and (markdown or data_input)
+        require(allowed, "undeclared executable/config/application input: " + repr(name))
         path = root / name
         for parent in path.parents:
             if parent == root:
@@ -203,27 +214,30 @@ def admit_tree(root, expected_head):
         info = path.lstat()
         if mode == "120000":
             require(name in ALIASES and stat.S_ISLNK(info.st_mode) and os.readlink(path) == "PROJECT.md", "unsupported instruction projection link")
+            links.add(name)
             data = b"PROJECT.md"
         else:
             require(mode == "100644" and kind == "blob" and stat.S_ISREG(info.st_mode) and not info.st_mode & 0o111,
                     "bootstrap requires non-executable regular inputs")
             require(info.st_size <= 512 * 1024, "bootstrap input exceeds 512 KiB")
-            with path.open("rb") as stream:
-                data = stream.read(512 * 1024 + 1)
-            require(len(data) <= 512 * 1024, "bootstrap input exceeds 512 KiB")
+            data, info = read_regular(path, 512 * 1024)
+            require(not info.st_mode & 0o111, "bootstrap input became executable")
         total += len(data)
         require(total <= 8 * 1024 * 1024, "bootstrap exceeds 8 MiB")
         require(hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest() == oid,
                 "working input differs from selected Git blob")
         text = data.decode("utf-8")
         require("\0" not in text, "binary bootstrap input")
-        if name in DATA_PATHS:
+        if data_input:
             require(isinstance(decode(data), dict), "declared JSON input must be an object")
         if mode == "100644" and name.endswith((".md", ".markdown")):
             texts[name] = text
-    require(REQUIRED <= seen, "missing required project/governing inputs")
-    target = root / "PROJECT.md"
-    require(stat.S_ISREG(target.lstat().st_mode) and "PROJECT.md" in texts, "instruction projection target must be tracked regular Markdown")
+    if definition_scopes is None:
+        require(REQUIRED <= seen, "missing required project/governing inputs")
+    else:
+        first_definition.check_documents(texts, definition_scopes, policy)
+    if links or definition_scopes is None:
+        require("PROJECT.md" in texts, "instruction projection target must be tracked regular Markdown")
     return texts
 
 
@@ -329,11 +343,26 @@ def prove_pr(api, event, entry):
             require(isinstance(ref, dict) and isinstance(ref.get("repo"), dict), "missing PR repository")
             require(positive(ref["repo"].get("id")) and ref["repo"].get("id") == entry["repository_id"] and ref["repo"].get("full_name") == entry["repository"], "unsupported fork or changed PR repository")
             require(isinstance(ref.get("sha"), str) and SHA.fullmatch(ref["sha"]), "invalid PR commit identity")
+            if entry.get("producer") == "first-definition":
+                require(ref["repo"].get("private") is True, "first definition requires a private repository")
         require(value["base"].get("ref") in entry["branches"], "unqualified PR base branch")
     require(pr["base"]["ref"] == live["base"]["ref"] and all(pr[s]["sha"] == live[s]["sha"] for s in ("base", "head")), "PR base/head moved since event")
     branch = api.get(f'/repos/{entry["repository"]}/branches/{quote(pr["base"]["ref"], safe="")}')
     require(isinstance(branch, dict) and branch.get("commit", {}).get("sha") == pr["base"]["sha"], "base branch moved since event")
+    if entry.get("producer") == "first-definition":
+        require(branch.get("name") == "dev" and branch.get("protected") is True, "first definition requires protected dev")
     return pr["base"]["ref"], pr["base"]["sha"], pr["head"]["sha"]
+
+
+def lint_documents(root, texts):
+    temporary = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()).resolve()
+    require(all(not temporary.is_relative_to(location) for location in (root, SOURCE)),
+            "checking tools must install outside consumer/trusted checkouts")
+    try:
+        checked(["node", str(SOURCE / "actions/ci-markdown/scripts/lint_bootstrap.mjs")], SOURCE,
+                timeout=180, data=json.dumps(texts, ensure_ascii=False).encode())
+    except Refused:
+        raise Refused("central data-only Markdown validation failed") from None
 
 
 def run(root, event, entries, api):
@@ -358,13 +387,7 @@ def run(root, event, entries, api):
     result = subprocess.run([sys.executable, "-I", "-B", str(SOURCE / "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")], cwd=root, env=safe, timeout=45, check=False)
     require(result.returncode == 0, "structural lifecycle validation failed")
     team_configuration(api.rules(entry["repository"], branch), entry)
-    temporary = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()).resolve()
-    require(all(temporary != location and location not in temporary.parents for location in (root, SOURCE)),
-            "Markdown installation must be outside consumer and trusted checkouts")
-    lint_env = {k: v for k, v in safe.items() if k not in {"GITHUB_TOKEN", "GH_TOKEN", "NODE_OPTIONS", "NODE_PATH"}}
-    lint = subprocess.run(["node", str(SOURCE / "actions/ci-markdown/scripts/lint_bootstrap.mjs")],
-                          input=json.dumps(strings, ensure_ascii=False).encode("utf-8"), cwd=SOURCE, env=lint_env, timeout=180, check=False)
-    require(lint.returncode == 0, "central data-only Markdown validation failed")
+    lint_documents(root, strings)
     prove_pr(api, event, entry)
     team_configuration(api.rules(entry["repository"], branch), entry)
     admit_tree(root, head)
@@ -814,9 +837,7 @@ def application_common(root, event, entry, api, plan):
             total += len(data)
             require(total <= 8 * 1024 * 1024 and b"\0" not in data, "Markdown text exceeds supported boundary")
             texts[name] = data.decode("utf-8")
-    checked(["node", str(SOURCE / "actions/ci-markdown/scripts/lint_bootstrap.mjs")], SOURCE, timeout=180, data=json.dumps(texts, ensure_ascii=False).encode())
-    temporary = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()).resolve()
-    require(all(temporary != location and location not in temporary.parents for location in (root, SOURCE)), "checking tools must install outside consumer/trusted checkouts")
+    lint_documents(root, texts)
     values = literal_values()
     lint_env = clean_env() | {"ACTIONLINT_VERSION": values["actionlint_version"], "ACTIONLINT_SHA256": values["actionlint_sha256"]}
     # Isolated output file avoids exposing intermediate outputs as plan authority.
@@ -973,10 +994,38 @@ def source_identity(source_sha):
     require(not git(SOURCE, "status", "--porcelain", "--untracked-files=all"), "trusted checking source is modified")
 
 
-def event_subject(root, event, entries):
-    repo, pr = event.get("repository", {}), event.get("pull_request", {})
-    entry = select(entries, repo.get("full_name"), repo.get("id"), pr.get("base", {}).get("ref"))
-    require(os.environ.get("GITHUB_REPOSITORY") == entry["repository"] and os.environ.get("GITHUB_REPOSITORY_ID") == str(entry["repository_id"]), "event/runtime identity mismatch")
+def event_subject(root, event, entries, *, allow_first_definition=False):
+    repo, pr = event.get("repository"), event.get("pull_request")
+    require(isinstance(repo, dict) and isinstance(pr, dict) and isinstance(pr.get("base"), dict),
+            "malformed consumer event")
+    name, identity, base = repo.get("full_name"), repo.get("id"), pr["base"]
+    require(isinstance(name, str) and positive(identity), "invalid event repository")
+    known = any(e["repository"].casefold() == name.casefold() or e["repository_id"] == identity for e in entries)
+    if known or not allow_first_definition:
+        entry = select(entries, name, identity, base.get("ref"))
+    else:
+        require(re.fullmatch(r"ForgingAlpha/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}", name)
+                and name.casefold() != SOURCE_REPOSITORY.casefold()
+                and repo.get("private") is True and repo.get("html_url") == "https://github.com/" + name
+                and base.get("ref") == "dev", "first definition requires a private same-org dev subject")
+        number, head = event.get("number"), pr.get("head")
+        require(positive(number) and positive(pr.get("number")) and pr["number"] == number
+                and pr.get("state") == "open" and isinstance(head, dict)
+                and isinstance(head.get("ref"), str) and head["ref"]
+                and os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+                and os.environ.get("GITHUB_SERVER_URL") == "https://github.com"
+                and os.environ.get("GITHUB_API_URL") == "https://api.github.com"
+                and os.environ.get("GITHUB_REF") == f"refs/pull/{number}/merge"
+                and os.environ.get("GITHUB_HEAD_REF") == head["ref"] and os.environ.get("GITHUB_BASE_REF") == "dev",
+                "native first-definition PR identity disagrees with runner")
+        git(root, "check-ref-format", "refs/heads/" + head["ref"])
+        for side in (base, head):
+            require(isinstance(side.get("repo"), dict) and side["repo"].get("private") is True
+                    and side["repo"].get("html_url") == repo["html_url"], "private same-repository PR required")
+        entry = {"repository": name, "repository_id": identity, "branches": ["dev"],
+                 "profile": "documentation-bootstrap", "producer": "first-definition"}
+    require(os.environ.get("GITHUB_REPOSITORY") == name and os.environ.get("GITHUB_REPOSITORY_ID") == str(identity),
+            "event/runtime identity mismatch")
     for side in ("head", "base"):
         value = pr.get(side, {})
         require(value.get("repo", {}).get("full_name") == entry["repository"] and type(value.get("repo", {}).get("id")) is int and value["repo"]["id"] == entry["repository_id"] and
@@ -984,11 +1033,35 @@ def event_subject(root, event, entries):
     require(positive(event.get("number")) and git(root, "remote", "get-url", "origin").decode().strip() in
             ("https://github.com/" + entry["repository"], "https://github.com/" + entry["repository"] + ".git"), "invalid PR/origin")
     require(git(root, "rev-parse", "refs/remotes/origin/" + pr["base"]["ref"]).decode().strip() == pr["base"]["sha"], "consumer base checkout mismatch")
+    if entry.get("producer") == "first-definition":
+        require(git(root, "rev-parse", "HEAD").decode().strip() == pr["head"]["sha"], "checkout differs from PR head")
+        verify_seed(root, base["sha"], pr["head"]["sha"])
     return entry
+
+
+def verify_seed(root, base, head):
+    require(base != head and git(root, "rev-parse", "--is-shallow-repository").strip() == b"false",
+            "complete first-definition ancestry required")
+    require(git(root, "rev-list", "--max-parents=0", head).decode().splitlines() == [base],
+            "protected dev must be the candidate's sole ancestor root")
+    seed = git(root, "ls-tree", "-z", "--full-tree", base)
+    require(re.fullmatch(rb"100644 blob [a-f0-9]{40}\tREADME\.md\x00", seed), "dev seed must contain only regular README.md")
+
+
+def registered_definition(api, event, entry):
+    evidence = api.get(f'/repos/{entry["repository"]}/properties/values')
+    return first_definition.registration(evidence, event["number"], event["pull_request"]["head"]["sha"])
 
 
 def current_checks(api, event, entry):
     branch, _, _ = prove_pr(api, event, entry)
+    if entry.get("producer") == "first-definition":
+        require(registered_definition(api, event, entry) == entry["registration"],
+                "first-definition registration changed")
+        rules = api.rules(entry["repository"], branch)
+        team_configuration(rules, {"team_id": entry["registration"]["team_id"], "minimum_approvals": 1})
+        first_definition.required_ci(rules)
+        return
     review = entry.get("review_policy", {"kind": "qualified-team", **entry})
     if review["kind"] == "qualified-team":
         team_configuration(api.rules(entry["repository"], branch), review)
@@ -997,18 +1070,35 @@ def current_checks(api, event, entry):
 def make_plan(root, event, entry, source_sha):
     if entry["profile"] != "documentation-bootstrap":
         return app_plan(root, event, entry, source_sha)
+    if entry.get("producer") == "first-definition":
+        definition = entry["registration"]
+        pr = event["pull_request"]
+        verify_seed(root, pr["base"]["sha"], pr["head"]["sha"])
+        admit_tree(root, pr["head"]["sha"], definition_scopes=definition["scopes"])
+        return {**public_receipt(root, event, [entry], source_sha), "producer": "first-definition",
+                "pr": event["number"], "branch": "dev", "registration": definition,
+                "components": [], "required_jobs": ["baseline"]}
     admit_tree(root, event["pull_request"]["head"]["sha"])
     return {**public_receipt(root, event, [bootstrap_entry(entry)], source_sha), "producer": "bootstrap", "components": [], "required_jobs": ["baseline"]}
 
 
 def staged_main(args, root, event, entries, source_sha):
-    entry = event_subject(root, event, entries)
-    plan = make_plan(root, event, entry, source_sha)
-    if args.stage in ("admit", "finalize"):
+    authenticated = args.stage in ("admit", "finalize")
+    entry = event_subject(root, event, entries, allow_first_definition=authenticated)
+    definition = entry.get("producer") == "first-definition"
+    if definition:
         api = Api(os.environ.get("GITHUB_TOKEN"))
+        entry["registration"] = registered_definition(api, event, entry)
+    plan = make_plan(root, event, entry, source_sha)
+    if authenticated:
+        if not definition:
+            api = Api(os.environ.get("GITHUB_TOKEN"))
         current_checks(api, event, entry)
     if args.stage == "admit":
-        if entry["profile"] == "documentation-bootstrap":
+        if definition:
+            strings = admit_tree(root, plan["head"], definition_scopes=entry["registration"]["scopes"])
+            lint_documents(root, strings)
+        elif entry["profile"] == "documentation-bootstrap":
             run(root, event, [bootstrap_entry(entry)], api)
         else:
             application_common(root, event, entry, api, plan)
@@ -1021,6 +1111,10 @@ def staged_main(args, root, event, entries, source_sha):
         aggregate(plan, decode(os.environ.get("BASELINE_NEEDS", "").encode()))
         current_checks(api, event, entry)
         require(make_plan(root, event, entry, source_sha) == plan, "final inputs changed")
+        if definition:
+            print(json.dumps({"producer": plan["producer"], "head": plan["head"], "base": plan["base"],
+                              "source_sha": source_sha, "plan_sha256": plan_digest(plan), "result": "success"}))
+            return
         print(json.dumps(public_receipt(root, event, [bootstrap_entry(entry)], source_sha) if entry["profile"] == "documentation-bootstrap" else
                          {"schema_version": 2, "plan_sha256": plan_digest(plan), "consumer": plan["consumer"], "head": plan["head"], "base": plan["base"], "source_sha": source_sha, "producer": plan["producer"], "checking_fingerprints": plan["checking_fingerprints"],
                           "required_results": {job: "success" for job in plan["required_jobs"]}, "result": "success"}))

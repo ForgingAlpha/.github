@@ -209,6 +209,16 @@ Profile. It grants no execution or merge authority and does not create a runtime
 profile assignment. Definition-only baseline repair and an enrolled document-only
 profile remain distinct; neither can substitute for the other's conditions.
 
+For an initial private definition PR, the protection operator can select the
+existing workflow on the target repository's `dev` branch and register the exact
+candidate using an organization-managed repository property. The public source
+owns the validation rule. The target property binds the PR number, head, human
+review team and owning scopes. The workflow checks that the protected base is
+the candidate's sole root commit and contains one regular README. It rechecks
+the registration and the protected branch at finalization. The operator removes
+the temporary workflow assignment and property after the definition merges.
+The existing branch-wide CI and human-review rules continue to apply.
+
 Bootstrap accepts only declared document/configuration inputs and refuses
 application content and executable lint configuration before invoking shared
 validators. Structural metadata does not prove human approval or Currentness.
