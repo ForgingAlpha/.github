@@ -613,17 +613,21 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 Normal updates and security remediation are separate, non-overlapping lanes.
 
 Under REQ-012 and REQ-018, standard provisioning gives every maintained
-repository the shared Renovate policy and verifies App access. Where the
+repository the shared Renovate policy, declares Renovate as the sole ordinary
+owner in `.github/update-policy.json`, and verifies App access. Where the
 installed runner supplies inherited configuration, provisioning verifies the
 effective preset. Otherwise it installs a thin repository-local preset
 reference. Each repository supplies its ordinary target and package locations.
 Neither path asks the owner to enable patches or adopt central product CI.
 
-For existing repositories, the rollout owner inventories every current preset
-inheritor before changing a shared reference. If that change would move a
-repository outside the authorized rollout, the owner stages the new policy
-through a separately addressable preset, or otherwise preserves the existing
-effective policy there. For each transfer, verify Renovate discovery, manifest
+For existing repositories, the control-plane operator binds the exact GitHub
+repository identities and their prior routes in the owning control-plane change
+record. The shared-source proposal references that record. Its scope controls
+which existing repositories move in this rollout. New maintained repositories
+receive the standard policy during provisioning. The shared-CI owner compares
+every current preset inheritor with the recorded scope before changing a shared
+reference. If selectors overlap, preserve the existing policy outside scope,
+for example by introducing a separately addressable preset for the new policy. For each transfer, verify Renovate discovery, manifest
 and registry access, the required CI and the hosted target protections.
 Reconcile open routine proposals and keep the existing update owner until the
 successor can take over without a gap or overlap.
@@ -631,7 +635,14 @@ successor can take over without a gap or overlap.
 Required `CI` invokes `ci-update-ownership` with `.github/update-policy.json`,
 the consumer Renovate and Dependabot configurations, and the actual default
 branch. The policy declares its schema version, normal-update owner and base
-branch. The gate checks that each detected surface has exactly one owner,
+branch. Today the gate requires a root `renovate.json` that extends exactly
+one fixed preset. Before using inherited-only configuration or a separately
+addressable preset, the shared-CI owner must qualify the gate and its callers
+against the trusted effective configuration. Exercise the intended preset,
+a missing or substituted preset, a forbidden override, and an existing consumer
+outside scope that still needs its prior policy. Until then, use only the
+qualified local configuration and preserve existing consumers. The gate checks
+that each detected surface has exactly one owner,
 including annotated version literals. Consumers enrolled in centrally assigned runtimes also declare
 `runtime_profile`; their separate runtime-profile gate requires the exact active
 assignment and locked projection. Update ownership alone does not establish

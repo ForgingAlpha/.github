@@ -151,9 +151,11 @@ derived projections rather than independent owners.
 
 Every maintained repository SHALL receive automatic proposals for eligible
 Renovate-owned dependency patches as part of standard repository setup.
-Existing maintained repositories SHALL receive the same policy through the
-qualified transition in REQ-018. No repository-level patch opt-in or CI profile
-enrollment SHALL be required.
+This covers repositories provisioned for ongoing maintenance and existing
+repositories the operator identifies as maintained. Existing repositories move
+to the same policy within their authorized rollout under REQ-018. Dependency
+coverage under REQ-011 continues throughout the transition. No repository-level
+patch opt-in or CI profile enrollment SHALL be required.
 
 Renovate SHALL evaluate normal updates daily. The minimum release ages are
 three days for patches, seven for minors and thirty for majors. Within the
@@ -175,8 +177,8 @@ automation becomes active on protected `main` after its complete gates pass.
 
 ### REQ-013 - Immediate Security Updates
 
-A supported Dependabot security fix SHALL be eligible for a separate proposal
-as soon as it is available, on any day, without a normal release age or weekly
+Dependabot SHALL be able to open a separate proposal as soon as a supported
+security fix is available, on any day, without a normal release age or weekly
 batch window. Security-only Dependabot proposals MAY target the repository's
 protected default `main` directly, including when a separate `dev` exists. Every eligible security
 source proposal, targeting protected `main` or `dev`, SHALL satisfy the common
@@ -187,8 +189,8 @@ proposal as classified or projected security evidence.
 
 The security source target SHALL be verified against the actual protected GitHub
 default branch independently of the ordinary target in REQ-012. When the two
-differ, both bindings and their required checks SHALL be qualified before
-reliance. A change of default SHALL revalidate the affected source, hosted
+differ, each lane SHALL qualify its own binding and required checks before
+relying on that route. A change of default SHALL revalidate the affected source, hosted
 settings and both updater routes. The trusted caller and proof SHALL bind the
 actual source branch, repository, pull request, base and head; branch existence or an untrusted
 proposal field SHALL NOT select a weaker proof. Existing enrolled security consumers
@@ -398,9 +400,10 @@ owned by the protected human-merge path. Dependabot SHALL own security
 remediation and SHALL NOT create normal version-update pull requests.
 
 **Fit:** A transition verifies the intended repository, ordinary target, package
-coverage and updater access before transferring ownership. A shared preset
-change SHALL account for all current inheritors and preserve the existing
-policy of repositories outside the authorized rollout. Required CI validates
+coverage and updater access before transferring ownership. The control-plane
+operator SHALL record the authorized repository identities in the rollout's
+change record. A shared preset change SHALL account for all current inheritors
+and preserve the existing policy outside that recorded scope. Required CI validates
 the central Renovate preset, security-only
 Dependabot configuration, repository coverage, and absence of overlapping
 update ownership. Each enrolled repository declares `renovate` as its sole
