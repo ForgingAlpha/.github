@@ -17,6 +17,8 @@ Shared automation SHALL preserve a stable required result named `CI`. An
 enrolled application repository SHALL additionally require the central baseline
 under a distinct identity. An explicitly enrolled document-only repository MAY
 use its complete central bootstrap result as its initial `CI` producer.
+A repository-owned workflow MAY call the shared language checks directly. Its
+owner SHALL retain the product checks and the required `CI` result.
 An explicitly enrolled full application profile MAY assign its product `CI`
 producer to the central workflow only with complete applicable product checks,
 an unambiguous producer, preserved protection and qualified transition/recovery.
@@ -147,43 +149,48 @@ derived projections rather than independent owners.
 
 ### REQ-012 - Normal Update Cooldown
 
-Renovate-owned normal updates SHALL be evaluated daily with minimum cooldowns
-of three days for patches, seven days for minors, and thirty days for majors.
-Eligible patches, minors, and routine digest refreshes SHALL share one open
-proposal per repository and ordinary target. Renovate SHALL create and
-automatically refresh that batch during Tuesday in `America/New_York`.
-Major upgrades SHALL receive separate proposals when eligible. Dependabot
-security proposals follow REQ-013 independently of this schedule.
+Every maintained repository SHALL receive automatic proposals for eligible
+Renovate-owned dependency patches as part of standard repository setup.
+Existing maintained repositories SHALL receive the same policy through the
+qualified transition in REQ-018. No repository-level patch opt-in or CI profile
+enrollment SHALL be required.
 
-**Fit:** Eligible patch, minor, and major proposals follow REQ-027's ordinary
-route: task proposals to `dev`, reviewed whole-batch consolidation back into `dev`, fixed-snapshot proposals to `staging`,
-then a separate `staging` to `main` promotion. The bounded migration preserves
-each repository's prior route until qualified replacement. An authorized human merges each proposal
-after exact-head `CI` and
-applicable approval. Renovate and platform auto-merge are disabled, including
-policy overrides. Runtime and tool changes use the same path after their exact generated
-locks and integrity data pass CI. Shared automation becomes active only on
-protected `main`, after its complete gates pass. The existing
-updater/default-branch coupling SHALL be reconciled and qualified wherever its
-configured target conflicts with that route; no default-branch or settings change
-is authorized by this requirement alone.
+Renovate SHALL evaluate normal updates daily. The minimum release ages are
+three days for patches, seven for minors and thirty for majors. Within the
+Tuesday window in `America/New_York`, Renovate SHALL create or automatically
+refresh one open batch per repository and ordinary target for eligible patches,
+minors and refreshes of existing digests. It SHALL leave the batch alone outside
+that window unless a human requests a refresh. An empty batch SHALL produce no
+proposal. Eligible majors SHALL receive separate proposals on any day.
+
+**Fit:** A newly provisioned repository with an eligible patch receives the
+Tuesday proposal without an owner enabling patches. A patch below its minimum
+age waits. A second eligible routine update joins the open batch on the same
+target. The ordinary target SHALL match the repository's governed route under
+REQ-027, including its prior route during migration. Runtime and tool proposals
+retain their required locks and integrity checks. An authorized human merges
+each proposal after exact-head `CI` and applicable approval. Renovate and
+platform auto-merge remain disabled, including policy overrides. Shared
+automation becomes active on protected `main` after its complete gates pass.
 
 ### REQ-013 - Immediate Security Updates
 
-Security-only Dependabot proposals MAY target the repository's protected default
-`main` directly, including when a separate `dev` exists. Every eligible security
+A supported Dependabot security fix SHALL be eligible for a separate proposal
+as soon as it is available, on any day, without a normal release age or weekly
+batch window. Security-only Dependabot proposals MAY target the repository's
+protected default `main` directly, including when a separate `dev` exists. Every eligible security
 source proposal, targeting protected `main` or `dev`, SHALL satisfy the common
 classification, exact-patch, current-base, CI, CodeQL and human-merge obligations
 below. Direct-to-main delivery SHALL NOT require a second source merge or a
 cross-branch production projection. Ordinary admission SHALL NOT represent any
 proposal as classified or projected security evidence.
 
-The target branch SHALL be bound to the repository's protected default branch by
-the existing update-ownership contract. CI enrollment does not change that default
-or updater target. Changing that default SHALL reconcile both normal and security
-updater targets, source and hosted settings, and qualify the resulting flow before
-reliance. The trusted caller and proof SHALL bind the actual source
-branch, repository, pull request, base and head; branch existence or an untrusted
+The security source target SHALL be verified against the actual protected GitHub
+default branch independently of the ordinary target in REQ-012. When the two
+differ, both bindings and their required checks SHALL be qualified before
+reliance. A change of default SHALL revalidate the affected source, hosted
+settings and both updater routes. The trusted caller and proof SHALL bind the
+actual source branch, repository, pull request, base and head; branch existence or an untrusted
 proposal field SHALL NOT select a weaker proof. Existing enrolled security consumers
 SHALL retain their proof obligations until their successor flow is reconciled and
 qualified. Missing classification capability or evidence leaves security eligibility
@@ -390,7 +397,11 @@ vulnerability-remediation pull requests. Internal
 owned by the protected human-merge path. Dependabot SHALL own security
 remediation and SHALL NOT create normal version-update pull requests.
 
-**Fit:** Required CI validates the central Renovate preset, security-only
+**Fit:** A transition verifies the intended repository, ordinary target, package
+coverage and updater access before transferring ownership. A shared preset
+change SHALL account for all current inheritors and preserve the existing
+policy of repositories outside the authorized rollout. Required CI validates
+the central Renovate preset, security-only
 Dependabot configuration, repository coverage, and absence of overlapping
 update ownership. Each enrolled repository declares `renovate` as its sole
 normal-update owner; a change of ownership leaves no overlap or unmanaged interval.
@@ -561,7 +572,9 @@ by an applicable authorized human. Separately scoped classification, proposal,
 tag rollout and deployment effects retain their own authorization; none
 authorizes an automated merge or persistent-branch push.
 
-**Fit:** For an enrolled team-review profile, protected-branch rules require the approved human-review team for the
+**Fit:** Team-review verification SHALL be available to repositories that retain
+their own product `CI` producer. For an enrolled team-review profile,
+protected-branch rules require the approved human-review team for the
 complete change and dismiss or invalidate approval when the reviewed head
 changes. A centrally enrolled team-review profile validates fresh effective
 branch rules against its trusted team identity, approval count, coverage and
