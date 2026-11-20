@@ -196,7 +196,7 @@ class FirstDefinitionTests(unittest.TestCase):
         value = self.api.value
         for values in ([], [value, value], [value.replace(":7:", ":6:")], [value.replace(self.f.head, self.f.base)],
                        [value.replace(":41:", ":0:")], [value.replace("engine", "..")], [value.replace("engine", ".")],
-                       [value.replace("engine", "some/dir")], [value + "a" * 75], [value + "é"], [[value]]):
+                       [value.replace(".,engine", "engine")], [value.replace("engine", "some/dir")], [value + "a" * 75], [value + "é"], [[value]]):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 read(*values)
         check = self.api.effective[1]["parameters"]["required_status_checks"][0]

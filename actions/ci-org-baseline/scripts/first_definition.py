@@ -20,6 +20,7 @@ def registration(properties, number, head):
     match = re.fullmatch(r"v1:([1-9][0-9]*):([a-f0-9]{40}):([1-9][0-9]*):([a-zA-Z0-9.,_-]+)", values[0])
     require(match and int(match[1]) == number and match[2] == head, "registration differs from the exact PR/head")
     scopes = match[4].split(",")
+    require("." in scopes, "first definition must include the repository root")
     require(len(set(scopes)) == len(scopes) and all(scope == "." or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", scope)
                                                     for scope in scopes), "invalid registered governing scopes")
     return {"scopes": scopes, "team_id": int(match[3]),
