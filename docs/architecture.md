@@ -51,8 +51,7 @@ REQ-003, REQ-004 and REQ-025. For a central-product profile, lane composition an
 aggregation move to the shared-CI owner; the product owner retains product behavior,
 command meaning and test completeness. Human merge authority does not move.
 Consumers of the existing composites use
-`ForgingAlpha/.github/actions/<action>@main`. Self-CI uses local paths so a pull
-request validates its proposed implementation.
+`ForgingAlpha/.github/actions/<action>@main`. Self-CI exercises proposed implementations locally. Its lifecycle policy step uses the released shared action so the pull request cannot supply the checker that admits its own governing sources. Candidate policy code runs in the local test suites.
 
 Protected branches require the applicable human review, current-revision CI,
 scanning and current-base checks. Repository settings disable auto-merge and

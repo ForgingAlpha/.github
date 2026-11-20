@@ -25,7 +25,9 @@ class MainSourceContractTest(unittest.TestCase):
             self.assertNotIn('write', (job.get('permissions') or {}).values())
         steps = workflow['jobs']['CI']['steps']
         local = {step['uses'] for step in steps if step.get('uses', '').startswith('./')}
-        self.assertTrue({'./actions/ci-alphaapps-policy', './actions/ci-dependency-review',
+        self.assertIn('ForgingAlpha/.github/actions/ci-alphaapps-policy@main',
+                      [step.get('uses') for step in steps])
+        self.assertTrue({'./actions/ci-dependency-review',
                          './actions/ci-github-actions', './actions/ci-markdown',
                          './actions/ci-update-ownership'} <= local)
         # A local candidate parent may not acquire remote-main siblings for self-CI.

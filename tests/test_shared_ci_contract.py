@@ -312,10 +312,10 @@ class SharedCiContractTest(unittest.TestCase):
             "HOW: restore a Validate Shell run step in .github/workflows/ci.yml.",
         )
         validate_shell_run = validate_shell_step.get("run", "")
+        self.assertIn("ForgingAlpha/.github/actions/ci-alphaapps-policy@main", uses)
 
         for expected in (
             "./actions/ci-merge-flow",
-            "./actions/ci-alphaapps-policy",
             "./actions/ci-markdown",
             "./actions/ci-dependency-review",
             "./actions/ci-github-actions",
