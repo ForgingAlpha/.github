@@ -91,6 +91,37 @@ No schema-2 field can select a catalog, checkout, script path, shell command, ru
 version, exclusion glob, CI job name, token or opt-out. Unknown is an error;
 `not-applicable` is an explicit decision with its own predicate, never missing evidence.
 
+## First governing definitions on a private development branch
+
+The protection operator can register one open PR on a previously unenrolled
+private repository. Its protected `dev` must be the unique root commit of the
+registered head, containing only a regular `README.md`. The owner reviews the
+complete candidate inventory before registering that head.
+
+Use an optional string property named `first_definition`, with no default and
+values editable only by organization actors. Its value has the form
+`v1:<PR number>:<full head SHA>:<required team ID>:<scopes>`. Scopes are the
+root `.` and any selected component directories, separated by commas. Set
+the value only on the intended repository. GitHub serves it through the
+repository metadata API. The operator verifies schema ownership and write access
+before assignment. [GitHub custom properties](https://docs.github.com/en/organizations/managing-organization-settings/managing-custom-properties-for-repositories-in-your-organization)
+
+The existing workflow checks the live PR and team rule, all registered
+definitions and their upstream digests, the entire committed inventory and
+every tracked Markdown document. The only permitted JSON inputs are regular
+data objects in a selected scope's governing documentation. The registered Git
+head fixes their paths and bytes. The documents retain provisional status
+throughout this check. A changed head requires a new registration after review.
+
+Apply the existing organization workflow narrowly to the chosen repository's
+`dev` during the definition merge window. The rule covers other PRs targeting
+that branch. For a PR already open, close and reopen it at the registered head
+to trigger the workflow. Inspect the actual workflow source and the single
+successful required `CI` on that PR. Require the existing human team approval.
+After merge, remove that repository's temporary workflow assignment and clear
+its property. Product changes need their applicable CI.
+[Ruleset workflow behavior](https://docs.github.com/en/enterprise-cloud%40latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
+
 ## Complete manifest classification
 
 Inventory comes from the exact committed tree, including all tracked `Cargo.toml`,
