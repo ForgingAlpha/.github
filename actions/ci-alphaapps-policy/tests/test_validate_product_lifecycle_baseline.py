@@ -92,6 +92,19 @@ class ReadmeIntentTest(unittest.TestCase):
                 self.assertEqual(policy.readme_intent(example + selected).canonical, selected)
         self.assertEqual(policy.readme_intent(selected + b"# Intent\nDifferent section.").canonical, selected)
 
+    def test_inline_comment_endings_and_ambiguous_block_closures(self):
+        for terminator in (b"-->", b"--!>"):
+            inline = b"## Intent\n! <!-- hidden > words " + terminator
+            with self.subTest(terminator=terminator), self.assertRaisesRegex(ValueError, "empty"):
+                policy.readme_intent(inline)
+            with_text = inline + b" Preserve records.\n"
+            self.assertEqual(policy.readme_intent(with_text).canonical, with_text)
+        section = b"## Intent\nPreserve records.\n"
+        for comment in (b"<!-- note --!> -->\n", b"<!--\n--!>\n-->\n"):
+            with self.subTest(comment=comment), self.assertRaisesRegex(ValueError, "ambiguous README HTML comment terminator"):
+                policy.readme_intent(comment + section)
+        self.assertEqual(policy.readme_intent(b"<!-- canonical -->\n" + section).canonical, section)
+
     def test_example_heading_inside_real_section_does_not_end_it(self):
         text = b"## Intent\nThe operative statement.\n\n~~~md\n## Example\n~~~\n\nMore.\n"
         self.assertEqual(policy.readme_intent(text + b"## Navigation\nMap.").canonical, text)

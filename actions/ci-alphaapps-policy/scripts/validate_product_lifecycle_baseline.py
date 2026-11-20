@@ -300,7 +300,7 @@ _RAW_TAG = re.compile(r"^ {0,3}<(script|pre|style|textarea)(?=[ \t>]|$)", re.I |
 _RAW_END = re.compile(r"</(?:script|pre|style|textarea)>", re.I | re.ASCII)
 _BLANK = re.compile(r"^[ \t]*$")
 _HTML_DELIMITERS = (
-    (re.compile(r"^ {0,3}<!--"), re.compile("-->")),
+    (re.compile(r"^ {0,3}<!--"), re.compile(r"--!?>")),
     (re.compile(r"^ {0,3}<\?"), re.compile(r"\?>")),
     (re.compile(r"^ {0,3}<!\[CDATA\["), re.compile(r"\]\]>")),
     (re.compile(r"^ {0,3}<![a-zA-Z]"), re.compile(">")),
@@ -329,8 +329,15 @@ def _html_end(line: str, previous_text: bool):
     return None
 
 
+def _html_block_closed(closing: re.Pattern, line: str) -> bool:
+    match = closing.search(line)
+    if match is not None and match[0] == "--!>":
+        raise ValueError("ambiguous README HTML comment terminator")
+    return match is not None
+
+
 def _has_prose(text: str) -> bool:
-    visible = re.sub(r"<!--.*?-->|<[^>]*>", "", text)
+    visible = re.sub(r"<!--.*?--!?>|<[^>]*>", "", text)
     return bool(re.search(r"[^\W_]", visible))
 
 
@@ -389,7 +396,7 @@ def _readme_lines(lines: list[str], first: int):
             previous_text = False
             continue
         if html_end is not None:
-            if html_end.search(line):
+            if _html_block_closed(html_end, line):
                 html_end = None
             continue
 
@@ -452,7 +459,7 @@ def _readme_lines(lines: list[str], first: int):
         if line.lstrip(" ").startswith("<"):
             html_end = _html_end(line, previous_text)
             if html_end is not None:
-                if html_end.search(line):
+                if _html_block_closed(html_end, line):
                     html_end = None
                 previous_text = quote = False
                 list_indent = 0
