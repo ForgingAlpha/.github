@@ -37,7 +37,7 @@ indistinguishable results or weaken required checks while changing producers.
 
 Active repositories SHALL validate approved Intent, Requirements and Architecture before ordinary changes merge. Requirements and Architecture remain in `docs/requirements.md` and `docs/architecture.md`. Intent remains in `docs/intent.md` until the owning repository adopts the README layout. For scopes adopted on a protected branch, the sole Intent source after migration is the owning `README.md#intent`.
 
-The standalone policy action reads `readme_intent_scopes` from the root Requirements on the protected base. The mapping selects the target branch and component directories. The first conversion must preserve the existing approved Intent and source identities. A candidate cannot select its own layout or confer approval.
+The standalone policy action reads `readme_intent_scopes` from the root Requirements on the protected base. The mapping selects the repository root (`["."]`) on `dev` or `main`. The first conversion must preserve the existing approved Intent and source identities. A candidate cannot select its own layout or confer approval.
 
 **Fit:** Missing, provisional, or malformed source truth produces actionable
 failure output while a definition-only change can repair it. The exact canonical
