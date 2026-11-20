@@ -157,18 +157,24 @@ to the same policy within their authorized rollout under REQ-018. Dependency
 coverage under REQ-011 continues throughout the transition. No repository-level
 patch opt-in or CI profile enrollment SHALL be required.
 
-Renovate SHALL evaluate normal updates daily. The minimum release ages are
-three days for patches, seven for minors and thirty for majors. Within the
-Tuesday window in `America/New_York`, Renovate SHALL create or automatically
-refresh one open batch per repository and ordinary target for eligible patches,
-minors and refreshes of existing digests. It SHALL leave the batch alone outside
-that window unless a human requests a refresh. An empty batch SHALL produce no
-proposal. Eligible majors SHALL receive separate proposals on any day.
+Renovate SHALL evaluate normal updates daily and use these minimum release ages.
 
-**Fit:** A newly provisioned repository with an eligible patch receives the
-Tuesday proposal without an owner enabling patches. A patch below its minimum
-age waits. A second eligible routine update joins the open batch on the same
-target. The ordinary target SHALL match the repository's governed route under
+| Routine update | Minimum release age | Proposal |
+| --- | --- | --- |
+| Patch | 3 days | Weekly batch |
+| Minor | 7 days | Weekly batch |
+| Refresh of an existing digest | No semantic release cooldown | Weekly batch |
+| Major | 30 days | Separate PR per upgrade, eligible any day |
+
+When eligible weekly updates exist, Renovate SHALL create or refresh a single
+open batch per repository and ordinary target. Automatic creation and refresh
+SHALL run only on Tuesday in `America/New_York`. A human may request a refresh
+outside the window. An empty batch SHALL produce no PR.
+Security proposal timing is governed by [REQ-013](#req-013---immediate-security-updates).
+
+**Fit:** Standard setup admits an eligible patch without owner action. An
+underage release waits. A second eligible routine update joins the open batch
+in the next permitted run. The ordinary target SHALL match the repository's governed route under
 REQ-027, including its prior route during migration. Runtime and tool proposals
 retain their required locks and integrity checks. An authorized human merges
 each proposal after exact-head `CI` and applicable approval. Renovate and

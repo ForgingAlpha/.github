@@ -148,22 +148,20 @@ These additional steps apply only when the classified source merges into dev.
   canonical consumer config, extending only the central preset with its exact
   base branch; avoid a competing generated config. Change sole update ownership
   with no overlap or unmanaged interval.
-- Inspect a hosted job for the resolved preset, disabled bot/platform auto-merge,
-  3/7/30-day cooldowns, existing proposal limits, runtime exclusions and
-  the first-party Action exclusion. Verify daily evaluation. Check that eligible
-  patches, minors and digest refreshes share one open `weekly-dependencies`
-  branch during Tuesday in `America/New_York`. Check an out-of-window run and
-  a pending-age dependency. Majors and initial pins stay outside that batch.
-  Reconcile any already-open updater PRs against the new proposals.
-- Keep Dependabot security remediation enabled with normal-update capacity zero
-  after Renovate enrollment. Verify every dependency surface has one owner.
-  Apply the organization security configuration to existing eligible repositories
-  and set it as the default for new repositories. Confirm alert and security PR
-  enablement, the source target, and the production route for each supported
-  ecosystem. A local template alone cannot confirm those hosted settings.
-- For new repositories, use the [enrollment templates](../templates/dependabot/README.md)
-  and include the shared ownership and coverage checks in required CI as soon
-  as the repository gains a package, image, or externally versioned Action.
+- Inspect the resolved preset and hosted run history. Compare evaluation frequency,
+  first batch, out-of-window behavior and a pending-age release with [REQ-012](requirements.md#req-012---normal-update-cooldown).
+  Confirm proposal limits, runtime and first-party Action exclusions, and disabled
+  auto-merge. Check major upgrades and initial pins stay outside the batch.
+  Reconcile existing updater PRs at cutover.
+- In GitHub, verify the dependency graph, Dependabot alerts and security updates
+  for each repository in the authorized rollout. An organization security
+  configuration can apply these settings to selected existing repositories.
+  Setting a default for newly created repositories is a separate administrator
+  decision. Check supported manifests on the protected default branch, the
+  security PR target, routine PR suppression, and the production route.
+- When a new repository gains a package, image or externally versioned Action,
+  use the [enrollment templates](../templates/dependabot/README.md) and verify
+  that required CI covers every dependency surface and its update owner.
 - Runtime profile enrollment validates the exact central assignment and locked
   consumer projection. Do not claim automatic runtime projection writes until
   the constrained resolver, writer and rollout gates are qualified. Record

@@ -623,8 +623,7 @@ Neither path asks the owner to enable patches or adopt central product CI.
 For existing repositories, the control-plane operator binds the exact GitHub
 repository identities and their prior routes in the owning control-plane change
 record. The shared-source proposal references that record. Its scope controls
-which existing repositories move in this rollout. New maintained repositories
-receive the standard policy during provisioning. The shared-CI owner compares
+which existing repositories move in this rollout. The shared-CI owner compares
 every current preset inheritor with the recorded scope before changing a shared
 reference. If selectors overlap, preserve the existing policy outside scope,
 for example by introducing a separately addressable preset for the new policy. For each transfer, verify Renovate discovery, manifest
@@ -660,21 +659,14 @@ automation owns the derived consumer mise declaration and lock. Narrow
 annotated custom managers own irreducible version literals. Exact ranges and
 digests remain pinned. Renovate vulnerability remediation is disabled.
 
-Normal updates are evaluated daily. Patches, minors, and majors become eligible
-after three, seven, and thirty days respectively. The shared preset applies a
-Tuesday `America/New_York` package schedule to minor, patch and digest updates.
-All managers contribute eligible updates to the same stable branch per target.
-If no eligible update exists, Renovate opens no batch. Outside Tuesday,
-automatic refreshes wait for the next window. An explicit human rebase can
-refresh an existing batch. Major upgrades retain individual proposals on any
-day after their cooldown. Dependabot security processing has its own event path.
-Renovate proposes ordinary pull requests to dev under REQ-027, followed by whole-batch consolidation into dev and fixed-snapshot integration into
-staging and staging-to-main promotion. Unmigrated repositories retain their
-owner-bound prior route until replacement qualifies. A human merges every PR
-after exact-head CI and applicable approval. Root bot and platform auto-merge
-remain disabled. The validator admits only defined policy shapes; consumer
-configuration cannot override them. `.github` becomes active at its main merge
-after coherent candidate and affected-consumer validation. The receiving repository's
+The [central Renovate preset](../renovate-config.json) implements [REQ-012](requirements.md#req-012---normal-update-cooldown).
+Package rules group eligible updates across managers under the stable
+`weekly-dependencies` branch for each ordinary target. Release-age filtering
+includes Renovate's buffer. Initial pins, replacements and rollbacks keep their
+separate handling. The ownership validator rejects consumer policy overrides.
+REQ-027 governs the ordinary integration route and its migration. Shared
+automation takes effect on protected `main` after coherent candidate and
+affected-consumer validation. The receiving repository's
 change owner accounts for the updater's disposable exploration, whole-unit review
 and refactoring before integration; its release owner accounts for batch identity,
 composition and reconciliation. Those owners consume the shared control-plane's
@@ -695,8 +687,7 @@ For Renovate-owned ecosystems, repository-local Dependabot configuration uses
 effective Dependabot alerts and security updates, supported manifests on the
 actual default branch, and the trusted workflow and required checks on that
 source. A manifest present only on a development branch does not establish
-default-branch security coverage. Supported security fixes are eligible
-immediately, including outside Tuesday and before the normal release age.
+default-branch security coverage.
 
 Security-only Dependabot updates use the repository's protected default branch,
 `main` or `dev`. A default change triggers revalidation of both routes and their

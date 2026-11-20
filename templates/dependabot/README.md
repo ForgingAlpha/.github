@@ -7,7 +7,6 @@ For each new repository with a managed dependency, add the thin root
 ordinary target. Use [this repository's Renovate config](../../renovate.json)
 and [owner declaration](../../.github/update-policy.json) as examples.
 Use `ci-update-ownership` and `ci-dependabot-coverage` in required CI.
-The shared preset owns scheduling, grouping and release ages.
 
 Copy the closest template into `.github/dependabot.yml`, then delete update
 blocks for ecosystems that are not present. Keep normal-update capacity at zero;

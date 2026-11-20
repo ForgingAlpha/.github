@@ -3,6 +3,13 @@
 ForgingAlpha's public CI, dependency, security, and release automation control
 plane.
 
+| Start here | What it answers |
+| --- | --- |
+| [Intent](docs/intent.md) | Why does the organization share this automation? |
+| [Requirements](docs/requirements.md) | What behavior must a repository be able to rely on and verify? |
+| [Architecture](docs/architecture.md) | Which components and owners deliver that behavior? |
+| [Operator checklist](docs/operator-checklist.md) | What does an operator configure and check in GitHub? |
+
 ## Consumer Contract
 
 Every repository exposes one required result named `CI`. Unmigrated callers retain
@@ -240,53 +247,9 @@ the caller.
 
 ## Dependency Proposals
 
-Renovate proposes normal updates through the central preset and a thin consumer
-configuration. This repository uses `renovate.json` with base branch `main`.
-Dependabot prepares officially associated security remediation.
-An applicable authorized human performs every PR merge. Bot and platform
-auto-merge are disabled; classification or a green check does not authorize a merge.
-
-| Update | Minimum release age | Proposal |
-| --- | ---: | --- |
-| Routine patch | 3 days | Tuesday batch |
-| Routine minor | 7 days | Tuesday batch |
-| Routine digest refresh | No semantic release cooldown | Tuesday batch |
-| Major | 30 days | Separate upgrade for human review |
-| Security | No cooldown | Dependabot security PR as soon as a supported fix is available |
-
-Renovate evaluates normal updates daily. On Tuesdays in `America/New_York`
-it creates or refreshes one open `weekly-dependencies` branch per repository
-and target for eligible patches, minors and digest refreshes across managers.
-A release that is still inside its cooldown or Renovate's release-age buffer
-waits for a later run. An empty batch produces no PR. Automatic updates and
-rebases of an open batch wait for the Tuesday window. A maintainer can request
-a rebase explicitly. Initial pins, replacements and rollbacks follow their
-existing separate handling. Dependabot security proposals proceed independently
-of the weekly window. See [the shared preset](renovate-config.json).
-
-During their retained predecessor route, control-plane proposals target protected
-`main`; after migration ordinary proposals follow REQ-027's dev/staging/main route.
-Runtime projections
-remain governed by their central assignments and exact locks; the current
-preset disables direct mise, Node-engine and generic lock-maintenance writes.
-Runtime update automation requires a qualified constrained writer.
-
-Every eligible security source retains trusted classification, exact dependency-patch
-proof, required CI/CodeQL and human approval and merge under REQ-013/014. For a
-separate-dev source, the projector reconstructs only its verified manifest-and-lock
-patch on current `main` after the human source merge. It creates a draft proposal;
-read-only verification precedes human production approval and merge. An eligible
-direct-main source instead has one human merge and read-only source observation;
-it does not create a second PR or use a projection-only attestation. Applicable
-deployment evidence binds the exact resulting revision; shared-source activation
-does not prove product deployment. The direct-source caller and observer remain
-implementation/qualification obligations described in Architecture; this contract
-does not establish that either security path is operational in a consumer.
-
-Installations, hosted settings, caller enrollment and daily execution need
-separate verification. Inspect hosted runs to confirm daily evaluation and
-the first Tuesday batch for each enrolled consumer. Follow the
-[operator checklist](docs/operator-checklist.md) for enrollment and rollout.
+For update timing and eligibility, see the [routine update policy](docs/requirements.md#req-012---normal-update-cooldown) and [security update policy](docs/requirements.md#req-013---immediate-security-updates).
+For updater ownership, branch targets and the route from a security PR to production, see the [dependency and security flow](docs/architecture.md#dependency-and-security-flow).
+To set up or verify a repository, follow the [operator checklist](docs/operator-checklist.md#dependency-proposal-enrollment).
 
 ## Active Shared Source And Recovery
 
@@ -348,9 +311,6 @@ readback; future main merges require no recurring selector update.
 - Ambiguous identity, classification, checks, branch state, or SHA fails closed.
 - The security identity is dedicated and isolated from general agent credentials;
   proposal retries adopt only exact verified state. It has no merge authority.
-
-The durable policy is defined in [Intent](docs/intent.md),
-[Requirements](docs/requirements.md), and [Architecture](docs/architecture.md).
 
 ## Application development containers
 
