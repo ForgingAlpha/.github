@@ -150,18 +150,19 @@ These additional steps apply only when the classified source merges into dev.
   with no overlap or unmanaged interval.
 - Inspect the resolved preset and hosted run history. Compare evaluation frequency,
   first batch, out-of-window behavior and a pending-age release with [REQ-012](requirements.md#req-012---normal-update-cooldown).
-  Confirm proposal limits, runtime and first-party Action exclusions, and disabled
-  auto-merge. Check major upgrades and initial pins stay outside the batch.
+  Confirm proposal limits, runtime and first-party Action exclusions, and that
+  Renovate and GitHub auto-merge are both disabled. Check major upgrades and initial pins stay outside the batch.
   Reconcile existing updater PRs at cutover.
-- In GitHub, verify the dependency graph, Dependabot alerts and security updates
-  for each repository in the authorized rollout. An organization security
+- For each new maintained repository at setup and each existing repository at
+  cutover, verify in GitHub that the dependency graph, Dependabot alerts and
+  security updates are enabled. Confirm required CI detects exactly one update
+  owner for every dependency surface. An organization security
   configuration can apply these settings to selected existing repositories.
   Setting a default for newly created repositories is a separate administrator
   decision. Check supported manifests on the protected default branch, the
   security PR target, routine PR suppression, and the production route.
 - When a new repository gains a package, image or externally versioned Action,
-  use the [enrollment templates](../templates/dependabot/README.md) and verify
-  that required CI covers every dependency surface and its update owner.
+  use the [enrollment templates](../templates/dependabot/README.md) to configure its ecosystems and manifest paths.
 - Runtime profile enrollment validates the exact central assignment and locked
   consumer projection. Do not claim automatic runtime projection writes until
   the constrained resolver, writer and rollout gates are qualified. Record

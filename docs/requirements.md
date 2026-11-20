@@ -166,8 +166,8 @@ Renovate SHALL evaluate normal updates daily and use these minimum release ages.
 | Refresh of an existing digest | No semantic release cooldown | Weekly batch |
 | Major | 30 days | Separate PR per upgrade, eligible any day |
 
-When eligible weekly updates exist, Renovate SHALL create or refresh a single
-open batch per repository and ordinary target. Automatic creation and refresh
+For eligible updates marked “Weekly batch” above, Renovate SHALL create or
+refresh a single open batch per repository and ordinary target. Automatic creation and refresh
 SHALL run only on Tuesday in `America/New_York`. A human may request a refresh
 outside the window. An empty batch SHALL produce no PR.
 Security proposal timing is governed by [REQ-013](#req-013---immediate-security-updates).
