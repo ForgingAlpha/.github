@@ -589,9 +589,12 @@ jobs:
 ```
 
 The verifier checks the current target repository ID and protected branch tip.
-On a PR it checks the open PR's base, head repository and commit, and test merge
-against the native event and runner. A fork head is read through the target PR
-only. On a push it checks the pushed commit against the current branch and
+On a PR it checks the open PR's target branch, submitted head repository and
+commit, and current test merge against the native run. It reads the run's exact
+merge commit from the target repository and requires its ordered parents to be
+the current protected base and submitted head. The receipt records the event's
+base snapshot separately. A fork head is read through the target PR only.
+On a push it checks the pushed commit against the current branch and
 records the event's before/after commits. A moved subject or unavailable
 metadata fails the job. GitHub supplies the defining reusable workflow SHA
 separately from the caller revision. [Actions job context](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#job-context)

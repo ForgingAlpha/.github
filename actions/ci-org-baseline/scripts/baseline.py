@@ -47,6 +47,7 @@ def load_checking_module(name, path):
 
 GIT_OUTPUT_LIMIT = 1024 * 1024
 GIT_TIMEOUT = 30
+ORGANIZATION_HUMAN_REVIEW = {"team_id": 20299307, "minimum_approvals": 1}
 
 
 class Refused(ValueError):
@@ -255,7 +256,9 @@ def team_configuration(rules, entry):
         for reviewer in reviewers:
             require(isinstance(reviewer, dict) and isinstance(reviewer.get("reviewer"), dict), "malformed required reviewer")
             identity, minimum, patterns = reviewer["reviewer"], reviewer.get("minimum_approvals"), reviewer.get("file_patterns")
-            require(positive(minimum) and isinstance(patterns, list) and all(isinstance(p, str) for p in patterns), "malformed reviewer policy")
+            # GitHub uses zero for visibility-only reviewers. Only the enrolled team's threshold counts below.
+            require(type(minimum) is int and minimum >= 0 and isinstance(patterns, list)
+                    and all(isinstance(p, str) for p in patterns), "malformed reviewer policy")
             if (identity.get("type") == "Team" and type(identity.get("id")) is int and identity["id"] == entry["team_id"] and
                     minimum >= entry["minimum_approvals"] and count >= entry["minimum_approvals"] and stale and "*" in patterns):
                 matched = True

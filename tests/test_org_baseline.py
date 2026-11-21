@@ -415,6 +415,20 @@ class EvidenceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 baseline.team_configuration(absent, ENTRY)
 
+    def test_visibility_only_team_does_not_satisfy_or_invalidate_the_required_review(self):
+        evidence = rules()
+        reviewers = evidence[0]["parameters"]["required_reviewers"]
+        optional = {"reviewer": {"type": "Team", "id": ENTRY["team_id"] + 1},
+                    "minimum_approvals": 0, "file_patterns": ["docs/**"]}
+        reviewers.append(optional)
+        baseline.team_configuration(evidence, ENTRY)
+        for malformed in (False, -1, "0"):
+            with self.subTest(malformed=malformed), patch.dict(optional, minimum_approvals=malformed), self.assertRaises(ValueError):
+                baseline.team_configuration(evidence, ENTRY)
+        reviewers[0]["minimum_approvals"] = 0
+        with self.assertRaisesRegex(ValueError, "weaker than enrollment"):
+            baseline.team_configuration(evidence, ENTRY)
+
     def test_complete_bounded_pagination_refuses_cross_host(self):
         api = baseline.Api("not-a-real-token")
         path = f'/repos/{ENTRY["repository"]}/rules/branches/dev'

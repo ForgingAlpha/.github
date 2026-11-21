@@ -63,11 +63,13 @@ class TeamReviewTests(unittest.TestCase):
                     "DEFINING_SHA": self.sha, "GITHUB_TOKEN": TOKEN}
         self.prefix = "/repos/" + NAME
         self.rules_path = self.prefix + "/rules/branches/dev?per_page=100&page=1"
+        self.merge_path = self.prefix + "/git/commits/" + MERGE
+        self.merge = {"sha": MERGE, "parents": [{"sha": BASE}, {"sha": HEAD}]}
         self.rule = copy.deepcopy(RULE)
         self.live_pr = copy.deepcopy(self.pr)
         self.branch = {"name": "dev", "protected": True, "commit": {"sha": BASE}}
         self.responses = {self.prefix: REPO.copy(), self.prefix + "/pulls/42": self.live_pr,
-                          self.prefix + "/branches/dev": self.branch, self.rules_path: [self.rule]}
+                          self.prefix + "/branches/dev": self.branch, self.merge_path: self.merge, self.rules_path: [self.rule]}
         self.links = {}
         self.calls = []
 
@@ -147,11 +149,28 @@ class TeamReviewTests(unittest.TestCase):
                 self.pr["head"]["repo"] = self.live_pr["head"]["repo"] = source
                 self.calls.clear()
                 result = self.run_entry()
-                self.assertEqual(result["pull_request"], {"number": 42, "base": BASE, "head": HEAD, "merge": MERGE,
+                self.assertEqual(result["pull_request"], {"number": 42, "event_base": BASE, "base": BASE, "head": HEAD, "merge": MERGE,
                                  "head_repository": source["full_name"], "head_repository_id": source["id"]})
                 self.assertEqual(result["source_sha"], self.sha)
-                self.assertEqual(self.calls, [self.prefix, self.prefix + "/pulls/42", self.prefix + "/branches/dev",
+                self.assertEqual(self.calls, [self.prefix, self.prefix + "/pulls/42", self.merge_path, self.prefix + "/branches/dev",
                                               self.rules_path, second])
+
+    def test_current_run_merge_with_older_event_snapshot(self):
+        old_base = "d" * 40
+        self.pr["base"]["sha"] = old_base
+        for old_merge in (None, "e" * 40):
+            with self.subTest(old_merge=old_merge), patch.dict(self.pr, merge_commit_sha=old_merge):
+                receipt = self.run_entry()["pull_request"]
+                self.assertEqual((receipt["event_base"], receipt["base"], receipt["head"], receipt["merge"]),
+                                 (old_base, BASE, HEAD, MERGE))
+
+    def test_run_merge_must_have_current_base_and_submitted_head_as_ordered_parents(self):
+        old = "d" * 40
+        for parents in ([old, HEAD], [BASE, old], [HEAD, BASE], [BASE], [BASE, HEAD, old]):
+            with self.subTest(parents=parents), patch.dict(self.merge, parents=[{"sha": sha} for sha in parents]):
+                self.refused()
+        with patch.dict(self.merge, sha=old):
+            self.refused()
 
     def test_push_records_exact_before_and_after_and_rejects_moved_or_deleted_branch(self):
         self.event = {"repository": REPO, "ref": "refs/heads/dev", "after": BASE, "before": HEAD, "deleted": False}
@@ -163,6 +182,14 @@ class TeamReviewTests(unittest.TestCase):
                                 (self.branch, "commit", {"sha": MERGE})):
             with self.subTest(key=key), patch.dict(obj, {key: value}):
                 self.refused()
+
+    def test_visibility_only_reviewer_can_accompany_the_required_team(self):
+        reviewers = self.rule["parameters"]["required_reviewers"]
+        reviewers.append({"reviewer": {"type": "Team", "id": 721}, "minimum_approvals": 0,
+                          "file_patterns": ["docs/**"]})
+        self.assertEqual(self.run_entry()["team_id"], 20299307)
+        reviewers[0]["minimum_approvals"] = 0
+        self.refused()
 
     def test_unreadable_partial_wrong_source_or_weak_policy(self):
         params = self.rule["parameters"]
