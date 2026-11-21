@@ -19,12 +19,17 @@ def registration(properties, number, head):
             "missing, ambiguous or invalid first-definition registration")
     match = re.fullmatch(r"v1:([1-9][0-9]*):([a-f0-9]{40}):([1-9][0-9]*):([a-zA-Z0-9.,_-]+)", values[0])
     require(match and int(match[1]) == number and match[2] == head, "registration differs from the exact PR/head")
-    scopes = match[4].split(",")
+    return {"scopes": parse_scopes(match[4]), "team_id": int(match[3]),
+            "registration_sha256": hashlib.sha256(values[0].encode("ascii")).hexdigest()}
+
+
+def parse_scopes(raw):
+    require(isinstance(raw, str) and 0 < len(raw) <= 1024, "missing or oversized governing scopes")
+    scopes = raw.split(",")
     require("." in scopes, "first definition must include the repository root")
     require(len(set(scopes)) == len(scopes) and all(scope == "." or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", scope)
                                                     for scope in scopes), "invalid registered governing scopes")
-    return {"scopes": scopes, "team_id": int(match[3]),
-            "registration_sha256": hashlib.sha256(values[0].encode("ascii")).hexdigest()}
+    return scopes
 
 
 def json_config(name):
@@ -64,12 +69,12 @@ def check_bindings(kind, text, values, upstream):
     # Both documentary forms bind the ID in metadata. The digest is either a
     # metadata field or explicitly attached to the upstream link in the opening.
     targets = {"intent": "../README.md#intent", "requirements": "requirements.md"}
-    found = set()
+    counts = dict.fromkeys(upstream, 0)
     for name, (identity, digest) in upstream.items():
         require(values.get(name) == identity, "wrong or missing governing identity in " + kind)
         if name + "_sha256" in values:
             require(values[name + "_sha256"] == digest, "wrong governing digest in " + kind)
-            found.add(name)
+            counts[name] += 1
     opening = text.split("\n## ", 1)[0]
     for link in LINK.finditer(opening):
         label, target = link.groups()
@@ -85,8 +90,9 @@ def check_bindings(kind, text, values, upstream):
             require(name is not None, "digest link has wrong governing target in " + kind)
             value = DIGEST_LITERAL.match(opening, prose.end()) if prose else table
             require(value and value[1] == upstream[name][1], "wrong governing link digest in " + kind)
-            found.add(name)
-    require(found == set(upstream), "missing upstream governing digest in " + kind)
+            counts[name] += 1
+    require(all(counts.values()), "missing upstream governing digest in " + kind)
+    return counts
 
 
 def governing_lines(text, policy):
@@ -103,7 +109,7 @@ def governing_lines(text, policy):
     return lines
 
 
-def check_documents(texts, scopes, policy):
+def check_documents(texts, scopes, policy, *, allow_approved=False):
     prefixes = [("" if scope == "." else scope + "/") for scope in scopes]
     selected = {prefix + name for prefix in prefixes
                 for name in ("README.md", "docs/requirements.md", "docs/architecture.md")}
@@ -114,7 +120,8 @@ def check_documents(texts, scopes, policy):
         if lower.endswith(("/docs/requirements.md", "/docs/architecture.md")) or (
                 lower.endswith("/readme.md") and INTENT_HEADING.search(text)):
             require(path in selected, "unregistered governing scope or source")
-    identities = set()
+    identities, documents = set(), {}
+    statuses = {"approved", "provisional"} if allow_approved else {"provisional"}
     for prefix in prefixes:
         readme = texts[prefix + "README.md"]
         governing_lines(readme, policy)
@@ -122,17 +129,19 @@ def check_documents(texts, scopes, policy):
         upstream = {}
         for kind in ("intent", "requirements", "architecture"):
             if kind == "intent":
-                values, data = intent.metadata, intent.canonical
+                values, data, bindings = intent.metadata, intent.canonical, {}
             else:
                 text = texts[prefix + "docs/" + kind + ".md"]
                 lines = governing_lines(text, policy)
                 values, end = policy.leading_metadata(lines)
                 require(any(line.startswith("# ") for line in lines[end:]), "missing governing document title")
-                check_bindings(kind, "\n".join(lines[end:]), values, upstream)
+                bindings = check_bindings(kind, "\n".join(lines[end:]), values, upstream)
                 data = text.encode()
             identity = values.get("id")
-            require(values.get("status") == "provisional" and isinstance(identity, str) and
+            require(isinstance(values.get("status"), str) and values["status"] in statuses and isinstance(identity, str) and
                     re.fullmatch(r"[^\s\x00-\x1f\x7f]{1,512}", identity) and identity not in identities,
-                    "provisional governing sources require distinct authored IDs")
+                    "invalid authored status or governing identity")
             identities.add(identity)
             upstream[kind] = identity, hashlib.sha256(data).hexdigest()
+            documents[prefix + kind] = values, bindings
+    return documents
