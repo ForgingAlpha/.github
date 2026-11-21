@@ -47,6 +47,7 @@ def load_checking_module(name, path):
 
 GIT_OUTPUT_LIMIT = 1024 * 1024
 GIT_TIMEOUT = 30
+ORGANIZATION_HUMAN_REVIEW = {"team_id": 20299307, "minimum_approvals": 1}
 
 
 class Refused(ValueError):

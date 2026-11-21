@@ -26,7 +26,7 @@ class DocsApi(PropertyApi):
         super().__init__(fixture)
         self.number = event["number"]
         self.live = copy.deepcopy(event["pull_request"])
-        self.effective[0]["parameters"]["required_reviewers"][0]["reviewer"]["id"] = check.HUMAN_TEAM_ID
+        self.effective[0]["parameters"]["required_reviewers"][0]["reviewer"]["id"] = baseline.ORGANIZATION_HUMAN_REVIEW["team_id"]
         self.reads = []
 
     def get(self, path):

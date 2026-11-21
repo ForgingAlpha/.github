@@ -11,7 +11,6 @@ import sys
 ACTION = Path(__file__).resolve().parent
 SOURCE = ACTION.parents[1]
 CALLER = ".github/workflows/ci.yml"
-HUMAN_TEAM_ID = 20299307
 sys.dont_write_bytecode = True
 
 
@@ -61,7 +60,7 @@ def preserve_sources(prior, current):
 def current_protection(baseline, api, event, entry):
     branch, _, _ = baseline.prove_pr(api, event, entry)
     rules = api.rules(entry["repository"], branch)
-    baseline.team_configuration(rules, {"team_id": HUMAN_TEAM_ID, "minimum_approvals": 1})
+    baseline.team_configuration(rules, baseline.ORGANIZATION_HUMAN_REVIEW)
     baseline.first_definition.required_ci(rules)
 
 
