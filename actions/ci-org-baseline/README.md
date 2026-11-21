@@ -284,8 +284,8 @@ admission and without secrets. They are not trusted policy assertions.
 
 ## Existing tool literal custody
 
-The current renovate.json only extends renovate-config.json. Neither has a custom
-manager, and validate_central_preset rejects unknown manager configuration. There are
+The approved Renovate presets contain no custom manager. The update-ownership
+validator rejects unapproved manager configuration. There are
 no literal-manager file patterns to relocate. Keep existing actionlint version/checksum,
 mise setup version and cargo-audit version values at their current action-owner YAML
 paths, without creating new version selections or changing update policy. Extracted
