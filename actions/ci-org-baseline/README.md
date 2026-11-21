@@ -570,3 +570,45 @@ its separately reviewed human-merged consumer source change and observed valid-p
 invalid-block enforcement. Failed, cancelled, skipped or absent restored CI is not
 recovery. Unknown mutation outcomes require reconciliation before retry. This source
 change performs none of those effects and keeps all actual catalog assignments intact.
+
+## Verify the organization team-review rule from repository CI
+
+A repository-owned workflow can call the shared verifier in a separate job on
+`pull_request` and `push` events for `dev`, `staging` or `main`. The caller
+must already have the scoped read access below. The workflow accepts no inputs
+or secrets. It uses the ordinary job token and checks out only its own
+protected-main definition at the resolved commit.
+
+```yaml
+jobs:
+  team-review:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ForgingAlpha/.github/.github/workflows/verify-team-review.yml@main
+```
+
+The verifier checks the current target repository ID and protected branch tip.
+On a PR it checks the open PR's target branch, submitted head repository and
+commit, and current test merge against the native run. It reads the run's exact
+merge commit from the target repository and requires its ordered parents to be
+the current protected base and submitted head. The receipt records the event's
+base snapshot separately. A fork head is read through the target PR only.
+On a push it checks the pushed commit against the current branch and
+records the event's before/after commits. A moved subject or unavailable
+metadata fails the job. GitHub supplies the defining reusable workflow SHA
+separately from the caller revision. [Actions job context](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#job-context)
+
+The active organization rule `25795345` must require stale-review dismissal,
+at least one approval, and at least one approval from team `20299307` using
+the canonical file list `["*"]`. Later exclusions can remove paths from a
+wildcard match. GitHub serves active rules through its metadata-read endpoint.
+[Effective branch rules](https://docs.github.com/en/rest/repos/rules#get-rules-for-a-branch) · [Required reviewers](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#required-reviewers)
+
+A passing job records the readable rule and revision. Before relying on it for
+a cutover, the protection operator must verify the designated team's human
+membership, eligibility and Write grant, bypass settings, and effective coverage
+of all paths. The operator must also qualify the exact hosted caller, event,
+revision and emitting App and prove a proposed change cannot skip or replace the
+required check. Keep existing repository CI and CODEOWNERS checks until that
+target has hosted valid-pass and invalid-block evidence.
