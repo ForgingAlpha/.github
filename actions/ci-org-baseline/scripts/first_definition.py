@@ -62,13 +62,78 @@ LINK = re.compile(r"\[([^\]\n]{1,256})\]\(([^\s)]{1,1024})\)")
 PROSE_DIGEST = re.compile(r",?\s+(?:at\s+)?SHA-256\s+")
 DIGEST_LITERAL = re.compile(r"`([a-f0-9]{64})`")
 TABLE_DIGEST = re.compile(r"[ \t]*\|[ \t]*`([a-f0-9]{64})`")
+README_TARGETS = {"../README.md#intent": "intent", "requirements.md": "requirements"}
 INTENT_HEADING = re.compile(r"(?im)^ {0,3}#{1,6}[ \t]+intent[ \t#]*$")
 
 
-def check_bindings(kind, text, values, upstream):
+# Original per-source label and suffix grammar. Search once per closing
+# parenthesis so even long historic target spellings stay bounded by the input.
+_HISTORICAL_LABELS = (r"(?:Product )?Intent", r"Requirements")
+_HISTORICAL_PROSE = re.compile(r",? (?:at )?SHA-256\s*`([a-f0-9]{64})`")
+_HISTORICAL_TABLE = re.compile(r" \| `([a-f0-9]{64})` \|")
+_HISTORICAL_OPENERS = {
+    table: tuple(re.compile((r"\| " if table else "") + r"\[(" + label + r")\]\(") for label in _HISTORICAL_LABELS)
+    for table in (True, False)
+}
+_PRODUCT_PROSE_DIGEST = re.compile(r",?\s+(?:at\s+)?SHA-256\s*")
+
+
+def historical_links(text):
+    start = 0
+    for close in re.finditer(r"\)", text):
+        end = close.start()
+        prose = _HISTORICAL_PROSE.match(text, end + 1)
+        table = _HISTORICAL_TABLE.match(text, end + 1)
+        if prose or table:
+            left = max(start, text.rfind("\n", start, end) + 1)
+            for opener in _HISTORICAL_OPENERS[table is not None]:
+                label = opener.search(text, left, end)
+                if label and label.end() < end:
+                    yield label.start(1) - 1, label[1], text[label.end():end], (prose or table)[1]
+        start = end + 1
+
+
+def opening_links(text, *, product=False):
+    historical = {}
+    if product:
+        for position, label, target, digest in historical_links(text):
+            historical[position] = label, target, digest
+    prose_form = _PRODUCT_PROSE_DIGEST if product else PROSE_DIGEST
+    for link in LINK.finditer(text):
+        if link.start() in historical:
+            continue
+        prose = prose_form.match(text, link.end())
+        table = TABLE_DIGEST.match(text, link.end())
+        digest = None
+        if prose or table:
+            value = DIGEST_LITERAL.match(text, prose.end()) if prose else table
+            digest = value[1] if value else ""
+        yield link[1], link[2], digest, False
+    for label, target, digest in historical.values():
+        yield label, target, digest, True
+
+
+def governing_link_name(label, target, targets, *, product=False, legacy=False):
+    """Recognize a governing target or a label claiming one."""
+    name = targets.get(target)
+    qualifiers = r"(?:[\w -]+ )?"
+    if product and name is None:
+        # Qualified external sources such as an organization's requirements
+        # can carry checksums. A label claiming the selected source cannot
+        # redirect its binding to such evidence.
+        qualifiers = r"(?:(?:product|platform|component|scoped|local(?: development)?|development) )?"
+    named = next((source for source in targets.values()
+                  if re.fullmatch(qualifiers + source, label, re.IGNORECASE)), None)
+    if legacy:
+        return name or named
+    require(not named or named == name, "wrong upstream governing link")
+    return name
+
+
+def check_bindings(kind, text, values, upstream, *, allow_supporting_evidence=False):
     # Both documentary forms bind the ID in metadata. The digest is either a
     # metadata field or explicitly attached to the upstream link in the opening.
-    targets = {"intent": "../README.md#intent", "requirements": "requirements.md"}
+    targets = {target: name for target, name in README_TARGETS.items() if name in upstream}
     counts = dict.fromkeys(upstream, 0)
     for name, (identity, digest) in upstream.items():
         require(values.get(name) == identity, "wrong or missing governing identity in " + kind)
@@ -76,20 +141,18 @@ def check_bindings(kind, text, values, upstream):
             require(values[name + "_sha256"] == digest, "wrong governing digest in " + kind)
             counts[name] += 1
     opening = text.split("\n## ", 1)[0]
-    for link in LINK.finditer(opening):
-        label, target = link.groups()
-        name = next((key for key in upstream if target == targets[key]), None)
-        prose = PROSE_DIGEST.match(opening, link.end())
-        table = TABLE_DIGEST.match(opening, link.end())
+    for label, target, digest, _ in opening_links(opening, product=allow_supporting_evidence):
         # Bind the label and local link independently of the digest form.
-        if prose or table or not target.startswith(("https://", "http://")):
-            for key in upstream:
-                if re.fullmatch(r"(?:[\w -]+ )?" + key, label, flags=re.IGNORECASE):
-                    require(target == targets[key], "wrong local governing link in " + kind)
-        if prose or table:
-            require(name is not None, "digest link has wrong governing target in " + kind)
-            value = DIGEST_LITERAL.match(opening, prose.end()) if prose else table
-            require(value and value[1] == upstream[name][1], "wrong governing link digest in " + kind)
+        if digest is None and target.startswith(("https://", "http://")):
+            continue
+        evidence_link = allow_supporting_evidence and digest is not None
+        name = governing_link_name(label, target, README_TARGETS if evidence_link else targets,
+                                   product=allow_supporting_evidence)
+        if digest is not None:
+            if evidence_link and name is None:
+                continue
+            require(name in upstream, "digest link has wrong governing target in " + kind)
+            require(digest == upstream[name][1], "wrong governing link digest in " + kind)
             counts[name] += 1
     require(all(counts.values()), "missing upstream governing digest in " + kind)
     return counts
@@ -109,7 +172,7 @@ def governing_lines(text, policy):
     return lines
 
 
-def check_documents(texts, scopes, policy, *, allow_approved=False):
+def check_scope_inventory(texts, scopes):
     prefixes = [("" if scope == "." else scope + "/") for scope in scopes]
     selected = {prefix + name for prefix in prefixes
                 for name in ("README.md", "docs/requirements.md", "docs/architecture.md")}
@@ -120,6 +183,11 @@ def check_documents(texts, scopes, policy, *, allow_approved=False):
         if lower.endswith(("/docs/requirements.md", "/docs/architecture.md")) or (
                 lower.endswith("/readme.md") and INTENT_HEADING.search(text)):
             require(path in selected, "unregistered governing scope or source")
+    return prefixes
+
+
+def check_documents(texts, scopes, policy, *, allow_approved=False, allow_supporting_evidence=False):
+    prefixes = check_scope_inventory(texts, scopes)
     identities, documents = set(), {}
     statuses = {"approved", "provisional"} if allow_approved else {"provisional"}
     for prefix in prefixes:
@@ -135,7 +203,8 @@ def check_documents(texts, scopes, policy, *, allow_approved=False):
                 lines = governing_lines(text, policy)
                 values, end = policy.leading_metadata(lines)
                 require(any(line.startswith("# ") for line in lines[end:]), "missing governing document title")
-                bindings = check_bindings(kind, "\n".join(lines[end:]), values, upstream)
+                bindings = check_bindings(kind, "\n".join(lines[end:]), values, upstream,
+                                          allow_supporting_evidence=allow_supporting_evidence)
                 data = text.encode()
             identity = values.get("id")
             require(isinstance(values.get("status"), str) and values["status"] in statuses and isinstance(identity, str) and
