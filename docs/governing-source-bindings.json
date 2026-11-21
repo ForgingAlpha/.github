@@ -1,0 +1,95 @@
+{
+  "schema_version": 3,
+  "sources": [
+    {
+      "id": "README.md#intent",
+      "path": "README.md#intent",
+      "sha256": "e315d68720827b92eb72f0d85ee7ec74e1a523c9edd0791731701462d5bf3713",
+      "upstream": []
+    },
+    {
+      "id": "README.md#requirements",
+      "path": "README.md#requirements",
+      "sha256": "3d540ac53422b371d843d5c9943ada30fb4670c7968b9a9f119ca0b7e0cba860",
+      "upstream": [
+        {
+          "path": "README.md#intent",
+          "sha256": "e315d68720827b92eb72f0d85ee7ec74e1a523c9edd0791731701462d5bf3713"
+        }
+      ]
+    },
+    {
+      "id": "README.md#architecture",
+      "path": "README.md#architecture",
+      "sha256": "f4dde1dbbbd25ef781d9289869a07be8316ced99f89a59bc8021947356a05428",
+      "upstream": [
+        {
+          "path": "README.md#intent",
+          "sha256": "e315d68720827b92eb72f0d85ee7ec74e1a523c9edd0791731701462d5bf3713"
+        },
+        {
+          "path": "README.md#requirements",
+          "sha256": "3d540ac53422b371d843d5c9943ada30fb4670c7968b9a9f119ca0b7e0cba860",
+          "detail_sha256": "b25f86d85381363cdc7828d7acdb34a6c48f29e9e3feaf38a7259dc6a66addf6"
+        }
+      ]
+    },
+    {
+      "id": "docs/requirements.md",
+      "path": "docs/requirements.md",
+      "sha256": "b25f86d85381363cdc7828d7acdb34a6c48f29e9e3feaf38a7259dc6a66addf6",
+      "upstream": [
+        {
+          "path": "README.md#requirements",
+          "sha256": "3d540ac53422b371d843d5c9943ada30fb4670c7968b9a9f119ca0b7e0cba860"
+        }
+      ]
+    },
+    {
+      "id": "docs/architecture.md",
+      "path": "docs/architecture.md",
+      "sha256": "33862cb7ac9f0ed0e249ede08bbac5927be56955f36cc1ff0fbdd47cf37f4925",
+      "upstream": [
+        {
+          "path": "README.md#architecture",
+          "sha256": "f4dde1dbbbd25ef781d9289869a07be8316ced99f89a59bc8021947356a05428"
+        }
+      ]
+    }
+  ],
+  "source_metadata": {
+    "README.md#requirements": {
+      "status": "approved",
+      "readme_intent_scopes": {
+        "main": [
+          "."
+        ]
+      },
+      "tags": [
+        "org/alpha-apps",
+        "topic/github"
+      ],
+      "readme_four_section_scopes": {
+        "main": [
+          "."
+        ]
+      }
+    },
+    "README.md#architecture": {
+      "status": "approved",
+      "tags": [
+        "org/alpha-apps",
+        "topic/github"
+      ]
+    }
+  },
+  "local_instructions": {
+    "path": "README.md#local-instructions",
+    "sha256": "c07c1d8fe49ffaae2ae14c3bb99bb98a1b7021b061fcbfb6429b689f877a7b07"
+  },
+  "readme_four_section_scopes": {
+    "main": [
+      "."
+    ]
+  }
+}

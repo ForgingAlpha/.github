@@ -2,8 +2,6 @@
 status: approved
 readme_intent_scopes:
   main: ["."]
-readme_four_section_scopes:
-  main: ["."]
 tags:
   - org/alpha-apps
   - topic/github
@@ -39,7 +37,15 @@ indistinguishable results or weaken required checks while changing producers.
 
 ### REQ-002 - Approved Source Truth
 
-Active repositories SHALL validate approved Intent, Requirements and Architecture before ordinary changes merge. Requirements and Architecture remain in `docs/requirements.md` and `docs/architecture.md`. Intent remains in `docs/intent.md` until the owning repository adopts the README layout. For scopes adopted on a protected branch, the sole Intent source after migration is the owning `README.md#intent`.
+Active repositories SHALL validate approved Intent, Requirements and Architecture before ordinary changes merge.
+Use the layout enrolled for that repository, revision and scope. The standalone layout uses
+`docs/intent.md`, `docs/requirements.md` and `docs/architecture.md`. The README Intent
+layout selects `README.md#intent` and retains separate Requirements and Architecture.
+The four-section layout selects `README.md#intent`, `README.md#requirements` and
+`README.md#architecture`, together with their bound detail. Its `README.md#local-instructions`
+section supplies repository working rules. A change confined to those rules must be
+identified as an instruction change and must preserve the three governing digests.
+Reject a missing or invalid selected section or detail binding.
 
 The standalone policy action reads `readme_intent_scopes` from the root
 Requirements on the protected base. A branch entry for `dev` or `main` selects
