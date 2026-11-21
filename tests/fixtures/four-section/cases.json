@@ -1,0 +1,68 @@
+{
+  "digests": {
+    "intent": "077524c42d0fbf16839a860dab057092616b4335c416ada5634880387cb94a6c",
+    "requirements": "dba89e3e5bbb5af490cb685fce49e917ec232e5ba2800ed3e15fb9ad9880768f",
+    "architecture": "7bc58d25f7f9bdaeac277e66588045c9330b9352d10015ce75569d47b2b8fa1c",
+    "local-instructions": "2c3ca8b30f2eff8a238e0794b52d2227a9b4eb0b912587adefe5bb9fb9e3b380"
+  },
+  "details": {
+    "docs/observations.md": "e17ea3af6a9626075159f8cc1aa42799adcf567518e9026be08bbb2eb331bca3",
+    "docs/storage.md": "a721e09d40f8020c41e2bbf0c0796adcdbf9fbf752d7d95645db4e152a2adf0a"
+  },
+  "edits": [
+    {
+      "id": "navigation",
+      "before": "navigation below",
+      "after": "navigation above",
+      "decision": "ordinary"
+    },
+    {
+      "id": "instructions",
+      "before": "Run the repository checks",
+      "after": "Run the full repository checks",
+      "decision": "instructions"
+    },
+    {
+      "id": "duplicate",
+      "before": "## Navigation",
+      "after": "## Requirements",
+      "decision": "reject"
+    },
+    {
+      "id": "missing",
+      "before": "## Architecture",
+      "after": "## Storage",
+      "decision": "reject"
+    },
+    {
+      "id": "fence",
+      "before": "## Requirements",
+      "after": "```markdown\n## Requirements\n```",
+      "decision": "reject"
+    },
+    {
+      "id": "comment",
+      "before": "## Local Instructions",
+      "after": "<!--\n## Local Instructions\n-->",
+      "decision": "reject"
+    },
+    {
+      "id": "empty",
+      "before": "The recorder owns the history. See the [storage contract](docs/storage.md).",
+      "after": "<!-- No instruction -->",
+      "decision": "reject"
+    },
+    {
+      "id": "order",
+      "before": "## Architecture",
+      "after": "## Local Instructions",
+      "decision": "reject"
+    },
+    {
+      "id": "ambiguous",
+      "before": "Use the navigation below",
+      "after": "### **Requirements**\n\nUse the navigation below",
+      "decision": "reject"
+    }
+  ]
+}

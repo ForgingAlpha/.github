@@ -93,27 +93,44 @@ def check(baseline, root, event, scopes, api):
     baseline.git(root, "merge-base", "--is-ancestor", base, head)
     baseline.clean_document_checkout(root, head)
     caller = canonical_caller(baseline, scopes)
+    route = baseline.load_checking_module(
+        "repo_docs_readme_route", "actions/ci-alphaapps-policy/scripts/standalone_readme_intent.py")
+    subject = route.Subject(entry["repository"], entry["repository_id"], "dev", base, head)
+    protected = route.layouts(root, base, baseline.policy)
+    proposed = route.layouts(root, head, baseline.policy)
+    route.check_four_enrollment(root, subject, protected, proposed)
+    pointer = route.four_reader().NATIVE_POINTER
+    head_pointer = pointer if proposed[2] else None
     prior = None
-    if baseline.git(root, "ls-tree", "-z", base, "--", CALLER):
+    existing = bool(baseline.git(root, "ls-tree", "-z", base, "--", CALLER))
+    if existing:
         adopted = baseline.git(root, "cat-file", "blob", base + ":" + CALLER, limit=65536)
         require(caller_contract(baseline, adopted) == caller_contract(baseline, caller),
                 "protected workflow differs from the canonical caller contract or scopes")
-        prior_text = baseline.document_inputs(root, base, definition_scopes=scopes, caller=adopted)
-        prior = baseline.first_definition.check_documents(prior_text, scopes, baseline.policy, allow_approved=True)
+        prior_text = baseline.document_inputs(root, base, definition_scopes=scopes, caller=adopted,
+                                              native_pointer=pointer if protected[2] else None)
+        if not protected[2]:
+            prior = baseline.first_definition.check_documents(prior_text, scopes, baseline.policy, allow_approved=True)
         changed = baseline.git(root, "diff", "--no-renames", "--name-only", "-z", base, head)
         if changed != CALLER.encode() + b"\0":
             caller = adopted
     else:
         baseline.verify_seed(root, base, head)
-    texts = baseline.document_inputs(root, head, definition_scopes=scopes, caller=caller, working=True)
-    current = baseline.first_definition.check_documents(texts, scopes, baseline.policy, allow_approved=prior is not None)
-    if prior is not None:
-        preserve_sources(prior, current)
+    texts = baseline.document_inputs(root, head, definition_scopes=scopes, caller=caller, working=True, native_pointer=head_pointer)
+    if subject.branch in protected[1] and not proposed[2]:
+        route.require_prepared_layout(root, subject, baseline.policy, protected[1][subject.branch])
+    if proposed[2]:
+        require(existing, "conversion needs a previously adopted caller")
+        route.four_reader().check_pair(route, baseline.policy, root, subject, protected, proposed, caller_scopes=scopes)
+    else:
+        current = baseline.first_definition.check_documents(texts, scopes, baseline.policy, allow_approved=existing)
+        if prior is not None:
+            preserve_sources(prior, current)
     baseline.lint_documents(root, texts)
     baseline.clean_document_checkout(root, head)
-    baseline.document_inputs(root, head, definition_scopes=scopes, caller=caller, working=True)
+    baseline.document_inputs(root, head, definition_scopes=scopes, caller=caller, working=True, native_pointer=head_pointer)
     current_protection(baseline, api, event, entry)
-    return "protected documentation update" if prior is not None else "initial provisional definitions"
+    return "protected documentation update" if existing else "initial provisional definitions"
 
 
 def main():

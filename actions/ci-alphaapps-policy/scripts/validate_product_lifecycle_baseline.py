@@ -503,33 +503,45 @@ def _readme_lines(lines: list[str], first: int, containers: list[list[str]] | No
 _HEADING_LINK = re.compile(r"\[([^\[\]\\]*)\](?:\([^()\\]*\)|\[[^\[\]\\]*\])")
 
 
-def _check_anchor_heading(title: str) -> None:
+def _check_anchor_heading(title: str, name: str) -> None:
     visible = html.unescape(_HEADING_LINK.sub(r"\1", title)).strip().lower()
     if "![" in title or re.search(r":[A-Za-z0-9_+-]+:", title) or any(char in visible for char in "<>[]$"):
-        raise ValueError("ambiguous inline markup in a README heading before Intent")
+        raise ValueError(f"ambiguous inline markup in a README heading before {name}")
     # Emphasis, backticks and punctuation can disappear in GitHub's anchor.
     # Keep visible spaces and hyphens, which distinguish e.g. 'In tent'.
     candidate = "".join(char for char in visible if char.isalnum() or char in " -")
-    if candidate.strip() == "intent":
-        raise ValueError("another README heading can claim the Intent anchor")
+    if candidate.strip().replace(" ", "-") == name.lower().replace(" ", "-"):
+        raise ValueError(f"another README heading can claim the {name} anchor")
 
 
-def _check_earlier_anchors(preamble: list[str], depth: int = 0) -> None:
+def _check_earlier_anchors(preamble: list[str], name: str, depth: int = 0) -> None:
     if depth > 32:
-        raise ValueError("excessive README Markdown container nesting before Intent")
+        raise ValueError("excessive README Markdown container nesting before selected section")
     containers = []
     for _, heading in _readme_lines(preamble, 0, containers):
         if heading:
             title = re.sub(r"[ \t]+#+[ \t]*$", "", heading[2] or "")
-            _check_anchor_heading(title)
+            _check_anchor_heading(title, name)
     # A heading inside a quote or list can claim a rendered anchor while never
     # selecting or ending a governing section. Preserve its own fence/HTML state.
     for body in containers:
-        _check_earlier_anchors(body, depth + 1)
+        _check_earlier_anchors(body, name, depth + 1)
 
 
-def readme_intent(data: bytes) -> ReadmeIntent:
-    """Read the sole top-level Intent section. Canonical bytes exclude navigation."""
+SECTION_NAMES = ("Intent", "Requirements", "Architecture", "Local Instructions")
+
+
+@dataclass(frozen=True)
+class ReadmeSections:
+    metadata: dict
+    sections: dict[str, bytes]
+    # Keep boundary positions distinct; moving text between boundaries is an edit.
+    outside: tuple[bytes, ...]
+    instructions: bytes
+
+
+def readme_sections(data: bytes, names: tuple[str, ...] = SECTION_NAMES) -> ReadmeSections:
+    """Select exact root sections using the established README Intent grammar."""
     text = data.decode("utf-8")
     if "\r" in text or "\x00" in text or text.startswith("\ufeff"):
         raise ValueError("README must use UTF-8 without BOM and LF line endings")
@@ -537,33 +549,55 @@ def readme_intent(data: bytes) -> ReadmeIntent:
     if lines[0].rstrip(" \t") == "---" and lines[0] != "---":
         raise ValueError("malformed README frontmatter delimiter")
     metadata, first = leading_metadata(lines)
-    start = end = None
+    titles = {name.casefold(): name for name in names}
+    spans = {}
+    start = current = None
     meaningful = False
+
+    def finish(end):
+        if current is not None:
+            if not meaningful:
+                raise ValueError(f"missing or empty README {current} section")
+            spans[current] = start, end
+
     for index, heading in _readme_lines(lines, first):
         if heading is None:
-            if start is not None and end is None:
-                meaningful = True
+            meaningful = True
             continue
         title = re.sub(r"[ \t]+#+[ \t]*$", "", heading[2] or "").strip(" \t")
-        if start is None and heading[1] != "##" and title.casefold() == "intent":
-            raise ValueError("another README heading claims the Intent anchor")
+        name = titles.get(title.casefold())
         if len(heading[1]) > 2:
             continue
-        if start is not None and end is None:
-            end = index
-        if heading[1] == "##" and title.casefold() == "intent":
-            if lines[index] != "## Intent" or start is not None:
-                raise ValueError("ambiguous or duplicate README Intent heading")
-            start = index
-    if start is None or not meaningful:
-        raise ValueError("missing or empty README Intent section")
-    _check_earlier_anchors(lines[first:start])
-    selected = "\n".join(lines[:first] + lines[start:end])
-    # Keep the preamble and suffix separate so moving the section across them
-    # cannot hide an edit to non-definition text.
-    prefix = "\n".join(lines[first:start] + [""]).encode()
-    suffix = "\n".join(lines[end:]).encode() if end is not None else b""
-    return ReadmeIntent(metadata, (selected.rstrip("\n") + "\n").encode(), (prefix, suffix))
+        finish(index)
+        current = None
+        if name is not None and heading[1] == "##":
+            if lines[index] != "## " + name or name in spans:
+                raise ValueError(f"ambiguous or duplicate README {name} heading")
+            _check_earlier_anchors(lines[first:index], name)
+            current, start, meaningful = name, index, False
+    finish(len(lines))
+    if tuple(spans) != names:
+        raise ValueError("missing or out-of-order README section: " + ", ".join(names))
+
+    raw_lines = [line + "\n" for line in lines[:-1]] + [lines[-1]]
+    sections, outside, instructions = {}, [], b""
+    previous = first
+    for name, (start, end) in spans.items():
+        body = "\n".join(lines[start:end]).rstrip("\n") + "\n"
+        front = "".join(raw_lines[:first]) if name == "Intent" else ""
+        sections[name] = (front + body).encode()
+        if name == "Local Instructions":
+            instructions = "".join(raw_lines[start:end]).encode()
+        else:
+            outside.append("".join(raw_lines[previous:start]).encode())
+            previous = end
+    outside.append("".join(raw_lines[previous:]).encode())
+    return ReadmeSections(metadata, sections, tuple(outside), instructions)
+
+
+def readme_intent(data: bytes) -> ReadmeIntent:
+    selection = readme_sections(data, ("Intent",))
+    return ReadmeIntent(selection.metadata, selection.sections["Intent"], selection.outside)
 
 
 def canonical_control_plane(repo: Path) -> bool:

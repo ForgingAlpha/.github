@@ -185,7 +185,7 @@ def clean_document_checkout(root, expected_head):
     require(not git(root, "ls-files", "--others", "-z"), "untracked consumer inputs (including ignored files)")
 
 
-def document_inputs(root, revision, *, definition_scopes=None, caller=None, working=False):
+def document_inputs(root, revision, *, definition_scopes=None, caller=None, working=False, native_pointer=None):
     """Read one bounded documentation inventory from commit blobs or its verified checkout."""
     raw = git(root, "ls-tree", "-rz", "--full-tree", revision)
     require(raw.endswith(b"\0"), "empty or incomplete tracked inventory")
@@ -230,7 +230,10 @@ def document_inputs(root, revision, *, definition_scopes=None, caller=None, work
         else:
             data = git(root, "cat-file", "blob", oid, limit=512 * 1024)
         if mode == "120000":
-            require(data == b"PROJECT.md", "unsupported instruction projection link")
+            if native_pointer is None:
+                require(data == b"PROJECT.md", "unsupported instruction projection link")
+            else:
+                require(name == "CLAUDE.md" and data == b"AGENTS.md", "unsupported four-section instruction alias")
             links.add(name)
         if is_caller:
             require(data == caller, "consumer workflow differs from the canonical caller")
@@ -248,7 +251,12 @@ def document_inputs(root, revision, *, definition_scopes=None, caller=None, work
         require(REQUIRED <= seen, "missing required project/governing inputs")
     if caller is not None:
         require(".github/workflows/ci.yml" in seen, "missing canonical consumer workflow")
-    if links or definition_scopes is None:
+    if native_pointer is not None:
+        if links:
+            require("AGENTS.md" in texts, "missing native instruction alias target")
+        for entry in ALIASES & texts.keys():
+            require(texts[entry].encode() == native_pointer, "invalid native README instruction pointer")
+    elif links or definition_scopes is None:
         require("PROJECT.md" in texts, "instruction projection target must be tracked regular Markdown")
     return texts
 
