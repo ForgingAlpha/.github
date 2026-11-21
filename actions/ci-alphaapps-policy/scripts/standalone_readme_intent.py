@@ -193,41 +193,39 @@ def read_document(root, revision, kind, policy, *, readme=False):
     return data, values
 
 
-def upstream_bindings(data, values, kind, *, readme=False):
+def upstream_bindings(data, values, kind, *, readme=False, prior_data=None):
     """Root migration retains optional identities/digests and checks every authored binding."""
     if kind == "intent":
         return {}
     reader = checking_baseline().first_definition
     bindings = {name: [values[name + "_sha256"]] if name + "_sha256" in values else []
                 for name in ("intent", "requirements")}
-    targets = {"../README.md#intent" if readme else "intent.md": "intent", "requirements.md": "requirements"}
+    targets = reader.README_TARGETS if readme else {"intent.md": "intent", "requirements.md": "requirements"}
     opening = data.decode().split("\n## ", 1)[0]
-    for link in reader.LINK.finditer(opening):
-        label, target = link.groups()
-        prose = reader.PROSE_DIGEST.match(opening, link.end())
-        table = reader.TABLE_DIGEST.match(opening, link.end())
-        if not prose and not table:
+    protected_targets = set()
+    if prior_data is not None:
+        prior_opening = prior_data.decode().split("\n## ", 1)[0]
+        protected_targets = {(label, target) for _, label, target, _ in reader.historical_links(prior_opening)}
+    for label, target, digest, historical in reader.opening_links(opening, product=True):
+        if digest is None:
             continue
-        named = next((name for name in bindings if re.fullmatch(r"(?:[\w -]+ )?" + name, label, re.I)), None)
-        name = targets.get(target)
-        if readme:
-            if not name and not named:
-                continue  # Unrelated opening evidence may carry its own digest.
-            require(name and (not named or named == name), "wrong upstream governing link")
+        if historical and (prior_data is None or (label, target) in protected_targets):
+            # The protected root reader historically bound these checksums by
+            # label. Preserve and verify those exact target spellings.
+            name = "requirements" if label == "Requirements" else "intent"
         else:
-            name = name or named
+            name = reader.governing_link_name(label, target, targets, product=True, legacy=not readme)
         if name:
-            digest = reader.DIGEST_LITERAL.match(opening, prose.end()) if prose else table
             require(digest, "invalid upstream governing digest")
-            bindings[name].append(digest[1])
+            bindings[name].append(digest)
     return bindings
 
 
-def documents(root, revision, policy, readme):
+def documents(root, revision, policy, readme, *, prior=None):
     docs = {}
     for kind in ("intent", "requirements", "architecture"):
         data, values = read_document(root, revision, kind, policy, readme=readme and kind == "intent")
-        bindings = upstream_bindings(data, values, kind, readme=readme)
+        bindings = upstream_bindings(data, values, kind, readme=readme, prior_data=prior[kind][0] if prior else None)
         for name, (upstream, upstream_values, _) in docs.items():
             if name in values:
                 require(isinstance(upstream_values.get("id"), str)
@@ -331,18 +329,20 @@ def definition_paths(scopes):
 
 def validate_scopes(root, subject, policy, protected_scopes, proposed_scopes):
     reader = checking_baseline().first_definition
-    prior = governing_texts(root, subject.base, protected_scopes, policy)
     current = governing_texts(root, subject.head, proposed_scopes, policy)
     if protected_scopes == ["."]:
         # The existing root contract allowed absent IDs/digests. Preserve each
         # authored binding, while requiring the complete new contract at head.
-        reader.check_scope_inventory(prior, protected_scopes)
+        require(blob(root, subject.base, "docs/intent.md", optional=True) is None,
+                "component selection requires a protected README Intent")
+        prior = {"README.md": blob(root, subject.base, "README.md").decode()}
         old_root = documents(root, subject.base, policy, readme=True)
         prior_docs = {kind: (values, {name: len(items) for name, items in bindings.items()})
                       for kind, (_, values, bindings) in old_root.items()}
     else:
-        prior_docs = reader.check_documents(prior, protected_scopes, policy, allow_approved=True)
-    current_docs = reader.check_documents(current, proposed_scopes, policy, allow_approved=True)
+        prior = governing_texts(root, subject.base, protected_scopes, policy)
+        prior_docs = reader.check_documents(prior, protected_scopes, policy, allow_approved=True, allow_supporting_evidence=True)
+    current_docs = reader.check_documents(current, proposed_scopes, policy, allow_approved=True, allow_supporting_evidence=True)
     provisional = any(values["status"] == "provisional"
                       for docs in (prior_docs, current_docs) for values, _ in docs.values())
     for path, (old, old_bindings) in prior_docs.items():
@@ -382,12 +382,8 @@ def validate_pair(root, subject, policy, selected):
         require(old_legacy is not None, "candidate restored a competing legacy Intent")
         reject_competing(root, subject.head, policy)
         return False
-    reader = checking_baseline().first_definition
-    reader.check_scope_inventory(governing_texts(root, subject.head, scopes, policy), scopes)
-    if old_legacy is None:
-        reader.check_scope_inventory(governing_texts(root, subject.base, scopes, policy), scopes)
     prior = documents(root, subject.base, policy, readme=old_legacy is None)
-    current = documents(root, subject.head, policy, readme=True)
+    current = documents(root, subject.head, policy, readme=True, prior=prior)
     provisional = any(values["status"] == "provisional" for docs in (prior, current)
                       for _, values, _ in docs.values())
     if old_legacy is not None:
@@ -523,7 +519,7 @@ def maybe_validate(root, policy, env=None):
             for target, scopes in proposed.items():
                 if (target != subject.branch or target not in selected) and len(scopes) > 1 and scopes != selected.get(target):
                     texts = governing_texts(root, head, scopes, policy)
-                    reader.check_documents(texts, scopes, policy, allow_approved=True)
+                    reader.check_documents(texts, scopes, policy, allow_approved=True, allow_supporting_evidence=True)
     if not selected:
         if hinted:
             event_subject(root, env, event)

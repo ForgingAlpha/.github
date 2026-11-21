@@ -245,6 +245,109 @@ class ProductReadmeScopeTests(unittest.TestCase):
                 self.candidate()
                 self.cli(valid, "approved-structure" if valid else "wrong upstream governing link")
 
+    def test_enrollment_and_product_with_checksummed_external_schema(self):
+        url = "https://example.invalid/schema.json"
+
+        def add_schema(scope, label="published schema", target=url):
+            prefix = self.f.repo if scope == "." else self.f.repo / scope
+            req, arch = prefix / "docs/requirements.md", prefix / "docs/architecture.md"
+            before = sha(req.read_bytes()).encode()
+            link = f"[{label}]({target})"
+            evidence = (f"{link} at SHA-256 `{'a' * 64}`." if scope == "." else
+                        f"| Source | SHA-256 |\n| --- | --- |\n| {link} | `{'a' * 64}` |")
+            req.write_bytes(req.read_bytes() + f"\n{evidence}\n".encode())
+            arch.write_bytes(arch.read_bytes().replace(before, sha(req.read_bytes()).encode()))
+
+        self.f.git("rm", "-r", "engine")
+        self.declaration = "{main: ['.']}"
+        self.write_scope(".")
+        add_schema(".", label="Organization Requirements")
+        self.adopt()
+        self.candidate()
+        self.cli(True, "approved-structure")
+        self.f.git("reset", "--hard", self.f.base)
+        self.declaration = "{main: ['.', 'engine']}"
+        self.write_scope(".")
+        self.write_scope("engine")
+        add_schema(".", label="Organization Requirements")
+        add_schema("engine")
+        self.candidate(code=False)
+        self.cli(True, "approved-structure")
+        self.adopt()
+        self.candidate()
+        self.cli(True, "approved-structure")
+        reader = fixture.route.checking_baseline().first_definition
+        texts = fixture.route.governing_texts(self.f.repo, self.f.head, [".", "engine"], fixture.policy)
+        with self.assertRaisesRegex(ValueError, "digest link has wrong governing target"):
+            reader.check_documents(texts, [".", "engine"], fixture.policy, allow_approved=True)
+        for label, target in (("product intent", url), ("local requirements", url), ("published schema", "../README.md#intent")):
+            with self.subTest(label=label, target=target):
+                self.f.git("reset", "--hard", self.f.base)
+                add_schema("engine", label=label, target=target)
+                self.candidate()
+                self.cli(False)
+
+    def test_root_only_keeps_unrelated_nested_documentation_outside_its_scope(self):
+        self.f.git("rm", "-r", "engine")
+        self.declaration = "{main: ['.']}"
+        self.write_scope(".")
+        self.f.write("archive/docs/intent.md", b"# Historical intent\n")
+        self.f.write("examples/README.md", b"# Example\n\n## Intent\n\nDescribe the sample.\n")
+        (self.f.repo / "archive/README.md").symlink_to("../README.md")
+        self.adopt()
+        self.candidate()
+        self.cli(True, "approved-structure")
+        self.f.git("reset", "--hard", self.f.base)
+        self.declaration = "{main: ['.', 'engine']}"
+        self.write_scope(".")
+        self.write_scope("engine")
+        self.candidate(code=False)
+        self.cli(False)
+        self.f.git("reset", "--hard", self.f.base)
+        self.f.git("rm", "-r", "archive", "examples")
+        self.adopt()
+        self.write_scope(".")
+        self.write_scope("engine")
+        self.candidate(code=False)
+        self.cli(True, "approved-structure")
+
+    def test_protected_historical_checksums_are_validated_and_carried_into_multiscope(self):
+        self.f.git("rm", "-r", "engine")
+        self.declaration = "{main: ['.']}"
+        self.write_scope(".")
+        req = self.f.repo / "docs/requirements.md"
+        arch = self.f.repo / "docs/architecture.md"
+        readme = self.f.repo / "README.md"
+        intent = fixture.policy.readme_intent(readme.read_bytes()).sha256
+
+        def add_bindings(target, digest):
+            previous = sha(req.read_bytes()).encode()
+            req.write_bytes(req.read_bytes() + (f"\n[Intent]({target}) at SHA-256`{digest}`.\n\n"
+                            f"| Source | Digest |\n| --- | --- |\n| [Product Intent]({target}) | `{digest}` |\n").encode())
+            arch.write_bytes(arch.read_bytes().replace(previous, sha(req.read_bytes()).encode()))
+
+        historical_target = "legacy source with spaces.md"
+        add_bindings(historical_target, intent)
+        self.adopt()
+        self.candidate()
+        self.cli(True, "approved-structure")
+        self.f.git("reset", "--hard", self.f.base)
+        previous = sha(req.read_bytes()).encode()
+        req.write_bytes(req.read_bytes().replace(f"SHA-256`{intent}`".encode(), f"SHA-256`{'0' * 64}`".encode()))
+        # Rebind Architecture to the exact edit so only the historical checksum is wrong.
+        arch.write_bytes(arch.read_bytes().replace(previous, sha(req.read_bytes()).encode()))
+        self.candidate()
+        self.cli(False, "wrong upstream governing digest")
+        self.f.git("reset", "--hard", self.f.base)
+        self.declaration = "{main: ['.', 'engine']}"
+        self.write_scope(".")
+        self.write_scope("engine")
+        self.candidate(code=False)
+        self.cli(False, "protected governing binding removed")
+        add_bindings("../README.md#intent", intent)
+        self.candidate(code=False)
+        self.cli(True, "approved-structure")
+
     def test_existing_root_only_optional_metadata_contract_remains_eligible(self):
         self.f.git("rm", "-r", "engine")
         self.f.write("README.md", document({"status": "approved"}, "# Example\n\n## Intent\n\nPreserve observed results.\n"))
