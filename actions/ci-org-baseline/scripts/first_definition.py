@@ -109,7 +109,7 @@ def governing_lines(text, policy):
     return lines
 
 
-def check_documents(texts, scopes, policy, *, allow_approved=False):
+def check_scope_inventory(texts, scopes):
     prefixes = [("" if scope == "." else scope + "/") for scope in scopes]
     selected = {prefix + name for prefix in prefixes
                 for name in ("README.md", "docs/requirements.md", "docs/architecture.md")}
@@ -120,6 +120,11 @@ def check_documents(texts, scopes, policy, *, allow_approved=False):
         if lower.endswith(("/docs/requirements.md", "/docs/architecture.md")) or (
                 lower.endswith("/readme.md") and INTENT_HEADING.search(text)):
             require(path in selected, "unregistered governing scope or source")
+    return prefixes
+
+
+def check_documents(texts, scopes, policy, *, allow_approved=False):
+    prefixes = check_scope_inventory(texts, scopes)
     identities, documents = set(), {}
     statuses = {"approved", "provisional"} if allow_approved else {"provisional"}
     for prefix in prefixes:

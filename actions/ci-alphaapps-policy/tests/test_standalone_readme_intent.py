@@ -248,8 +248,10 @@ class StandaloneIntentTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "selection"):
             self.check()
 
-    def test_selection_cannot_enable_components_or_unknown_branches(self):
-        for value in ({"main": ["data"]}, {"main": [".", "data"]}, {"feature": ["."]}, {}, None):
+    def test_selection_accepts_only_explicit_root_and_simple_components(self):
+        self.assertEqual(route.selection({"dev": [".", "engine"]}), {"dev": [".", "engine"]})
+        for value in ({"main": ["engine"]}, {"main": [".", "../engine"]}, {"dev": [".", "."]},
+                      {"main": [".", "a/b"]}, {"dev": "."}, {"feature": ["."]}, {}, None):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, "selection"):
                 route.selection(value)
 

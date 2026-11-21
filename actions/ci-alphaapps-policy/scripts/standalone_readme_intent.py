@@ -7,11 +7,13 @@ metadata; neither this check nor a successful migration supplies human approval.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -62,9 +64,22 @@ def metadata(policy, data):
 
 def selection(value):
     require(isinstance(value, dict) and value, "invalid protected README selection")
-    require(all(branch in BRANCHES and scopes == ["."] for branch, scopes in value.items()),
-            "standalone migration supports only explicit main/dev root selections")
+    for branch, scopes in value.items():
+        require(branch in BRANCHES and isinstance(scopes, list) and "." in scopes and len(scopes) <= 64
+                and all(isinstance(scope, str) and (scope == "." or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}", scope))
+                        for scope in scopes) and len(set(scopes)) == len(scopes), "invalid protected README selection")
     return value
+
+
+@lru_cache(maxsize=1)
+def checking_baseline():
+    # The complete remote action checkout owns this module. Isolated Python
+    # must never resolve a checking dependency through the consumer directory.
+    path = Path(__file__).resolve().parents[2] / "ci-org-baseline/scripts/baseline.py"
+    spec = importlib.util.spec_from_file_location("product_governing_baseline", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def unique(pairs):
@@ -121,7 +136,7 @@ def event_subject(root, env, event):
         pr = mapping(event.get("pull_request"))
         base, head = mapping(pr.get("base")), mapping(pr.get("head"))
         number = event.get("number")
-        require(type(number) is int and number > 0 and pr.get("number") == number,
+        require(type(number) is int and number > 0 and type(pr.get("number")) is int and pr["number"] == number,
                 "invalid provider pull request identity")
         base_repo, head_repo = mapping(base.get("repo")), mapping(head.get("repo"))
         require(type(base_repo.get("id")) is int and base_repo.get("id") == identity
@@ -178,20 +193,31 @@ def read_document(root, revision, kind, policy, *, readme=False):
     return data, values
 
 
-def upstream_bindings(data, values, kind):
-    """Keep both YAML bindings and existing opening prose/table bindings."""
-    bindings = {name: [] for name in ("intent", "requirements")}
-    opening = data.decode().split("\n## ", 1)[0]
-    for name in bindings:
-        if name + "_sha256" in values:
-            bindings[name].append(values[name + "_sha256"])
-        label = r"(?:Product )?Intent" if name == "intent" else "Requirements"
-        patterns = [rf"\[{label}\]\([^\n)]+\),? (?:at )?SHA-256\s*`([a-f0-9]{{64}})`",
-                    rf"\| \[{label}\]\([^\n)]+\) \| `([a-f0-9]{{64}})` \|"]
-        for pattern in patterns:
-            bindings[name].extend(re.findall(pattern, opening))
+def upstream_bindings(data, values, kind, *, readme=False):
+    """Root migration retains optional identities/digests and checks every authored binding."""
     if kind == "intent":
         return {}
+    reader = checking_baseline().first_definition
+    bindings = {name: [values[name + "_sha256"]] if name + "_sha256" in values else []
+                for name in ("intent", "requirements")}
+    targets = {"../README.md#intent" if readme else "intent.md": "intent", "requirements.md": "requirements"}
+    opening = data.decode().split("\n## ", 1)[0]
+    for link in reader.LINK.finditer(opening):
+        label, target = link.groups()
+        prose = reader.PROSE_DIGEST.match(opening, link.end())
+        table = reader.TABLE_DIGEST.match(opening, link.end())
+        if not prose and not table:
+            continue
+        named = next((name for name in bindings if re.fullmatch(r"(?:[\w -]+ )?" + name, label, re.I)), None)
+        name = targets.get(target)
+        if readme:
+            require(name and (not named or named == name), "wrong upstream governing link")
+        else:
+            name = name or named
+        if name:
+            digest = reader.DIGEST_LITERAL.match(opening, prose.end()) if prose else table
+            require(digest, "invalid upstream governing digest")
+            bindings[name].append(digest[1])
     return bindings
 
 
@@ -199,7 +225,7 @@ def documents(root, revision, policy, readme):
     docs = {}
     for kind in ("intent", "requirements", "architecture"):
         data, values = read_document(root, revision, kind, policy, readme=readme and kind == "intent")
-        bindings = upstream_bindings(data, values, kind)
+        bindings = upstream_bindings(data, values, kind, readme=readme)
         for name, (upstream, upstream_values, _) in docs.items():
             if name in values:
                 require(isinstance(upstream_values.get("id"), str)
@@ -244,6 +270,89 @@ def reject_competing(root, revision, policy):
         raise ValueError("both governing Intent sources are present")
 
 
+def governing_texts(root, revision, scopes, policy):
+    # Ignore implementation blobs. Inspect the paths capable of owning a
+    # governing source at any depth, including unselected README Intent claims.
+    bounded_git = checking_baseline().git
+    raw = bounded_git(root, "ls-tree", "-rlz", "--full-tree", revision, limit=16 * 1024 * 1024)
+    require(raw.endswith(b"\0"), "missing complete governing inventory")
+    texts, seen, total = {}, set(), 0
+    allowed = definition_paths(scopes)
+    intent_heading = checking_baseline().first_definition.INTENT_HEADING
+    for row in raw[:-1].split(b"\0"):
+        header, path = row.split(b"\t", 1)
+        if not (b"/" + path.lower()).endswith((b"/readme.md", b"/docs/intent.md", b"/docs/requirements.md",
+                                              b"/docs/architecture.md")):
+            continue
+        mode, kind, oid, size = header.split()
+        require(mode == b"100644" and kind == b"blob" and re.fullmatch(rb"[a-f0-9]{40}", oid),
+                "nonregular governing or README source")
+        require(size.isdigit() and int(size) <= LIMIT, "governing source exceeds supported bound")
+        total += int(size)
+        require(path not in seen and len(seen) < 512 and total <= 8 * 1024 * 1024,
+                "duplicate governing source or inventory exceeds supported bounds")
+        seen.add(path)
+        data = bounded_git(root, "cat-file", "blob", oid.decode("ascii"), limit=LIMIT)
+        name, text = path.decode(), data.decode()
+        if name not in allowed and name.casefold().endswith("readme.md") and intent_heading.search(text):
+            # Examples inside fenced code or HTML cannot own a governing section.
+            lines = text.split("\n")
+            _, start = policy.leading_metadata(lines)
+            if not any(heading and intent_heading.fullmatch(lines[index])
+                       for index, heading in policy._readme_lines(lines, start)):
+                continue
+        texts[name] = text
+    return texts
+
+
+def changed_paths(root, base, head):
+    return set(git(root, "diff", "--no-ext-diff", "--no-renames", "--name-only", "-z", base, head, "--")
+               .decode().split("\0")[:-1])
+
+
+def require_document_change(root, subject):
+    # A selector may be prepared for a later protected base. Never combine
+    # adoption with implementation, executable files, workflows or config.
+    raw = git(root, "diff", "--raw", "--no-ext-diff", "--no-renames", "-z", subject.base, subject.head, "--")
+    records = raw.split(b"\0")
+    require(raw and records[-1] == b"" and len(records) % 2 == 1, "invalid selection preparation diff")
+    for header, path in zip(records[0:-1:2], records[1:-1:2]):
+        modes = header.removeprefix(b":").split()[:2]
+        require(len(modes) == 2 and all(mode in (b"000000", b"100644") for mode in modes)
+                and path.endswith((b".md", b".markdown")), "README selection or migration requires documentation-only changes")
+
+
+def definition_paths(scopes):
+    return {("" if scope == "." else scope + "/") + name for scope in scopes
+            for name in ("README.md", "docs/requirements.md", "docs/architecture.md")}
+
+
+def validate_scopes(root, subject, policy, scopes):
+    reader = checking_baseline().first_definition
+    prior = governing_texts(root, subject.base, scopes, policy)
+    current = governing_texts(root, subject.head, scopes, policy)
+    prior_docs = reader.check_documents(prior, scopes, policy, allow_approved=True)
+    current_docs = reader.check_documents(current, scopes, policy, allow_approved=True)
+    provisional = False
+    for path, (old, old_bindings) in prior_docs.items():
+        new, new_bindings = current_docs[path]
+        provisional |= "provisional" in (old["status"], new["status"])
+        require(all(new.get(key) == old[key] for key in ("id", "intent", "requirements") if key in old),
+                "protected governing identity changed")
+        require(all(key in new for key in ("intent_sha256", "requirements_sha256") if key in old)
+                and all(new_bindings.get(key, 0) >= count for key, count in old_bindings.items()),
+                "protected governing binding removed")
+    if provisional:
+        paths = definition_paths(scopes)
+        diff = changed_paths(root, subject.base, subject.head)
+        require(diff and diff <= paths, "provisional repair requires only selected definition-file changes")
+        for name in diff:
+            if name.endswith("README.md"):
+                require(policy.readme_intent(prior[name].encode()).outside == policy.readme_intent(current[name].encode()).outside,
+                        "provisional repair changed README outside Intent")
+    return "definition-only" if provisional else "approved-structure"
+
+
 def validate_pair(root, subject, policy, selected):
     head_root = blob(root, subject.head, "docs/requirements.md")
     current_metadata, _ = metadata(policy, head_root)
@@ -252,6 +361,9 @@ def validate_pair(root, subject, policy, selected):
             "candidate removed protected README selection")
     if subject.branch not in selected:
         return False
+    scopes = selected[subject.branch]
+    if len(scopes) > 1:
+        return validate_scopes(root, subject, policy, scopes)
     old_legacy = blob(root, subject.base, "docs/intent.md", optional=True)
     new_legacy = blob(root, subject.head, "docs/intent.md", optional=True)
     if old_legacy is not None:
@@ -260,12 +372,17 @@ def validate_pair(root, subject, policy, selected):
         require(old_legacy is not None, "candidate restored a competing legacy Intent")
         reject_competing(root, subject.head, policy)
         return False
+    reader = checking_baseline().first_definition
+    reader.check_scope_inventory(governing_texts(root, subject.head, scopes, policy), scopes)
+    if old_legacy is None:
+        reader.check_scope_inventory(governing_texts(root, subject.base, scopes, policy), scopes)
     prior = documents(root, subject.base, policy, readme=old_legacy is None)
     current = documents(root, subject.head, policy, readme=True)
     provisional = any(values["status"] == "provisional" for docs in (prior, current)
                       for _, values, _ in docs.values())
     if old_legacy is not None:
         require(not provisional, "first README migration requires approved authored trios")
+        require_document_change(root, subject)
     elif provisional:
         before = policy.readme_intent(blob(root, subject.base, "README.md"))
         after = policy.readme_intent(blob(root, subject.head, "README.md"))
@@ -291,6 +408,18 @@ def validate_pair(root, subject, policy, selected):
     return "definition-only" if provisional else "approved-structure"
 
 
+def declared_selection(policy, data):
+    if data is None:
+        return {}
+    try:
+        values, _ = metadata(policy, data)
+    except ValueError:
+        if SELECTION.encode() in data:
+            raise
+        return {}
+    return selection(values[SELECTION]) if SELECTION in values else {}
+
+
 def selection_hints(root, env, branch, policy):
     """Runner revision/target hints may require refusal, never authorize a route."""
     hints = []
@@ -314,16 +443,9 @@ def selection_hints(root, env, branch, policy):
         except ValueError:
             continue
         inspected = True
-        if data is not None:
-            try:
-                values, _ = metadata(policy, data)
-            except ValueError:
-                require(SELECTION.encode() not in data, "invalid protected selection in runner base hint")
-                continue
-            if SELECTION in values:
-                selected = selection(values[SELECTION])
-                if branch is None or branch in selected:
-                    return True, inspected
+        selected = declared_selection(policy, data)
+        if selected and (branch is None or branch in selected):
+            return True, inspected
     return False, inspected
 
 
@@ -336,7 +458,9 @@ def maybe_validate(root, policy, env=None):
               env.get("GITHUB_REF", "").removeprefix("refs/heads/")) or None
     hinted, inspected = selection_hints(root, env, branch, policy)
     if name not in {"pull_request", "push"}:
-        require(not hinted, "selected standalone route requires native pull_request or push evidence")
+        if hinted or branch is None or branch in BRANCHES:
+            local = declared_selection(policy, blob(root, "HEAD", "docs/requirements.md", optional=True))
+            require(not hinted and not local, "selected standalone route requires native pull_request or push evidence")
         return False
     # The base is only a lookup until the complete provider/checkout binding below
     # succeeds. It can never select or approve a candidate by itself.
@@ -359,25 +483,33 @@ def maybe_validate(root, policy, env=None):
     except (ValueError, OSError, UnicodeError, subprocess.SubprocessError):
         if branch is not None and branch not in BRANCHES and not hinted:
             return False
-        require(not hinted and inspected, "protected selection cannot be checked without exact provider evidence")
+        local = declared_selection(policy, blob(root, "HEAD", "docs/requirements.md", optional=True))
+        require(not hinted and inspected and not local, "protected selection cannot be checked without exact provider evidence")
         return False
-    if base_root is None:
+    # A candidate declaration cannot authorize this event, even if the legacy
+    # trio is still present. A change to any branch's selection is preparation
+    # for a later protected base and must be kept separate from implementation.
+    selected = declared_selection(policy, base_root)
+    if branch in BRANCHES or event_branch in BRANCHES:
+        # The checkout is only a refusal hint if exact provider data is missing.
+        try:
+            head = event["after"] if name == "push" else event["pull_request"]["head"]["sha"]
+            require(isinstance(head, str) and SHA.fullmatch(head), "provider event lacks exact candidate revision")
+            candidate = blob(root, head, "docs/requirements.md", optional=True)
+        except (KeyError, TypeError, ValueError):
+            local = declared_selection(policy, blob(root, "HEAD", "docs/requirements.md", optional=True))
+            require(not hinted and not selected and not local, "README selection requires exact provider evidence")
+            return False
+        proposed = declared_selection(policy, candidate)
+        if proposed != selected:
+            subject = event_subject(root, env, event)
+            require(all(set(scopes) <= set(proposed.get(target, [])) for target, scopes in selected.items()),
+                    "candidate removed protected README selection")
+            require_document_change(root, subject)
+    if not selected:
         if hinted:
             event_subject(root, env, event)
         return False
-    try:
-        values, _ = metadata(policy, base_root)
-    except ValueError:
-        if SELECTION.encode() in base_root:
-            raise
-        if hinted:
-            event_subject(root, env, event)
-        return False
-    if SELECTION not in values:
-        if hinted:
-            event_subject(root, env, event)
-        return False
-    selected = selection(values[SELECTION])
     # Either selected target requires the full comparison; a disagreeing runner
     # target must not turn a selected provider event into a legacy fallback.
     if event_branch not in selected and branch not in selected and not hinted:
@@ -391,6 +523,14 @@ def maybe_validate(root, policy, env=None):
     require(source.parent == Path(__file__).resolve().parent and not source.is_relative_to(root.resolve()),
             "selected route cannot execute checking code from the consumer checkout")
     handled = validate_pair(root, subject, policy, selected)
+    checked_head = git(root, "rev-parse", "HEAD").decode().strip()
+    if len(selected[subject.branch]) > 1 and checked_head != subject.head:
+        # ci-rust can build GitHub's exact synthetic merge. Check the governing
+        # sources in that checkout too, using only the original protected base.
+        merged = Subject(subject.repository, subject.repository_id, subject.branch, subject.base, checked_head)
+        merged_selection = declared_selection(policy, blob(root, checked_head, "docs/requirements.md"))
+        require(merged_selection == proposed, "merge checkout differs from PR governing selection")
+        validate_pair(root, merged, policy, selected)
     if handled:
         print("✓ Protected-base README Intent " + handled + " passed; human approval and Currentness are separate")
     return bool(handled)

@@ -261,6 +261,14 @@ template with the same scopes. Verify the hosted
 `CI` run on the consumer PR. When introducing executable code, extend the
 repository workflow with the applicable product checks.
 
+For a product with its own component definitions, adopt the scope list in
+root `docs/requirements.md` in a documentation PR before introducing code.
+For example, `readme_intent_scopes: {dev: [".", "catalog"]}` selects the
+root and `catalog/` definitions for product changes into `dev`. Each scope
+needs its approved README Intent, Requirements and Architecture with current
+upstream references. The usual product CI, including the policy step inside
+`ci-rust`, validates the selected scopes and runs its product checks.
+
 ## Complete Application Profile Source
 
 The [organization baseline contract](actions/ci-org-baseline/README.md) defines the

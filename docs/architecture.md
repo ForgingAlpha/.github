@@ -25,6 +25,13 @@ checks baseline presence and repository-specific status metadata. Only the exact
 required status marker; its own CI validates canonical IDs and upstream digests.
 These structural checks cannot establish approval or Currentness.
 
+The policy step in a product workflow reads the governing scope selection from
+the protected branch's root Requirements. For a multi-scope product it reads
+the selected README Intents and the corresponding Requirements and Architecture
+from both Git revisions, validates their identities and upstream bindings, and
+rejects product changes while any selected definition is provisional. Other
+steps in the workflow exercise the build and product behavior.
+
 For the repository-owned documentation route, the shared action reads Git
 objects at the exact PR head and protected base. A README-only seed admits the
 shared caller template with explicit governing scopes. Once adopted, the base
