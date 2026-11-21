@@ -2,6 +2,8 @@
 status: approved
 readme_intent_scopes:
   main: ["."]
+readme_four_section_scopes:
+  main: ["."]
 tags:
   - org/alpha-apps
   - topic/github
