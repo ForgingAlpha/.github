@@ -331,6 +331,18 @@ a structural CI check, not proof of approval or Currentness. The exact
 a required status marker; its owner CI validates canonical identities and exact
 upstream bindings. Other repository baseline status requirements remain in force.
 
+## Rust lockfile validation
+
+Set `locked: "true"` on `ci-rust` to require the selected Cargo workspace's
+committed, unchanged `Cargo.lock`. The existing `working-directory` input
+defaults to `.` and may name a nested workspace or a member directory containing
+`Cargo.toml`. The action checks locked resolution before caching, passes
+`--locked` to Clippy, compilation and tests, and audits the workspace lockfile.
+Cargo uses the workspace-root lock for these checks even when a resolver override
+points elsewhere. It keeps its normal package selection, including `default-members`.
+Omitting `locked` or setting it to `"false"` preserves the existing commands.
+Repository workflows own additional product checks and checks on other lockfiles.
+
 ## Markdown Inputs
 
 Run `ci-markdown` from the checkout root on Linux. It discovers every tracked

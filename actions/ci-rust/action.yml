@@ -33,6 +33,10 @@ inputs:
     description: "Directory containing Cargo.toml"
     required: false
     default: "."
+  locked:
+    description: "Require the selected Cargo workspace's committed lockfile (true|false)"
+    required: false
+    default: "false"
   github-actions-mode:
     description: "GitHub Actions safety mode (changed|all)"
     required: false
@@ -177,28 +181,43 @@ runs:
         toolchain: ${{ inputs.toolchain }}
         components: clippy, rustfmt
 
+    - name: Verify Cargo lock policy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CARGO_LOCKED: ${{ inputs.locked }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" public verify-lock "$CARGO_LOCKED"
+
     - name: Cache Rust
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         workspaces: ${{ inputs.working-directory }} -> target
 
     - name: Check formatting
-      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy fmt
+      env:
+        CARGO_LOCKED: ${{ inputs.locked }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" public fmt "$CARGO_LOCKED"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Clippy (deny warnings)
-      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy clippy
+      env:
+        CARGO_LOCKED: ${{ inputs.locked }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" public clippy "$CARGO_LOCKED"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Compile (deny dead code)
-      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy check
+      env:
+        CARGO_LOCKED: ${{ inputs.locked }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" public check "$CARGO_LOCKED"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Run tests
-      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy test
+      env:
+        CARGO_LOCKED: ${{ inputs.locked }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" public test "$CARGO_LOCKED"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
@@ -209,6 +228,8 @@ runs:
       shell: bash
 
     - name: Audit dependencies
-      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" legacy audit
+      env:
+        CARGO_LOCKED: ${{ inputs.locked }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" public audit "$CARGO_LOCKED"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
