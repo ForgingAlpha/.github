@@ -211,6 +211,8 @@ def upstream_bindings(data, values, kind, *, readme=False):
         named = next((name for name in bindings if re.fullmatch(r"(?:[\w -]+ )?" + name, label, re.I)), None)
         name = targets.get(target)
         if readme:
+            if not name and not named:
+                continue  # Unrelated opening evidence may carry its own digest.
             require(name and (not named or named == name), "wrong upstream governing link")
         else:
             name = name or named
@@ -327,26 +329,33 @@ def definition_paths(scopes):
             for name in ("README.md", "docs/requirements.md", "docs/architecture.md")}
 
 
-def validate_scopes(root, subject, policy, scopes):
+def validate_scopes(root, subject, policy, protected_scopes, proposed_scopes):
     reader = checking_baseline().first_definition
-    prior = governing_texts(root, subject.base, scopes, policy)
-    current = governing_texts(root, subject.head, scopes, policy)
-    prior_docs = reader.check_documents(prior, scopes, policy, allow_approved=True)
-    current_docs = reader.check_documents(current, scopes, policy, allow_approved=True)
-    provisional = False
+    prior = governing_texts(root, subject.base, protected_scopes, policy)
+    current = governing_texts(root, subject.head, proposed_scopes, policy)
+    if protected_scopes == ["."]:
+        # The existing root contract allowed absent IDs/digests. Preserve each
+        # authored binding, while requiring the complete new contract at head.
+        reader.check_scope_inventory(prior, protected_scopes)
+        old_root = documents(root, subject.base, policy, readme=True)
+        prior_docs = {kind: (values, {name: len(items) for name, items in bindings.items()})
+                      for kind, (_, values, bindings) in old_root.items()}
+    else:
+        prior_docs = reader.check_documents(prior, protected_scopes, policy, allow_approved=True)
+    current_docs = reader.check_documents(current, proposed_scopes, policy, allow_approved=True)
+    provisional = any(values["status"] == "provisional"
+                      for docs in (prior_docs, current_docs) for values, _ in docs.values())
     for path, (old, old_bindings) in prior_docs.items():
         new, new_bindings = current_docs[path]
-        provisional |= "provisional" in (old["status"], new["status"])
         require(all(new.get(key) == old[key] for key in ("id", "intent", "requirements") if key in old),
                 "protected governing identity changed")
         require(all(key in new for key in ("intent_sha256", "requirements_sha256") if key in old)
                 and all(new_bindings.get(key, 0) >= count for key, count in old_bindings.items()),
                 "protected governing binding removed")
     if provisional:
-        paths = definition_paths(scopes)
         diff = changed_paths(root, subject.base, subject.head)
-        require(diff and diff <= paths, "provisional repair requires only selected definition-file changes")
-        for name in diff:
+        require(diff and diff <= definition_paths(proposed_scopes), "provisional repair requires only selected definition-file changes")
+        for name in diff & definition_paths(protected_scopes):
             if name.endswith("README.md"):
                 require(policy.readme_intent(prior[name].encode()).outside == policy.readme_intent(current[name].encode()).outside,
                         "provisional repair changed README outside Intent")
@@ -362,8 +371,9 @@ def validate_pair(root, subject, policy, selected):
     if subject.branch not in selected:
         return False
     scopes = selected[subject.branch]
-    if len(scopes) > 1:
-        return validate_scopes(root, subject, policy, scopes)
+    proposed_scopes = current_selection[subject.branch]
+    if len(proposed_scopes) > 1:
+        return validate_scopes(root, subject, policy, scopes, proposed_scopes)
     old_legacy = blob(root, subject.base, "docs/intent.md", optional=True)
     new_legacy = blob(root, subject.head, "docs/intent.md", optional=True)
     if old_legacy is not None:
@@ -506,6 +516,14 @@ def maybe_validate(root, policy, env=None):
             require(all(set(scopes) <= set(proposed.get(target, [])) for target, scopes in selected.items()),
                     "candidate removed protected README selection")
             require_document_change(root, subject)
+            # New selections for other branches, or the first declaration on
+            # this branch, cannot authorize this run. Check their complete
+            # future multi-scope input before falling back to the existing route.
+            reader = checking_baseline().first_definition
+            for target, scopes in proposed.items():
+                if (target != subject.branch or target not in selected) and len(scopes) > 1 and scopes != selected.get(target):
+                    texts = governing_texts(root, head, scopes, policy)
+                    reader.check_documents(texts, scopes, policy, allow_approved=True)
     if not selected:
         if hinted:
             event_subject(root, env, event)
@@ -524,12 +542,14 @@ def maybe_validate(root, policy, env=None):
             "selected route cannot execute checking code from the consumer checkout")
     handled = validate_pair(root, subject, policy, selected)
     checked_head = git(root, "rev-parse", "HEAD").decode().strip()
-    if len(selected[subject.branch]) > 1 and checked_head != subject.head:
+    if len(proposed[subject.branch]) > 1 and checked_head != subject.head:
         # ci-rust can build GitHub's exact synthetic merge. Check the governing
         # sources in that checkout too, using only the original protected base.
         merged = Subject(subject.repository, subject.repository_id, subject.branch, subject.base, checked_head)
         merged_selection = declared_selection(policy, blob(root, checked_head, "docs/requirements.md"))
         require(merged_selection == proposed, "merge checkout differs from PR governing selection")
+        if proposed != selected:
+            require_document_change(root, merged)
         validate_pair(root, merged, policy, selected)
     if handled:
         print("✓ Protected-base README Intent " + handled + " passed; human approval and Currentness are separate")

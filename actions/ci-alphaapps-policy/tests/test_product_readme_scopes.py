@@ -175,6 +175,76 @@ class ProductReadmeScopeTests(unittest.TestCase):
         self.f.env["GITHUB_SHA"] = merged
         self.cli(False, "missing registered governing source")
 
+    def test_docs_enroll_first_and_subsequent_scopes_before_code(self):
+        self.f.git("rm", "-r", "engine")
+        self.declaration = "{main: ['.']}"
+        self.write_scope(".")
+        # An old root may retain only a subset of the source identity chain.
+        self.f.write("docs/requirements.md", document(
+            {"status": "approved", "id": "urn:example:.:requirements", "readme_intent_scopes": self.declaration},
+            "# Requirements\n\nStable observations.\n"))
+        self.f.write("docs/architecture.md", document(
+            {"status": "approved", "requirements": "urn:example:.:requirements"},
+            "# Architecture\n\nAn independent service.\n"))
+        self.adopt()
+        self.declaration = "{main: ['.', 'engine']}"
+        self.write_scope(".")
+        self.write_scope("engine")
+        self.candidate(code=False)
+        self.cli(True, "approved-structure")
+        self.adopt()
+        self.declaration = "{main: ['.', 'engine', 'source']}"
+        self.write_scope(".")
+        self.write_scope("source", status="provisional")
+        self.candidate(code=False)
+        self.cli(True, "definition-only")
+        self.adopt()
+        self.write_scope("source")
+        self.candidate()
+        self.cli(False, "provisional repair")
+        self.f.git("reset", "--hard", self.f.base)
+        self.write_scope("source")
+        self.candidate(code=False)
+        self.cli(True, "definition-only")
+        self.adopt()
+        self.candidate()
+        self.cli(True, "approved-structure")
+
+    def test_scope_enrollment_needs_complete_definitions_and_protected_identities(self):
+        for defect in ("missing", "incomplete", "stale", "replaced", "code", "inactive"):
+            with self.subTest(defect=defect):
+                self.f.git("reset", "--hard", self.f.base)
+                self.declaration = ("{main: ['.', 'engine'], dev: ['.', 'engine', 'source']}" if defect == "inactive" else
+                                    "{main: ['.', 'engine', 'source']}")
+                self.write_scope(".")
+                if defect not in {"missing", "inactive"}:
+                    self.write_scope("source")
+                if defect == "incomplete":
+                    (self.f.repo / "source/docs/architecture.md").unlink()
+                if defect == "stale":
+                    req = self.f.repo / "source/docs/requirements.md"
+                    req.write_bytes(req.read_bytes() + b"Changed.\n")
+                if defect == "replaced":
+                    self.write_scope("engine", identity="detached")
+                self.candidate(code=defect == "code")
+                self.cli(False)
+
+    def test_root_only_unrelated_digest_evidence_and_wrong_governing_target(self):
+        self.f.git("rm", "-r", "engine")
+        self.declaration = "{main: ['.']}"
+        self.write_scope(".")
+        self.adopt()
+        req = self.f.repo / "docs/requirements.md"
+        arch = self.f.repo / "docs/architecture.md"
+        for label, valid in (("sample evidence", True), ("product intent", False)):
+            with self.subTest(label=label):
+                self.f.git("reset", "--hard", self.f.base)
+                old = sha(req.read_bytes()).encode()
+                req.write_bytes(req.read_bytes() + f"\n[{label}](sample.md) at SHA-256 `{'f' * 64}`.\n".encode())
+                arch.write_bytes(arch.read_bytes().replace(old, sha(req.read_bytes()).encode()))
+                self.candidate()
+                self.cli(valid, "approved-structure" if valid else "wrong upstream governing link")
+
     def test_existing_root_only_optional_metadata_contract_remains_eligible(self):
         self.f.git("rm", "-r", "engine")
         self.f.write("README.md", document({"status": "approved"}, "# Example\n\n## Intent\n\nPreserve observed results.\n"))
