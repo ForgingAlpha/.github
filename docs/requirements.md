@@ -636,7 +636,7 @@ not establish execution or enforcement. CodeQL remains separately configured.
 
 ### REQ-026 - Explicit Document Bootstrap
 
-A document-only bootstrap profile SHALL be explicitly enrolled by the approved
+An organization-required document-only bootstrap profile SHALL be explicitly enrolled by the approved
 central source, validate its governing documents and tracked Markdown, and admit
 only its declared non-executable inputs. Application profiles SHALL fail when
 their expected manifests or commands are missing rather than select bootstrap.
@@ -647,6 +647,17 @@ enrollment SHALL bind the exact head, governing scopes and required human team.
 CI SHALL verify each scope's provisional README Intent, separate Requirements
 and Architecture, their source identities and upstream digests, and the entire
 document-only tree. A change of head or movement beyond the seed ends eligibility.
+
+A private repository MAY instead introduce its own required `CI` workflow with
+its first definitions on the same README-only `dev` seed. The workflow SHALL
+match the shared caller template and declare the root and all governing
+components. CI SHALL verify the exact PR head, every declared governing chain,
+the document-only tree and tracked Markdown. Subsequent documentation PRs
+SHALL preserve the caller and scopes adopted on protected `dev`. A dedicated
+workflow-only PR MAY upgrade the caller to the current template at those scopes. Native
+protection SHALL require current human team review, including review of the
+initial caller on the exact head. Reliance requires an observed hosted run.
+Adding application code requires applicable product checks.
 
 **Fit:** Unknown enrollment, changed repository identity, application code,
 executable lint configuration, custom formatters/rules, untracked required

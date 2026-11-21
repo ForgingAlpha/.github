@@ -47,6 +47,7 @@ def load_checking_module(name, path):
 
 GIT_OUTPUT_LIMIT = 1024 * 1024
 GIT_TIMEOUT = 30
+ORGANIZATION_HUMAN_REVIEW = {"team_id": 20299307, "minimum_approvals": 1}
 
 
 class Refused(ValueError):
@@ -175,14 +176,18 @@ def select(entries, name, repository_id, branch):
     return matches[0]
 
 
-def admit_tree(root, expected_head, *, definition_scopes=None):
+def clean_document_checkout(root, expected_head):
     require(root == root.resolve() and git(root, "rev-parse", "--show-toplevel").decode().strip() == str(root), "explicit physical consumer root required")
     require(SHA.fullmatch(expected_head or "") and git(root, "rev-parse", "HEAD").decode().strip() == expected_head, "consumer checkout is not the exact PR head")
     require(git(root, "rev-parse", "--show-object-format").strip() == b"sha1", "unsupported Git object format")
     require(not git(root, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "HEAD", "--"), "modified consumer worktree/index")
     require(not git(root, "diff", "--cached", "--name-only", "HEAD", "--"), "modified consumer index")
     require(not git(root, "ls-files", "--others", "-z"), "untracked consumer inputs (including ignored files)")
-    raw = git(root, "ls-tree", "-rz", "--full-tree", expected_head)
+
+
+def document_inputs(root, revision, *, definition_scopes=None, caller=None, working=False):
+    """Read one bounded documentation inventory from commit blobs or its verified checkout."""
+    raw = git(root, "ls-tree", "-rz", "--full-tree", revision)
     require(raw.endswith(b"\0"), "empty or incomplete tracked inventory")
     records = raw[:-1].split(b"\0")
     require(len(records) <= 512, "bootstrap exceeds 512 tracked inputs")
@@ -205,23 +210,30 @@ def admit_tree(root, expected_head, *, definition_scopes=None):
         else:
             data_input = name.startswith(data_dirs) and name.endswith(".json") and not first_definition.json_config(parts[-1])
             allowed = not hidden and (markdown or data_input)
-        require(allowed, "undeclared executable/config/application input: " + repr(name))
-        path = root / name
-        for parent in path.parents:
-            if parent == root:
-                break
-            require(stat.S_ISDIR(parent.lstat().st_mode), "linked or non-directory input ancestor")
-        info = path.lstat()
-        if mode == "120000":
-            require(name in ALIASES and stat.S_ISLNK(info.st_mode) and os.readlink(path) == "PROJECT.md", "unsupported instruction projection link")
-            links.add(name)
-            data = b"PROJECT.md"
+        is_caller = caller is not None and name == ".github/workflows/ci.yml"
+        require(allowed or is_caller, "undeclared executable/config/application input: " + repr(name))
+        require(kind == "blob" and (mode == "100644" or (mode == "120000" and name in ALIASES)),
+                "bootstrap requires non-executable regular inputs or an instruction projection")
+        if working:
+            path = root / name
+            for parent in path.parents:
+                if parent == root:
+                    break
+                require(stat.S_ISDIR(parent.lstat().st_mode), "linked or non-directory input ancestor")
+            if mode == "120000":
+                require(path.is_symlink(), "unsupported instruction projection link")
+                data = os.fsencode(os.readlink(path))
+            else:
+                require(path.lstat().st_size <= 512 * 1024, "bootstrap input exceeds 512 KiB")
+                data, info = read_regular(path, 512 * 1024)
+                require(not info.st_mode & 0o111, "bootstrap requires non-executable regular inputs")
         else:
-            require(mode == "100644" and kind == "blob" and stat.S_ISREG(info.st_mode) and not info.st_mode & 0o111,
-                    "bootstrap requires non-executable regular inputs")
-            require(info.st_size <= 512 * 1024, "bootstrap input exceeds 512 KiB")
-            data, info = read_regular(path, 512 * 1024)
-            require(not info.st_mode & 0o111, "bootstrap input became executable")
+            data = git(root, "cat-file", "blob", oid, limit=512 * 1024)
+        if mode == "120000":
+            require(data == b"PROJECT.md", "unsupported instruction projection link")
+            links.add(name)
+        if is_caller:
+            require(data == caller, "consumer workflow differs from the canonical caller")
         total += len(data)
         require(total <= 8 * 1024 * 1024, "bootstrap exceeds 8 MiB")
         require(hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest() == oid,
@@ -234,10 +246,18 @@ def admit_tree(root, expected_head, *, definition_scopes=None):
             texts[name] = text
     if definition_scopes is None:
         require(REQUIRED <= seen, "missing required project/governing inputs")
-    else:
-        first_definition.check_documents(texts, definition_scopes, policy)
+    if caller is not None:
+        require(".github/workflows/ci.yml" in seen, "missing canonical consumer workflow")
     if links or definition_scopes is None:
         require("PROJECT.md" in texts, "instruction projection target must be tracked regular Markdown")
+    return texts
+
+
+def admit_tree(root, expected_head, *, definition_scopes=None):
+    clean_document_checkout(root, expected_head)
+    texts = document_inputs(root, expected_head, definition_scopes=definition_scopes, working=True)
+    if definition_scopes is not None:
+        first_definition.check_documents(texts, definition_scopes, policy)
     return texts
 
 
@@ -343,13 +363,15 @@ def prove_pr(api, event, entry):
             require(isinstance(ref, dict) and isinstance(ref.get("repo"), dict), "missing PR repository")
             require(positive(ref["repo"].get("id")) and ref["repo"].get("id") == entry["repository_id"] and ref["repo"].get("full_name") == entry["repository"], "unsupported fork or changed PR repository")
             require(isinstance(ref.get("sha"), str) and SHA.fullmatch(ref["sha"]), "invalid PR commit identity")
-            if entry.get("producer") == "first-definition":
+            if entry.get("producer") in {"first-definition", "repo-docs"}:
                 require(ref["repo"].get("private") is True, "first definition requires a private repository")
         require(value["base"].get("ref") in entry["branches"], "unqualified PR base branch")
     require(pr["base"]["ref"] == live["base"]["ref"] and all(pr[s]["sha"] == live[s]["sha"] for s in ("base", "head")), "PR base/head moved since event")
+    if entry.get("producer") == "repo-docs":
+        require(pr["head"]["ref"] == live["head"].get("ref"), "PR source branch moved since event")
     branch = api.get(f'/repos/{entry["repository"]}/branches/{quote(pr["base"]["ref"], safe="")}')
     require(isinstance(branch, dict) and branch.get("commit", {}).get("sha") == pr["base"]["sha"], "base branch moved since event")
-    if entry.get("producer") == "first-definition":
+    if entry.get("producer") in {"first-definition", "repo-docs"}:
         require(branch.get("name") == "dev" and branch.get("protected") is True, "first definition requires protected dev")
     return pr["base"]["ref"], pr["base"]["sha"], pr["head"]["sha"]
 
@@ -994,14 +1016,16 @@ def source_identity(source_sha):
     require(not git(SOURCE, "status", "--porcelain", "--untracked-files=all"), "trusted checking source is modified")
 
 
-def event_subject(root, event, entries, *, allow_first_definition=False):
+def event_subject(root, event, entries, *, allow_first_definition=False, repo_docs=False):
     repo, pr = event.get("repository"), event.get("pull_request")
     require(isinstance(repo, dict) and isinstance(pr, dict) and isinstance(pr.get("base"), dict),
             "malformed consumer event")
     name, identity, base = repo.get("full_name"), repo.get("id"), pr["base"]
     require(isinstance(name, str) and positive(identity), "invalid event repository")
     known = any(e["repository"].casefold() == name.casefold() or e["repository_id"] == identity for e in entries)
-    if known or not allow_first_definition:
+    if repo_docs:
+        require(not known, "centrally enrolled repository requires its existing CI profile")
+    if known or not (allow_first_definition or repo_docs):
         entry = select(entries, name, identity, base.get("ref"))
     else:
         require(re.fullmatch(r"ForgingAlpha/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}", name)
@@ -1023,7 +1047,7 @@ def event_subject(root, event, entries, *, allow_first_definition=False):
             require(isinstance(side.get("repo"), dict) and side["repo"].get("private") is True
                     and side["repo"].get("html_url") == repo["html_url"], "private same-repository PR required")
         entry = {"repository": name, "repository_id": identity, "branches": ["dev"],
-                 "profile": "documentation-bootstrap", "producer": "first-definition"}
+                 "profile": "documentation-bootstrap", "producer": "repo-docs" if repo_docs else "first-definition"}
     require(os.environ.get("GITHUB_REPOSITORY") == name and os.environ.get("GITHUB_REPOSITORY_ID") == str(identity),
             "event/runtime identity mismatch")
     for side in ("head", "base"):
@@ -1033,9 +1057,10 @@ def event_subject(root, event, entries, *, allow_first_definition=False):
     require(positive(event.get("number")) and git(root, "remote", "get-url", "origin").decode().strip() in
             ("https://github.com/" + entry["repository"], "https://github.com/" + entry["repository"] + ".git"), "invalid PR/origin")
     require(git(root, "rev-parse", "refs/remotes/origin/" + pr["base"]["ref"]).decode().strip() == pr["base"]["sha"], "consumer base checkout mismatch")
-    if entry.get("producer") == "first-definition":
+    if entry.get("producer") in {"first-definition", "repo-docs"}:
         require(git(root, "rev-parse", "HEAD").decode().strip() == pr["head"]["sha"], "checkout differs from PR head")
-        verify_seed(root, base["sha"], pr["head"]["sha"])
+        if not repo_docs:
+            verify_seed(root, base["sha"], pr["head"]["sha"])
     return entry
 
 
