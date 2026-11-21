@@ -48,17 +48,18 @@ def pr_subject(api, event, target):
         baseline.require(isinstance(record, dict) and record.get("state") == "open"
                          and baseline.positive(record.get("number")) and record["number"] == number,
                          "current open pull request evidence unavailable")
-    live_repo, live_branch, base = revision(live.get("base"))
-    baseline.require((live_repo, live_branch) == (target, branch)
+    live_base = live.get("base")
+    baseline.require(isinstance(live_base, dict) and repository(live_base.get("repo")) == target
+                     and live_base.get("ref") == branch
                      and revision(live.get("head")) == (head_repo, head_ref, head), "pull request subject moved")
-    # The runner identifies the test merge. Webhook commit snapshots can predate that merge.
+    # The merge parents identify the run inputs. Both PR base snapshots can predate the protected tip.
     merge = commit(os.environ["GITHUB_SHA"])
     baseline.require(live.get("merge_commit_sha") == merge, "current pull request merge differs from runner")
     obj = api.get(f"/repos/{target[0]}/git/commits/{merge}")
     parents = obj.get("parents")
     baseline.require(obj.get("sha") == merge and isinstance(parents, list) and len(parents) == 2
-                     and [parent.get("sha") for parent in parents] == [base, head],
-                     "run merge parents differ from the current PR base and submitted head")
+                     and parents[1].get("sha") == head, "expected a two-parent run merge with the submitted head")
+    base = commit(parents[0].get("sha"))
     return branch, base, {"number": number, "event_base": event_base, "base": base, "head": head,
                           "head_repository": head_repo[0], "head_repository_id": head_repo[1], "merge": merge}
 

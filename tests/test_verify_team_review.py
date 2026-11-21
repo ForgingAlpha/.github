@@ -164,6 +164,18 @@ class TeamReviewTests(unittest.TestCase):
                 self.assertEqual((receipt["event_base"], receipt["base"], receipt["head"], receipt["merge"]),
                                  (old_base, BASE, HEAD, MERGE))
 
+    def test_branch_tip_and_run_parent_can_advance_beyond_both_pr_base_snapshots(self):
+        current = "f" * 40
+        self.branch["commit"]["sha"] = current
+        self.merge["parents"][0]["sha"] = current
+        receipt = self.run_entry()["pull_request"]
+        self.assertEqual((receipt["event_base"], receipt["base"], receipt["head"]), (BASE, current, HEAD))
+        self.assertEqual(self.calls, [self.prefix, self.prefix + "/pulls/42", self.merge_path,
+                                      self.prefix + "/branches/dev", self.rules_path])
+
+        self.merge["parents"][0]["sha"] = BASE
+        self.refused()
+
     def test_run_merge_must_have_current_base_and_submitted_head_as_ordered_parents(self):
         old = "d" * 40
         for parents in ([old, HEAD], [BASE, old], [HEAD, BASE], [BASE], [BASE, HEAD, old]):
@@ -215,7 +227,8 @@ class TeamReviewTests(unittest.TestCase):
                                 (self.env, "DEFINING_SHA", MERGE), (self.env, "GITHUB_REPOSITORY_ID", "321"),
                                 (self.responses[self.prefix], "id", ID + 1), (self.live_pr, "state", "closed"),
                                 (self.live_pr["head"], "sha", BASE), (self.live_pr["head"], "repo", {"full_name": NAME, "id": ID + 1}),
-                                (self.live_pr["base"], "sha", HEAD), (self.branch, "name", "main")):
+                                (self.live_pr["base"], "ref", "main"), (self.live_pr["base"], "repo", {"full_name": NAME, "id": ID + 1}),
+                                (self.branch, "name", "main")):
             with self.subTest(key=key), patch.dict(obj, {key: value}):
                 self.refused()
         (self.source / "unexpected.txt").touch()
