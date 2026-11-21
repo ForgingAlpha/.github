@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -202,16 +203,25 @@ def upstream_bindings(data, values, kind, *, readme=False, prior_data=None):
                 for name in ("intent", "requirements")}
     targets = reader.README_TARGETS if readme else {"intent.md": "intent", "requirements.md": "requirements"}
     opening = data.decode().split("\n## ", 1)[0]
-    protected_targets = set()
-    if prior_data is not None:
-        prior_opening = prior_data.decode().split("\n## ", 1)[0]
-        protected_targets = {(label, target) for _, label, target, _ in reader.historical_links(prior_opening)}
-    for label, target, digest, historical in reader.opening_links(opening, product=True):
+    if prior_data is None:
+        # Only the original reader's claims and metadata were protected.
+        for _, label, _, digest in reader.historical_links(opening):
+            bindings["requirements" if label == "Requirements" else "intent"].append(digest)
+        return bindings
+
+    prior_opening = prior_data.decode().split("\n## ", 1)[0]
+    prior_claims = Counter(reader.opening_links(prior_opening, product=True))
+    protected_targets = {(label, target) for label, target, _, historical in prior_claims if historical}
+    for claim in reader.opening_links(opening, product=True):
+        label, target, digest, historical = claim
         if digest is None:
             continue
-        if historical and (prior_data is None or (label, target) in protected_targets):
-            # The protected root reader historically bound these checksums by
-            # label. Preserve and verify those exact target spellings.
+        if not historical and prior_claims[claim]:
+            # Carry a previously ignored occurrence. Extra copies and changed
+            # labels, targets or digests are new claims and must be checked.
+            prior_claims[claim] -= 1
+            continue
+        if historical and (label, target) in protected_targets:
             name = "requirements" if label == "Requirements" else "intent"
         else:
             name = reader.governing_link_name(label, target, targets, product=True, legacy=not readme)

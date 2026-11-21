@@ -348,6 +348,42 @@ class ProductReadmeScopeTests(unittest.TestCase):
         self.candidate(code=False)
         self.cli(True, "approved-structure")
 
+    def test_root_only_can_keep_or_repair_previously_unrecognized_claims(self):
+        self.f.git("rm", "-r", "engine")
+        self.declaration = "{main: ['.']}"
+        self.write_scope(".")
+        req = self.f.repo / "docs/requirements.md"
+        arch = self.f.repo / "docs/architecture.md"
+        intent = fixture.policy.readme_intent((self.f.repo / "README.md").read_bytes()).sha256
+        stale = "f" * 64
+        intent_claim = f"[product intent](../README.md#intent) at SHA-256 `{stale}`".encode()
+        req_claim = f"| [Product Requirements](./requirements.md) | `{stale}` |".encode()
+        previous = sha(req.read_bytes()).encode()
+        req.write_bytes(req.read_bytes() + b"\n" + intent_claim + b"\n")
+        arch.write_bytes(arch.read_bytes().replace(previous, sha(req.read_bytes()).encode())
+                         + b"\n| Source | Digest |\n| --- | --- |\n" + req_claim + b"\n")
+        self.adopt()
+        self.candidate()
+        self.cli(True, "approved-structure")
+        for source in ("intent", "requirements"):
+            with self.subTest(repair=source):
+                self.f.git("reset", "--hard", self.f.base)
+                if source == "intent":
+                    previous = sha(req.read_bytes()).encode()
+                    req.write_bytes(req.read_bytes().replace(intent_claim, intent_claim.replace(stale.encode(), intent.encode())))
+                    arch.write_bytes(arch.read_bytes().replace(previous, sha(req.read_bytes()).encode(), 1))
+                else:
+                    repair = req_claim.replace(b"./requirements.md", b"requirements.md").replace(stale.encode(), sha(req.read_bytes()).encode())
+                    arch.write_bytes(arch.read_bytes().replace(req_claim, repair))
+                self.candidate(code=False)
+                self.cli(True, "approved-structure")
+        for claim in (req_claim, req_claim.replace(b"./requirements.md", b"other.md")):
+            with self.subTest(new_claim=claim):
+                self.f.git("reset", "--hard", self.f.base)
+                arch.write_bytes(arch.read_bytes() + claim + b"\n")
+                self.candidate(code=False)
+                self.cli(False, "wrong upstream governing link")
+
     def test_existing_root_only_optional_metadata_contract_remains_eligible(self):
         self.f.git("rm", "-r", "engine")
         self.f.write("README.md", document({"status": "approved"}, "# Example\n\n## Intent\n\nPreserve observed results.\n"))
