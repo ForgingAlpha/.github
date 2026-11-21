@@ -1,0 +1,51 @@
+name: Verify team review
+'on':
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  verify:
+    name: Verify team review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Bind shared workflow source
+        id: source
+        shell: bash
+        env:
+          JOB_CONTEXT: ${{ toJSON(job) }}
+        run: |
+          python3 -I -B - <<'PYTHON'
+          import json, os, re, sys
+          try:
+              job = json.loads(os.environ["JOB_CONTEXT"])
+              sha = job["workflow_sha"]
+              if (job["workflow_repository"] != "ForgingAlpha/.github"
+                      or job["workflow_ref"] != "ForgingAlpha/.github/.github/workflows/verify-team-review.yml@refs/heads/main"
+                      or not isinstance(sha, str) or not re.fullmatch("[0-9a-f]{40}", sha)):
+                  raise ValueError
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                  print(f"sha={sha}", file=output)
+          except (KeyError, TypeError, ValueError, OSError):
+              sys.exit("WHAT: Could not bind the defining workflow commit.\n"
+                       "WHY: The review checker must come from the resolved protected-main workflow.\n"
+                       "HOW: Call ForgingAlpha/.github/.github/workflows/verify-team-review.yml@main "
+                       "on GitHub.com and confirm the job supplies its defining identity and output file.")
+          PYTHON
+
+      - name: Checkout the defining commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ForgingAlpha/.github
+          ref: ${{ steps.source.outputs.sha }}
+          path: team-rule-source
+          persist-credentials: false
+
+      - name: Verify effective review policy
+        env:
+          DEFINING_SHA: ${{ steps.source.outputs.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -I -B team-rule-source/actions/ci-org-baseline/scripts/verify_team_review.py
