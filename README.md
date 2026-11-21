@@ -348,6 +348,27 @@ a structural CI check, not proof of approval or Currentness. The exact
 a required status marker; its owner CI validates canonical identities and exact
 upstream bindings. Other repository baseline status requirements remain in force.
 
+## Rust lockfile validation
+
+Set `locked: "true"` on `ci-rust` to require the selected Cargo workspace's
+committed, unchanged `Cargo.lock`. The existing `working-directory` input
+defaults to `.` and may name a nested workspace or a member directory containing
+`Cargo.toml`. The action checks locked resolution before caching, passes
+`--locked` to Clippy, compilation and tests, and audits the workspace lockfile.
+Cargo keeps its normal package selection, including `default-members`.
+
+Locked mode supports Cargo's conventional workspace-root lockfile. It uses
+the `python3` on the job's `PATH` to read configuration from the selected
+directory, its ancestors and Cargo home, including referenced config files.
+Python 3.11–3.14 supports TOML 1.0. For TOML 1.1 features such as multiline
+inline tables, select Python 3.15+ before invoking the action. An explicit
+`resolver.lockfile-path` or `CARGO_RESOLVER_LOCKFILE_PATH` setting in those
+files or the environment stops the opt-in, even if another setting shadows it.
+Repositories that select another lockfile can keep their own locking and audit
+checks.
+Omitting `locked` or setting it to `"false"` preserves the existing commands.
+Repository workflows own additional product checks and checks on other lockfiles.
+
 ## Markdown Inputs
 
 Run `ci-markdown` from the checkout root on Linux. It discovers every tracked
