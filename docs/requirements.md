@@ -171,9 +171,9 @@ Renovate SHALL evaluate normal updates daily and use these minimum release ages.
 For eligible updates marked “Weekly batch” above, Renovate SHALL create or
 refresh a single open batch per repository and ordinary target. Automatic creation and refresh
 SHALL run only on Tuesday in `America/New_York`. A human may request a refresh
-outside the window. An empty batch SHALL produce no PR. A repository MAY split a
-specific dependency into its own proposal for independent testing or rollback
-under the same timing rules.
+outside the window. An empty batch SHALL produce no PR. When a dependency needs
+independent testing or rollback, the receiving repository’s change owner SHALL
+split it into a separate Renovate proposal under the same timing rules.
 Security proposal timing is governed by [REQ-013](#req-013---immediate-security-updates).
 
 **Fit:** Standard setup admits an eligible patch without owner action. An

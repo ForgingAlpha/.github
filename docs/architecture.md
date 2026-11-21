@@ -199,11 +199,10 @@ and stale-approval invalidation. Missing or partial evidence is a failure.
 Team membership and eligibility remain an operator-qualified prerequisite, not
 an inference from a team ID. Bypass-actor and complete protection qualification
 also remain with the operator; effective-rule reads alone cannot prove them.
-The shared-CI owner exposes the same trusted, metadata-only verification to a
-repository that produces its own product `CI`. The repository selects neither
-the trusted team nor the rule criteria. This profile can replace CODEOWNERS
-validation only after its approved implementation and actual hosted protection are
-qualified; other callers keep their existing checks.
+The shared-CI owner will expose the same metadata-only verification to
+repositories that produce their own product `CI`. The trusted source selects
+the team and rule criteria. These repositories keep CODEOWNERS validation
+until the standalone check and their hosted protections have been qualified.
 
 Here CI enrollment means the centrally reviewed validation configuration for a
 consumer, not an unattended-authority Repository Enrollment or an Operational
