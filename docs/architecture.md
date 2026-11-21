@@ -28,7 +28,11 @@ These structural checks cannot establish approval or Currentness.
 For the repository-owned documentation route, the shared action reads Git
 objects at the exact PR head and protected base. A README-only seed admits the
 shared caller template with explicit governing scopes. Once adopted, the base
-supplies the expected caller and scopes. The action reuses the organization
+supplies the expected caller and scopes. It must still implement the read-only
+caller contract, including an immutable checkout revision. A fresh checkout
+pin or comment in the shared template therefore preserves existing documentation
+PRs. A caller-only PR can update the adopted workflow to the current template.
+The action reuses the organization
 baseline's document inventory, Markdown lint and branch-rule readers. GitHub
 enforces approval. The reviewer checks the actual workflow on the proposed
 head because a replacement job could report the same check name.

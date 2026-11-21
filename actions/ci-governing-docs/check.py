@@ -37,11 +37,28 @@ def consumer_root():
     return root
 
 
+def scope_line(scopes):
+    return b"          scopes: '" + ",".join(scopes).encode("ascii") + b"'\n"
+
+
 def canonical_caller(baseline, scopes):
     template, _ = baseline.read_regular(ACTION / "caller.yml", 65536)
-    selection = b"          scopes: '.'\n"
+    selection = scope_line(["."])
     require(template.count(selection) == 1, "invalid action-owned caller template")
-    return template.replace(selection, b"          scopes: '" + ",".join(scopes).encode("ascii") + b"'\n")
+    return template.replace(selection, scope_line(scopes))
+
+
+def caller_contract(baseline, data):
+    workflow = baseline.yaml_data(data)
+    try:
+        checkout = workflow["jobs"]["CI"]["steps"][0]
+        owner, separator, revision = checkout["uses"].partition("@")
+    except (KeyError, IndexError, AttributeError, TypeError):
+        raise ValueError("missing canonical caller checkout step") from None
+    require(owner == "actions/checkout" and separator and baseline.SHA.fullmatch(revision),
+            "canonical caller requires an immutable actions/checkout revision")
+    checkout["uses"] = owner
+    return workflow
 
 
 def preserve_sources(prior, current):
@@ -78,8 +95,14 @@ def check(baseline, root, event, scopes, api):
     caller = canonical_caller(baseline, scopes)
     prior = None
     if baseline.git(root, "ls-tree", "-z", base, "--", CALLER):
-        prior_text = baseline.document_inputs(root, base, definition_scopes=scopes, caller=caller)
+        adopted = baseline.git(root, "cat-file", "blob", base + ":" + CALLER, limit=65536)
+        require(caller_contract(baseline, adopted) == caller_contract(baseline, caller),
+                "protected workflow differs from the canonical caller contract or scopes")
+        prior_text = baseline.document_inputs(root, base, definition_scopes=scopes, caller=adopted)
         prior = baseline.first_definition.check_documents(prior_text, scopes, baseline.policy, allow_approved=True)
+        changed = baseline.git(root, "diff", "--no-renames", "--name-only", "-z", base, head)
+        if changed != CALLER.encode() + b"\0":
+            caller = adopted
     else:
         baseline.verify_seed(root, base, head)
     texts = baseline.document_inputs(root, head, definition_scopes=scopes, caller=caller, working=True)

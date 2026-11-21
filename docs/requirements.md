@@ -653,7 +653,8 @@ its first definitions on the same README-only `dev` seed. The workflow SHALL
 match the shared caller template and declare the root and all governing
 components. CI SHALL verify the exact PR head, every declared governing chain,
 the document-only tree and tracked Markdown. Subsequent documentation PRs
-SHALL preserve the caller and scopes adopted on protected `dev`. Native
+SHALL preserve the caller and scopes adopted on protected `dev`. A dedicated
+workflow-only PR MAY upgrade the caller to the current template at those scopes. Native
 protection SHALL require current human team review, including review of the
 initial caller on the exact head. Reliance requires an observed hosted run.
 Adding application code requires applicable product checks.

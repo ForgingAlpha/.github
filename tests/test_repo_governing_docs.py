@@ -136,6 +136,29 @@ class RepoGoverningDocsTests(unittest.TestCase):
         self.f.commit()
         self.assertIn("initial provisional definitions", self.invoke(env_changes={"GOV_SCOPES": "."})[0])
 
+    def test_template_rotation_keeps_adopted_workflow_and_scopes(self):
+        rotated = self.template.replace(b"3d3c42e5aac5ba805825da76410c181273ba90b1", b"b" * 40)
+        rotated = rotated.replace(b"# v7.0.1", b"# next reviewed version")
+        future_caller = rotated.replace(b"scopes: '.'", b"scopes: '.,engine'")
+        with patch.object(check, "canonical_caller", return_value=future_caller):
+            with self.assertRaisesRegex(ValueError, "canonical caller"):
+                self.invoke()  # The unadopted seed must use the new template.
+            self.followup()
+            self.f.write("docs/update.md", "# Documentation update\n")
+            self.f.commit()
+            self.assertIn("protected documentation update", self.invoke()[0])
+            self.f.write(check.CALLER, future_caller)
+            self.f.commit()
+            with self.assertRaisesRegex(ValueError, "canonical caller"):
+                self.invoke()  # Mixing a caller upgrade with docs is refused.
+            self.f.git("rm", "docs/update.md")
+            self.f.commit()
+            self.assertIn("protected documentation update", self.invoke()[0])  # Caller-only upgrade.
+            self.followup()
+            self.f.write("docs/update.md", "# Second update\n")
+            self.f.commit()
+            self.assertIn("protected documentation update", self.invoke()[0])
+
     def test_ordinary_requires_exact_base_and_head_callers_and_document_trees(self):
         self.followup()
         original = self.f.base
@@ -164,6 +187,18 @@ class RepoGoverningDocsTests(unittest.TestCase):
         self.f.git("rm", "-q", "service.py")
         self.f.commit()
         with self.assertRaisesRegex(ValueError, "undeclared executable"):
+            self.invoke()
+        self.checked.assert_not_called()
+
+    def test_followup_refuses_existing_workflow_with_extra_permissions(self):
+        self.write_caller(self.scope_csv)
+        path = self.f.root / check.CALLER
+        path.write_bytes(path.read_bytes().replace(b"contents: read", b"contents: write"))
+        self.f.commit()
+        self.followup()
+        self.f.write("docs/note.md", "# Documentation update\n")
+        self.f.commit()
+        with self.assertRaisesRegex(ValueError, "canonical caller contract"):
             self.invoke()
         self.checked.assert_not_called()
 

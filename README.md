@@ -255,7 +255,9 @@ component definitions. Include every directory that owns a governing chain.
 The shared action checks the entire proposed tree, the governing sources and
 their upstream digests, and every tracked Markdown document. The human team
 reviews the exact first caller before merge. Subsequent documentation PRs use
-the caller and scopes already adopted on protected `dev`. Verify the hosted
+the caller and scopes already adopted on protected `dev`. To update an adopted
+checkout pin, open a separate PR changing only the workflow to the current
+template with the same scopes. Verify the hosted
 `CI` run on the consumer PR. When introducing executable code, extend the
 repository workflow with the applicable product checks.
 
