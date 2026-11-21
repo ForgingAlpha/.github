@@ -25,6 +25,18 @@ checks baseline presence and repository-specific status metadata. Only the exact
 required status marker; its own CI validates canonical IDs and upstream digests.
 These structural checks cannot establish approval or Currentness.
 
+For the repository-owned documentation route, the shared action reads Git
+objects at the exact PR head and protected base. A README-only seed admits the
+shared caller template with explicit governing scopes. Once adopted, the base
+supplies the expected caller and scopes. It must still implement the read-only
+caller contract, including an immutable checkout revision. A fresh checkout
+pin or comment in the shared template therefore preserves existing documentation
+PRs. A caller-only PR can update the adopted workflow to the current template.
+The action reuses the organization
+baseline's document inventory, Markdown lint and branch-rule readers. GitHub
+enforces approval. The reviewer checks the actual workflow on the proposed
+head because a replacement job could report the same check name.
+
 The released shared policy action validates `.github/CODEOWNERS` before lower-level
 language checks. Unmigrated control-plane repositories assign their complete tree to an
 authorized human. Consumer repositories assign `.github/` and each detected
@@ -199,9 +211,10 @@ and stale-approval invalidation. Missing or partial evidence is a failure.
 Team membership and eligibility remain an operator-qualified prerequisite, not
 an inference from a team ID. Bypass-actor and complete protection qualification
 also remain with the operator; effective-rule reads alone cannot prove them.
-This profile can replace CODEOWNERS validation
-only after its approved implementation and actual hosted protection are
-qualified; other callers keep their existing checks.
+The shared-CI owner will expose the same metadata-only verification to
+repositories that produce their own product `CI`. The trusted source selects
+the team and rule criteria. These repositories keep CODEOWNERS validation
+until the standalone check and their hosted protections have been qualified.
 
 Here CI enrollment means the centrally reviewed validation configuration for a
 consumer, not an unattended-authority Repository Enrollment or an Operational
@@ -422,6 +435,13 @@ Recovery uses the protected human-reviewed revert or forward-fix path on main.
 
 ## Shared CI Profiles
 
+A product workflow selects the standard language checks by calling `ci-rust`
+or `ci-astro` for the relevant package root. For a nested Cargo workspace,
+the Rust caller supplies `working-directory`. Calling the action requires no
+repository language label or transfer of the required `CI` result. The product
+workflow composes those checks with its own smoke tests, services and storage
+checks. Its owner retains deployment configuration and release decisions.
+
 The existing `actions/ci-rust/action.yml` and `actions/ci-astro/action.yml` are the
 language-check sources for extraction into coherent central checking cores.
 Their present existence is not evidence that central dispatch, complete runtime
@@ -612,22 +632,25 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 
 Normal updates and security remediation are separate, non-overlapping lanes.
 
-Each consumer binds its sole normal-update owner and enrolls required gates,
-callers, credentials and hosted protections before relying on them. The
-ownership change must leave no overlapping updater or unmanaged interval.
-Source definitions alone do not prove enrollment or live execution.
+To provision a maintained repository, put the [weekly preset](../renovate-weekly.json)
+in its root `renovate.json` and declare Renovate as the ordinary owner in
+`.github/update-policy.json`. Each repository supplies its ordinary
+target and package locations. For an existing repository, the control-plane
+operator verifies the approved repository identity, App access, manager
+discovery, required CI and target protections before switching its preset.
+Reconcile open routine proposals at transfer so coverage continues.
 
-Required `CI` invokes `ci-update-ownership` with `.github/update-policy.json`,
-the consumer Renovate and Dependabot configurations, and the actual default
-branch. The policy declares its schema version, normal-update owner and base
-branch. Consumers enrolled in centrally assigned runtimes also declare
-`runtime_profile`; their separate runtime-profile gate requires the exact active
-assignment and locked projection. Update ownership alone does not establish
-runtime enrollment.
+Required `CI` invokes `ci-update-ownership` with the ownership declaration,
+the repository's Renovate and Dependabot configurations, and GitHub's actual
+default branch. A consumer extends exactly one approved preset. The weekly
+preset inherits the [existing policy](../renovate-config.json), which existing
+consumers can continue to select. Consumers assigned a central runtime also
+declare `runtime_profile` and validate their assignment and locked projection
+through the runtime-profile gate.
 
-The organization Renovate preset lives in `.github`;
-repository-local Renovate configuration extends it and selects the repository
-class. Native managers own ordinary package manifests and locks, external
+The organization Renovate preset lives in `.github`. The consumer's effective
+configuration selects it by its published name. Native
+managers own ordinary package manifests and locks, external
 Actions, and active non-runtime image references. The preset excludes
 `ForgingAlpha/.github` Actions so their internal `@main` references remain owned
 by protected human merges instead of being pinned to one release commit or
@@ -637,15 +660,17 @@ automation owns the derived consumer mise declaration and lock. Narrow
 annotated custom managers own irreducible version literals. Exact ranges and
 digests remain pinned. Renovate vulnerability remediation is disabled.
 
-Normal updates are evaluated daily. Patches, minors, and majors become eligible
-after three, seven, and thirty days respectively. Renovate proposes a pull
-request to dev under REQ-027, followed by whole-batch consolidation into dev and fixed-snapshot integration into
-staging and staging-to-main promotion. Unmigrated repositories retain their
-owner-bound prior route until replacement qualifies. A human merges every PR
-after exact-head CI and applicable approval. Root bot and platform auto-merge
-remain disabled. The validator admits only defined policy shapes; consumer
-configuration cannot override them. `.github` becomes active at its main merge
-after coherent candidate and affected-consumer validation. The receiving repository's
+The [weekly preset](../renovate-weekly.json) implements [REQ-012](requirements.md#req-012---normal-update-cooldown).
+Renovate groups eligible updates across managers on the stable
+`weekly-dependencies` branch. A weekly consumer can split one dependency for
+independent testing or rollback through a reviewed `packageRules` entry. Its
+`description` records the reason, `matchManagers` and `matchPackageNames` each
+name one literal, `matchUpdateTypes` lists `minor`, `patch` and `digest`, and
+`groupName` is null. The split inherits the same schedule and release ages.
+Initial pins, replacements and rollbacks keep their separate handling.
+REQ-027 governs the ordinary integration route and its migration. Shared
+automation takes effect on protected `main` after coherent candidate and
+affected-consumer validation. The receiving repository's
 change owner accounts for the updater's disposable exploration, whole-unit review
 and refactoring before integration; its release owner accounts for batch identity,
 composition and reconciliation. Those owners consume the shared control-plane's
@@ -653,26 +678,25 @@ exploration procedure, including its disposable-code duty; this downstream sourc
 defines no exception. A bot PR or green CI alone does not discharge these duties.
 Automation identity supplies no exemption.
 
-The existing update-ownership validator couples the policy base branch and
-Renovate target to the hosted default branch. That observed coupling does not
-override REQ-027. Where it conflicts with the required ordinary route, the
-updater flow remains unqualified until its source/configuration and any authorized
-settings transition are reconciled. This amendment chooses no new default branch,
-changes no updater configuration and grants no settings authority.
+The existing `ci-update-ownership` validator requires the ordinary base to
+equal the hosted default. To support different targets, the validator must
+check the Renovate base against the independently established ordinary route
+and the security source against GitHub's actual protected default. For example,
+with ordinary `dev` and default `main`, a routine PR to `main` or a security
+source PR to `dev` fails the corresponding check. Keep the qualified prior
+route until the replacement passes both positive and wrong-target cases.
 
-For enrolled repositories, repository-local Dependabot entries remain only to customize
-security updates; normal version-update capacity is zero. The updater-coverage
-gate requires a machine-readable Renovate sole-owner declaration per enrolled
-repository. It also validates the applicable central preset and local coverage,
-Dependabot configuration, annotated literals, and exactly one owner per
-detected surface.
+For Renovate-owned ecosystems, repository-local Dependabot configuration uses
+`open-pull-requests-limit: 0` to suppress routine version proposals. Verify
+effective Dependabot alerts and security updates, supported manifests on the
+actual default branch, and the trusted workflow and required checks on that
+source. A manifest present only on a development branch does not establish
+default-branch security coverage.
 
 Security-only Dependabot updates use the repository's protected default branch,
-main or dev. The existing update-policy binding owns this target; CI
-enrollment does not change it. A default change reconciles both normal and security
-updater targets, hosted settings and affected source before qualification. Every
-eligible security source uses the common exact classification and patch proof
-below. A direct-main proposal does not manufacture a dev merge or projection;
+`main` or `dev`. A default change triggers revalidation of both routes and their
+source, checks and hosted settings. Every eligible security source uses the
+common exact classification and patch proof below. A direct-main proposal does not manufacture a dev merge or projection;
 a separate-dev source additionally uses the cross-branch projection path. Both
 retain current-base CI, scanning, exact-head human approval and human execution
 of the merge. Existing enrolled proof consumers remain required until their

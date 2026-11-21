@@ -2,6 +2,12 @@
 
 Use these security-only templates after Renovate enrollment is verified through
 the [operator checklist](../../docs/operator-checklist.md#dependency-proposal-enrollment).
+For each new repository with a managed dependency, add the thin root
+`renovate.json` and matching `.github/update-policy.json` with its governed
+ordinary target. Use [this repository's Renovate config](../../renovate.json)
+and [owner declaration](../../.github/update-policy.json) as examples.
+Use `ci-update-ownership` and `ci-dependabot-coverage` in required CI.
+
 Copy the closest template into `.github/dependabot.yml`, then delete update
 blocks for ecosystems that are not present. Keep normal-update capacity at zero;
 Renovate owns normal updates. The shared

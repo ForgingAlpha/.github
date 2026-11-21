@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 actions/ci-update-ownership/scripts/validate_update_ownership.py \
-            --central-preset renovate-config.json
+            --central-preset renovate-config.json --weekly-preset renovate-weekly.json
 
       - name: Validate repository update ownership
         uses: ./actions/ci-update-ownership
