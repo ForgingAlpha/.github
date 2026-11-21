@@ -1,4 +1,6 @@
 """Exercise the public Rust steps with local, network-free Cargo workspaces."""
+import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -141,32 +143,105 @@ class LockedActionTests(unittest.TestCase):
                     self.assertEqual(lock.read_bytes() if lock.exists() else None, before)
                     self.assertEqual(self.command(["git", "status", "--porcelain"], workspace).stdout, status)
 
-    def test_resolver_override_cannot_substitute_a_different_lock(self):
+    def test_two_valid_locked_graphs_preserve_the_repository_selection(self):
         workspace = self.workspace(".")
-        root_lock = workspace / "Cargo.lock"
-        stale = root_lock.read_bytes()
-        member = workspace / "app/Cargo.toml"
-        member.write_text(member.read_text().replace("1.0.0", "2.0.0"))
-        self.command(["cargo", "generate-lockfile", "--offline"], workspace)
-        valid = root_lock.read_bytes()
-        self.assertNotEqual(stale, valid)
-        root_lock.write_bytes(stale)
-        (workspace / "alternate").mkdir()
-        alternate = workspace / "alternate/Cargo.lock"
-        alternate.write_bytes(valid)
+        app = workspace / "app/Cargo.toml"
+        with app.open("a") as manifest:
+            manifest.write('local-demo = "1"\n')
+        # Use a local directory source with two compatible releases. Generate
+        # each lock while that release is the newest, then keep both in Git.
         config = workspace / ".cargo/config.toml"
         config.parent.mkdir()
-        config.write_text('[resolver]\nlockfile-path="alternate/Cargo.lock"\n')
+        vendored = ('[source.crates-io]\nreplace-with = "fixture"\n'
+                    '[source.fixture]\ndirectory = "crates"\n')
+        config.write_text(vendored)
+        root_lock = workspace / "Cargo.lock"
+        locks = {}
+        for minor, version in enumerate(("1.0.0", "1.1.0")):
+            package = workspace / "crates" / f"local-demo-{version}"
+            (package / "src").mkdir(parents=True)
+            (package / "Cargo.toml").write_text(
+                f'[package]\nname = "local-demo"\nversion = "{version}"\nedition = "2021"\n')
+            (package / "src/lib.rs").write_text(f"pub const MINOR: u8 = {minor};\n")
+            files = {name: hashlib.sha256((package / name).read_bytes()).hexdigest()
+                     for name in ("Cargo.toml", "src/lib.rs")}
+            (package / ".cargo-checksum.json").write_text(json.dumps({"files": files, "package": None}))
+            root_lock.unlink()
+            self.command(["cargo", "generate-lockfile"], workspace)
+            locks[version] = root_lock.read_bytes()
+        alternate = workspace / "alternate/Cargo.lock"
+        alternate.parent.mkdir()
+        alternate.write_bytes(locks["1.1.0"])
+        root_lock.write_bytes(locks["1.0.0"])
+
+        def selected_version():
+            result = self.command(["cargo", "metadata", "--locked", "--format-version", "1"], workspace)
+            return next(p["version"] for p in json.loads(result.stdout)["packages"] if p["name"] == "local-demo")
+
+        self.assertEqual(selected_version(), "1.0.0")
+        config.write_text(vendored + '[resolver]\nlockfile-path = "alternate/Cargo.lock"\n')
         self.commit()
-        for step in (VERIFY, CLIPPY, CHECK, TEST):
-            failure = self.public_step(step, workspace, "true", success=False)
-            self.assertIn("--locked", failure.stderr)
-        self.assertEqual((root_lock.read_bytes(), alternate.read_bytes()), (stale, valid))
-        root_lock.write_bytes(valid)
-        alternate.write_bytes(stale)
+        self.assertEqual(selected_version(), "1.1.0", "this two-lockfile fixture requires Cargo 1.97+")
+        for step in (VERIFY, FORMAT, CLIPPY, CHECK, TEST, AUDIT):
+            refused = self.public_step(step, workspace, "true", success=False)
+            self.assertIn("cannot verify a configured lockfile path", refused.stderr)
+        self.public_step(VERIFY, workspace)
+        # Compilation succeeds only with the repository-selected release.
+        (workspace / "app/src/lib.rs").write_text("const _: () = assert!(local_demo::MINOR == 1);\n")
+        self.public_step(CHECK, workspace, "false")
+        self.assertEqual(selected_version(), "1.1.0")
+        self.assertEqual(root_lock.read_bytes(), locks["1.0.0"])
+        self.assertEqual(alternate.read_bytes(), locks["1.1.0"])
+
+    def test_config_sources_and_ordinary_settings(self):
+        workspace = self.workspace("api")
+        member = workspace / "app"
+        ancestor = self.repo / ".cargo"
+        ancestor.mkdir()
+        config = ancestor / "config.toml"
+        config.write_text('include = ["group.toml", { path = "missing.toml", optional = true }]\n')
+        (ancestor / "group.toml").write_text('include = ["shared.toml"]\n')
+        included = ancestor / "shared.toml"
+        included.write_text('[build]\njobs = 1\n')
+        self.public_step(VERIFY, member, "true")
+
+        included.write_text('resolver."lockfile-path" = "elsewhere/Cargo.lock"\n')
+        self.assertIn("configured lockfile path", self.public_step(VERIFY, member, "true", False).stderr)
+        # Cargo chooses the extensionless file when both names exist.
+        (ancestor / "config").write_text('[build]\njobs = 1\n')
+        self.public_step(VERIFY, member, "true")
+        home_config = Path(self.env["CARGO_HOME"]) / "config.toml"
+        home_config.write_text('[env]\nCARGO_RESOLVER_LOCKFILE_PATH = "elsewhere/Cargo.lock"\n')
+        self.assertIn("configured lockfile path", self.public_step(VERIFY, member, "true", False).stderr)
+        home_config.unlink()
+        self.env["CARGO_RESOLVER_LOCKFILE_PATH"] = "elsewhere/Cargo.lock"
+        self.assertIn("configured lockfile path", self.public_step(VERIFY, member, "true", False).stderr)
+
+    def test_root_workspace_with_conventional_build_config(self):
+        workspace = self.workspace(".")
+        config = workspace / ".cargo/config.toml"
+        config.parent.mkdir()
+        config.write_text("[build]\njobs = 8\n")
         self.commit()
         self.public_step(VERIFY, workspace, "true")
-        self.assertEqual((root_lock.read_bytes(), alternate.read_bytes()), (valid, stale))
+        self.public_step(CHECK, workspace, "true")
+
+    def test_multiline_config_uses_the_python_selected_on_path(self):
+        workspace = self.workspace(".")
+        config = workspace / ".cargo/config.toml"
+        config.parent.mkdir()
+        config.write_text('[env]\nEXAMPLE = {\n  value = "local",\n  force = false,\n}\n')
+        self.command(["cargo", "metadata", "--locked", "--format-version", "1"], workspace)
+        version = self.command(["python3", "-I", "-c",
+                                "import sys; print(sys.version_info >= (3, 15))"], workspace)
+        supports_toml_11 = version.stdout.strip() == "True"
+        result = self.public_step(VERIFY, workspace, "true", success=supports_toml_11)
+        if not supports_toml_11:
+            self.assertIn("select Python 3.15+ as python3 on PATH", result.stderr)
+        config.write_text(config.read_text().replace("EXAMPLE", "CARGO_RESOLVER_LOCKFILE_PATH"))
+        refused = self.public_step(VERIFY, workspace, "true", success=False)
+        diagnostic = "configured lockfile path" if supports_toml_11 else "select Python 3.15+"
+        self.assertIn(diagnostic, refused.stderr)
 
     def test_input_validation_and_no_parent_manifest_fallback(self):
         self.assertEqual(CONFIG["inputs"]["working-directory"]["default"], ".")

@@ -34,7 +34,7 @@ inputs:
     required: false
     default: "."
   locked:
-    description: "Require the selected Cargo workspace's committed lockfile (true|false)"
+    description: "Require the committed workspace-root Cargo.lock with no lockfile path override (true|false)"
     required: false
     default: "false"
   github-actions-mode:
