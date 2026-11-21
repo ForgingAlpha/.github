@@ -9,6 +9,8 @@ tags:
 ForgingAlpha's public CI, dependency, security, and release automation control
 plane.
 
+[Intent](#intent) · [Requirements](#requirements) · [Architecture](#architecture) · [Local Instructions](#local-instructions)
+
 ## Intent
 
 ### Purpose
@@ -139,6 +141,30 @@ automation never executes untrusted pull-request code.
 - Qualify centrally required CI on explicitly selected consumers before broader
   enrollment. A document-only bootstrap profile is explicit and cannot be
   selected merely because expected application inputs are missing.
+
+## Requirements
+
+Each repository exposes a required `CI` result and runs its applicable product checks.
+Enrolled application repositories also require the central baseline. Before a change
+to shared automation can merge, the candidate and affected consumers must pass their
+checks and an authorized human must approve the exact revision. The numbered requirements
+define acceptance for CI, dependency updates, security delivery and recovery. [Detailed requirements](docs/requirements.md)
+
+## Architecture
+
+The organization workflow and shared Actions own cross-repository checks and runtime
+profiles. The enrollment record selects the check producer for each enrolled consumer.
+Consumers own their product behavior, tests and deployment configuration. Protected
+`.github/main` supplies the shared implementation, and each execution records the exact
+revision it used. [Detailed architecture](docs/architecture.md)
+
+## Local Instructions
+
+For a change to this repository, use the adopted task-branch-to-main route until
+its transition owner qualifies the successor. Check the proposed shared source and
+affected callers together before requesting human review. Use the operator checklist
+to verify the affected consumers, permissions and hosted settings when applicable.
+[Repository route and retirement conditions](docs/architecture.md#uniform-proposal-targets) · [Operator checklist](docs/operator-checklist.md)
 
 ## Consumer Contract
 
@@ -488,8 +514,7 @@ readback; future main merges require no recurring selector update.
 - The security identity is dedicated and isolated from general agent credentials;
   proposal retries adopt only exact verified state. It has no merge authority.
 
-The durable policy is defined in [Intent](#intent),
-[Requirements](docs/requirements.md), and [Architecture](docs/architecture.md).
+The durable policy is defined in [Intent](#intent), [Requirements](#requirements) and [Architecture](#architecture).
 
 ## Application development containers
 

@@ -1,12 +1,12 @@
 # Organization baseline Fact Contract
 
 This derived implementation contract follows the current owning
-[Intent](../../README.md#intent), [Requirements](../../docs/requirements.md) and
-[Architecture](../../docs/architecture.md), including protected-main source
+[Intent](../../README.md#intent), [Requirements](../../README.md#requirements) and
+[Architecture](../../README.md#architecture), including protected-main source
 adoption, exact execution evidence and human-reviewed recovery. It does not grant
 runtime assignments, consumer enrollment or hosted settings authority. Source
 on protected human-merged main is active; task-branch changes remain candidates.
-No PROJECT.md exists in this repository; no local override is inferred.
+Consult the repository's [Local Instructions](../../README.md#local-instructions) for its working rules.
 
 ## Ownership and source precedence
 
