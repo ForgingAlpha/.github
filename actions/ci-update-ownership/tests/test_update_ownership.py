@@ -66,8 +66,6 @@ class UpdateOwnershipTest(unittest.TestCase):
         self.assertNotIn("if", commands[0])
         self.assertNotIn("continue-on-error", commands[0])
         self.assertIn("--weekly-preset renovate-weekly.json", commands[0]["run"])
-        self.assertEqual(update_ownership.load_json(ROOT / "renovate.json")["extends"],
-                         [update_ownership.WEEKLY_PRESET])
         valid = subprocess.run(["bash", "-c", commands[0]["run"]], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(valid.returncode, 0, valid.stderr)
         with tempfile.TemporaryDirectory() as directory:
@@ -133,6 +131,19 @@ class UpdateOwnershipTest(unittest.TestCase):
             self.assertNotIn("continue-on-error", boundary)
         result = self.run_owned_action(ROOT)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_switching_back_to_the_prior_preset_passes_the_ownership_action(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".github").mkdir()
+            for filename in (".github/dependabot.yml", ".github/update-policy.json"):
+                (root / filename).write_bytes((ROOT / filename).read_bytes())
+            config = update_ownership.load_json(ROOT / "renovate.json")
+            for preset in (update_ownership.WEEKLY_PRESET, update_ownership.CENTRAL_PRESET):
+                with self.subTest(preset=preset):
+                    (root / "renovate.json").write_text(json.dumps(dict(config, extends=[preset])))
+                    result = self.run_owned_action(root)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_owned_action_rejects_absent_or_conflicting_consumer_policy(self):
         policy = {"schema_version": 1, "normal_update_owner": "renovate", "base_branch": "main"}

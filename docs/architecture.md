@@ -620,9 +620,9 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 
 Normal updates and security remediation are separate, non-overlapping lanes.
 
-Standard provisioning installs the [weekly preset](../renovate-weekly.json)
-in the repository's root `renovate.json` and declares Renovate as the ordinary
-owner in `.github/update-policy.json`. Each repository supplies its ordinary
+To provision a maintained repository, put the [weekly preset](../renovate-weekly.json)
+in its root `renovate.json` and declare Renovate as the ordinary owner in
+`.github/update-policy.json`. Each repository supplies its ordinary
 target and package locations. For an existing repository, the control-plane
 operator verifies the approved repository identity, App access, manager
 discovery, required CI and target protections before switching its preset.
