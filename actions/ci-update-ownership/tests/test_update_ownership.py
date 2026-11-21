@@ -58,6 +58,56 @@ class UpdateOwnershipTest(unittest.TestCase):
         self.assertNotIn("github.token", action)
         self.assertNotIn("secrets.", action)
 
+    def test_weekly_preset_is_checked_by_required_ci(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+        commands = [step for step in workflow["jobs"]["CI"]["steps"]
+                    if "--central-preset" in step.get("run", "")]
+        self.assertEqual(len(commands), 1)
+        self.assertNotIn("if", commands[0])
+        self.assertNotIn("continue-on-error", commands[0])
+        self.assertIn("--weekly-preset renovate-weekly.json", commands[0]["run"])
+        self.assertEqual(update_ownership.load_json(ROOT / "renovate.json")["extends"],
+                         [update_ownership.WEEKLY_PRESET])
+        valid = subprocess.run(["bash", "-c", commands[0]["run"]], cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(valid.returncode, 0, valid.stderr)
+        with tempfile.TemporaryDirectory() as directory:
+            missing = subprocess.run([sys.executable, str(SCRIPT), "--central-preset", str(PRESET),
+                                      "--weekly-preset", str(Path(directory) / "missing.json")], capture_output=True)
+            self.assertNotEqual(missing.returncode, 0)
+
+    def test_weekly_overlay_only_changes_grouping_and_timing(self):
+        original = update_ownership.load_json(ROOT / "renovate-weekly.json")
+        invalid = [dict(original, extends=[]), dict(original, automerge=True),
+                   dict(original, packageRules=original["packageRules"][::-1])]
+        for key, value in (("schedule", ["at any time"]), ("matchUpdateTypes", ["patch"]),
+                           ("updateNotScheduled", 0), ("enabled", True), ("groupSlug", "other")):
+            changed = copy.deepcopy(original)
+            changed["packageRules"][1][key] = value
+            invalid.append(changed)
+        for config in invalid:
+            with self.subTest(config=config), self.assertRaises(update_ownership.OwnershipError):
+                update_ownership.validate_weekly_preset(config)
+
+    def test_weekly_consumer_can_split_only_one_named_package_per_rule(self):
+        weekly = dict(self.renovate, extends=[update_ownership.WEEKLY_PRESET])
+        rule = {"description": "Roll back the formatter independently", "matchManagers": ["npm"],
+                "matchPackageNames": ["@scope/tool"], "matchUpdateTypes": ["minor", "patch", "digest"],
+                "groupName": None}
+        update_ownership.validate_renovate(weekly, "dev")
+        update_ownership.validate_renovate(dict(weekly, packageRules=[rule]), "dev")
+        with self.assertRaises(update_ownership.OwnershipError):
+            update_ownership.validate_renovate(dict(self.renovate, packageRules=[rule]), "dev")
+        with self.assertRaises(update_ownership.OwnershipError):
+            update_ownership.validate_renovate(dict(weekly, extends=["local>other/repo:renovate-weekly"]), "dev")
+        for key, value in (("matchManagers", ["npm", "cargo"]), ("matchPackageNames", ["*", "pkg"]),
+                           ("matchPackageNames", ["/.*/"]), ("matchPackageNames", ["!pkg"]),
+                           ("matchPackageNames", ["@some/*"]), ("matchPackageNames", []),
+                           ("matchPackageNames", [True]), ("matchManagers", ["*"]), ("matchUpdateTypes", ["major"]),
+                           ("groupName", "other"), ("description", " "), ("enabled", True), ("automerge", True),
+                           ("minimumReleaseAge", "0 days"), ("schedule", ["at any time"])):
+            with self.subTest(key=key, value=value), self.assertRaises(update_ownership.OwnershipError):
+                update_ownership.validate_renovate(dict(weekly, packageRules=[dict(rule, **{key: value})]), "dev")
+
     def run_owned_action(self, root, default_branch="main", env_extra=None):
         step = yaml.safe_load(ACTION.read_text())["runs"]["steps"][0]
         env = dict(
@@ -240,48 +290,82 @@ class UpdateOwnershipTest(unittest.TestCase):
         config["packageRules"][:4] = reversed(config["packageRules"][:4])
         update_ownership.validate_central_preset(config)
 
-    def test_weekly_batch_has_one_stable_branch_and_tuesday_schedule(self):
+    def test_central_preset_limits_related_groups_to_named_npm_minor_and_patch_updates(self):
         config = update_ownership.load_json(PRESET)
-        groups = [rule for rule in config["packageRules"] if rule.get("groupName")]
-        self.assertEqual(len(groups), 1)
-        batch = groups[0]
-        self.assertEqual(set(batch["matchUpdateTypes"]), {"minor", "patch", "digest"})
-        self.assertEqual(batch["groupSlug"], "weekly-dependencies")
-        self.assertEqual(batch["schedule"], ["* * * * 2"])
-        self.assertIs(batch["updateNotScheduled"], False)
-        self.assertNotIn("minimumReleaseAge", batch)
-        major = next(rule for rule in config["packageRules"] if rule.get("matchUpdateTypes") == ["major"])
-        self.assertEqual(major["minimumReleaseAge"], "30 days")
-        self.assertIsNone(major["groupName"])
-        self.assertNotIn("schedule", major)
+        groups = [rule for rule in config["packageRules"] if "groupName" in rule]
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(
+            {rule["groupName"]: rule["matchPackageNames"] for rule in groups},
+            {
+                "linting": [
+                    "@eslint/js", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser",
+                    "astro-eslint-parser", "eslint", "eslint-plugin-astro", "globals", "typescript-eslint",
+                ],
+                "formatting": ["prettier", "prettier-plugin-astro"],
+            },
+        )
+        for rule in groups:
+            self.assertEqual(rule["matchManagers"], ["npm"])
+            self.assertEqual(rule["matchUpdateTypes"], ["minor", "patch"])
+            self.assertEqual(
+                set(rule) - {"description"},
+                {"matchManagers", "matchUpdateTypes", "matchPackageNames", "groupName"},
+            )
+        update_ownership.validate_central_preset(config)
 
-    def test_central_preset_rejects_changed_weekly_batch(self):
+    def test_central_preset_rejects_missing_duplicate_or_changed_related_groups(self):
         valid = update_ownership.load_json(PRESET)
-        index = next(i for i, rule in enumerate(valid["packageRules"]) if rule.get("groupName"))
-        for mutation in ("missing", "duplicate"):
-            config = copy.deepcopy(valid)
-            if mutation == "missing":
-                config["packageRules"].pop(index)
-            else:
-                config["packageRules"].insert(index, copy.deepcopy(config["packageRules"][index]))
-            with self.subTest(mutation=mutation), self.assertRaises(update_ownership.OwnershipError):
-                update_ownership.validate_central_preset(config)
+        group_indexes = [index for index, rule in enumerate(valid["packageRules"]) if "groupName" in rule]
+        for index in group_indexes:
+            for mutation in (
+                "missing", "duplicate", "extra-member", "missing-member", "regex", "manager",
+                "major", "missing-types", "name", "slug", "overlap",
+            ):
+                with self.subTest(group=valid["packageRules"][index]["groupName"], mutation=mutation):
+                    config = copy.deepcopy(valid)
+                    rule = config["packageRules"][index]
+                    if mutation == "missing":
+                        config["packageRules"].pop(index)
+                    elif mutation == "duplicate":
+                        config["packageRules"].insert(-2, copy.deepcopy(rule))
+                    elif mutation == "extra-member":
+                        rule["matchPackageNames"].append("eslint-plugin-unobserved")
+                    elif mutation == "missing-member":
+                        rule["matchPackageNames"].pop()
+                    elif mutation == "regex":
+                        rule["matchPackageNames"] = ["/^eslint/", "/^prettier/"]
+                    elif mutation == "manager":
+                        rule["matchManagers"] = ["github-actions"]
+                    elif mutation == "major":
+                        rule["matchUpdateTypes"].append("major")
+                    elif mutation == "missing-types":
+                        rule.pop("matchUpdateTypes")
+                    elif mutation == "name":
+                        rule["groupName"] = "all development dependencies"
+                    elif mutation == "slug":
+                        rule["groupSlug"] = "unreviewed"
+                    else:
+                        other = next(i for i in group_indexes if i != index)
+                        rule["matchPackageNames"].append(valid["packageRules"][other]["matchPackageNames"][0])
+                    with self.assertRaises(update_ownership.OwnershipError):
+                        update_ownership.validate_central_preset(config)
 
-        for key, value in (
-            ("matchManagers", ["npm"]), ("matchPackageNames", ["eslint"]),
-            ("matchUpdateTypes", ["minor", "patch"]), ("matchUpdateTypes", ["major", "minor", "patch", "digest"]),
-            ("matchUpdateTypes", ["minor", "patch", "digest", "pinDigest"]),
-            ("groupName", "other updates"), ("groupSlug", "other-updates"),
-            ("schedule", ["at any time"]), ("updateNotScheduled", True), ("updateNotScheduled", 0),
-            ("automerge", True), ("platformAutomerge", True), ("autoApprove", True),
-            ("extends", [":automergeAll"]), ("group", {"automerge": True}),
-            ("minimumReleaseAge", "0 days"), ("minimumReleaseAgeBuffer", "0 minutes"), ("enabled", True),
-        ):
-            with self.subTest(key=key, value=value):
-                config = copy.deepcopy(valid)
-                config["packageRules"][index][key] = value
-                with self.assertRaises(update_ownership.OwnershipError):
-                    update_ownership.validate_central_preset(config)
+    def test_central_preset_rejects_policy_overrides_in_related_groups(self):
+        valid = update_ownership.load_json(PRESET)
+        for index, rule in enumerate(valid["packageRules"]):
+            if "groupName" not in rule:
+                continue
+            for key, value in (
+                ("automerge", True), ("platformAutomerge", True), ("autoApprove", True),
+                ("extends", [":automergeAll"]), ("group", {"automerge": True}),
+                ("minimumReleaseAge", "0 days"), ("minimumReleaseAgeBuffer", "0 minutes"),
+                ("enabled", True), ("schedule", ["every weekend"]),
+            ):
+                with self.subTest(group=rule["groupName"], key=key):
+                    config = copy.deepcopy(valid)
+                    config["packageRules"][index][key] = value
+                    with self.assertRaises(update_ownership.OwnershipError):
+                        update_ownership.validate_central_preset(config)
 
     def test_central_preset_requires_explicit_boolean_merge_disables(self):
         valid = update_ownership.load_json(PRESET)

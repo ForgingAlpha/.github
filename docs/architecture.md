@@ -51,8 +51,7 @@ REQ-003, REQ-004 and REQ-025. For a central-product profile, lane composition an
 aggregation move to the shared-CI owner; the product owner retains product behavior,
 command meaning and test completeness. Human merge authority does not move.
 Consumers of the existing composites use
-`ForgingAlpha/.github/actions/<action>@main`. Self-CI uses local paths so a pull
-request validates its proposed implementation.
+`ForgingAlpha/.github/actions/<action>@main`. Self-CI exercises proposed implementations locally. Its lifecycle policy step uses the released shared action so the pull request cannot supply the checker that admits its own governing sources. Candidate policy code runs in the local test suites.
 
 Protected branches require the applicable human review, current-revision CI,
 scanning and current-base checks. Repository settings disable auto-merge and
@@ -211,6 +210,16 @@ consumer, not an unattended-authority Repository Enrollment or an Operational
 Profile. It grants no execution or merge authority and does not create a runtime
 profile assignment. Definition-only baseline repair and an enrolled document-only
 profile remain distinct; neither can substitute for the other's conditions.
+
+For an initial private definition PR, the protection operator can select the
+existing workflow on the target repository's `dev` branch and register the exact
+candidate using an organization-managed repository property. The public source
+owns the validation rule. The target property binds the PR number, head, human
+review team and owning scopes. The workflow checks that the protected base is
+the candidate's sole root commit and contains one regular README. It rechecks
+the registration and the protected branch at finalization. The operator removes
+the temporary workflow assignment and property after the definition merges.
+The existing branch-wide CI and human-review rules continue to apply.
 
 Bootstrap accepts only declared document/configuration inputs and refuses
 application content and executable lint configuration before invoking shared
@@ -612,43 +621,24 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 
 Normal updates and security remediation are separate, non-overlapping lanes.
 
-Under REQ-012 and REQ-018, standard provisioning gives every maintained
-repository the shared Renovate policy, declares Renovate as the sole ordinary
-owner in `.github/update-policy.json`, and verifies App access. Where the
-installed runner supplies inherited configuration, provisioning verifies the
-effective preset. Otherwise it installs a thin repository-local preset
-reference. Each repository supplies its ordinary target and package locations.
-Neither path asks the owner to enable patches or adopt central product CI.
+Standard provisioning installs the [weekly preset](../renovate-weekly.json)
+in the repository's root `renovate.json` and declares Renovate as the ordinary
+owner in `.github/update-policy.json`. Each repository supplies its ordinary
+target and package locations. For an existing repository, the control-plane
+operator verifies the approved repository identity, App access, manager
+discovery, required CI and target protections before switching its preset.
+Reconcile open routine proposals at transfer so coverage continues.
 
-For existing repositories, the control-plane operator binds the exact GitHub
-repository identities and their prior routes in the owning control-plane change
-record. The shared-source proposal references that record. Its scope controls
-which existing repositories move in this rollout. The shared-CI owner compares
-every current preset inheritor with the recorded scope before changing a shared
-reference. If selectors overlap, preserve the existing policy outside scope,
-for example by introducing a separately addressable preset for the new policy. For each transfer, verify Renovate discovery, manifest
-and registry access, the required CI and the hosted target protections.
-Reconcile open routine proposals and keep the existing update owner until the
-successor can take over without a gap or overlap.
-
-Required `CI` invokes `ci-update-ownership` with `.github/update-policy.json`,
-the consumer Renovate and Dependabot configurations, and the actual default
-branch. The policy declares its schema version, normal-update owner and base
-branch. Today the gate requires a root `renovate.json` that extends exactly
-one fixed preset. Before using inherited-only configuration or a separately
-addressable preset, the shared-CI owner must qualify the gate and its callers
-against the trusted effective configuration. Exercise the intended preset,
-a missing or substituted preset, a forbidden override, and an existing consumer
-outside scope that still needs its prior policy. Until then, use only the
-qualified local configuration and preserve existing consumers. The gate checks
-that each detected surface has exactly one owner,
-including annotated version literals. Consumers enrolled in centrally assigned runtimes also declare
-`runtime_profile`; their separate runtime-profile gate requires the exact active
-assignment and locked projection. Update ownership alone does not establish
-runtime enrollment.
+Required `CI` invokes `ci-update-ownership` with the ownership declaration,
+the repository's Renovate and Dependabot configurations, and GitHub's actual
+default branch. A consumer extends exactly one approved preset. The weekly
+preset inherits the [existing policy](../renovate-config.json), which existing
+consumers can continue to select. Consumers assigned a central runtime also
+declare `runtime_profile` and validate their assignment and locked projection
+through the runtime-profile gate.
 
 The organization Renovate preset lives in `.github`. The consumer's effective
-configuration references it and selects the applicable repository class. Native
+configuration selects it by its published name. Native
 managers own ordinary package manifests and locks, external
 Actions, and active non-runtime image references. The preset excludes
 `ForgingAlpha/.github` Actions so their internal `@main` references remain owned
@@ -659,11 +649,14 @@ automation owns the derived consumer mise declaration and lock. Narrow
 annotated custom managers own irreducible version literals. Exact ranges and
 digests remain pinned. Renovate vulnerability remediation is disabled.
 
-The [central Renovate preset](../renovate-config.json) implements [REQ-012](requirements.md#req-012---normal-update-cooldown).
-Package rules group eligible updates across managers under the stable
-`weekly-dependencies` branch for each ordinary target. Release-age filtering
-includes Renovate's buffer. Initial pins, replacements and rollbacks keep their
-separate handling. The ownership validator rejects consumer policy overrides.
+The [weekly preset](../renovate-weekly.json) implements [REQ-012](requirements.md#req-012---normal-update-cooldown).
+Renovate groups eligible updates across managers on the stable
+`weekly-dependencies` branch. A weekly consumer can split one dependency for
+independent testing or rollback through a reviewed `packageRules` entry. Its
+`description` records the reason, `matchManagers` and `matchPackageNames` each
+name one literal, `matchUpdateTypes` lists `minor`, `patch` and `digest`, and
+`groupName` is null. The split inherits the same schedule and release ages.
+Initial pins, replacements and rollbacks keep their separate handling.
 REQ-027 governs the ordinary integration route and its migration. Shared
 automation takes effect on protected `main` after coherent candidate and
 affected-consumer validation. The receiving repository's

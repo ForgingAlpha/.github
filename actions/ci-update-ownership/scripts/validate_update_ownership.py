@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,8 @@ from typing import Any
 import yaml
 
 CENTRAL_PRESET = "local>ForgingAlpha/.github:renovate-config"
+WEEKLY_PRESET = "local>ForgingAlpha/.github:renovate-weekly"
+ROUTINE_TYPES = ["minor", "patch", "digest"]
 REQUIRED_POLICY_KEYS = {"schema_version", "normal_update_owner", "base_branch"}
 ALLOWED_POLICY_KEYS = REQUIRED_POLICY_KEYS | {"runtime_profile"}
 ALLOWED_RENOVATE_KEYS = {"$schema", "extends", "baseBranchPatterns"}
@@ -74,13 +77,37 @@ def validate_policy(policy: dict[str, Any]) -> tuple[str, str, str | None]:
 
 
 def validate_renovate(config: dict[str, Any], base: str) -> None:
-    unexpected = set(config) - ALLOWED_RENOVATE_KEYS
+    weekly = config.get("extends") == [WEEKLY_PRESET]
+    allowed = ALLOWED_RENOVATE_KEYS | {"packageRules"} if weekly else ALLOWED_RENOVATE_KEYS
+    unexpected = set(config) - allowed
     if unexpected:
         raise OwnershipError(f"repository Renovate config contains forbidden policy overrides: {', '.join(sorted(unexpected))}")
-    if config.get("extends") != [CENTRAL_PRESET]:
-        raise OwnershipError(f"repository Renovate config must extend only {CENTRAL_PRESET}")
+    if not weekly and config.get("extends") != [CENTRAL_PRESET]:
+        raise OwnershipError(f"repository Renovate config must extend only {CENTRAL_PRESET} or {WEEKLY_PRESET}")
+    if "packageRules" in config:
+        validate_independent_updates(config["packageRules"])
     if config.get("baseBranchPatterns") != [base]:
         raise OwnershipError(f"repository Renovate baseBranchPatterns must be exactly [{base!r}]")
+
+
+def validate_independent_updates(rules: Any) -> None:
+    if not isinstance(rules, list):
+        raise OwnershipError("weekly split exceptions must be an array of package rules")
+    for rule in rules:
+        keys = {"description", "matchManagers", "matchPackageNames", "matchUpdateTypes", "groupName"}
+        if not isinstance(rule, dict) or set(rule) != keys:
+            raise OwnershipError("a weekly split exception may only ungroup one named package and manager")
+        for field, literal in (("matchManagers", r"[a-z][a-z0-9-]*"),
+                               ("matchPackageNames", r"[@A-Za-z0-9][A-Za-z0-9@._:/+-]*")):
+            names = rule[field]
+            if not isinstance(names, list) or len(names) != 1:
+                raise OwnershipError(f"a weekly split exception needs exactly one {field} entry")
+            if not isinstance(names[0], str) or not re.fullmatch(literal, names[0]):
+                raise OwnershipError(f"a weekly split exception needs a literal {field} entry")
+        if rule["matchUpdateTypes"] != ROUTINE_TYPES or rule["groupName"] is not None:
+            raise OwnershipError("weekly split exceptions must only ungroup minor, patch and digest updates")
+        if not isinstance(rule["description"], str) or not rule["description"].strip():
+            raise OwnershipError("document the independent test or rollback reason in the split exception")
 
 
 def validate_default_branch(base: str, default_branch: str) -> None:
@@ -187,17 +214,24 @@ def validate_central_preset(config: dict[str, Any]) -> None:
         raise OwnershipError("central Renovate preset must define package rules")
     admitted_rules = {
         update_type: {"matchUpdateTypes": [update_type], "minimumReleaseAge": age}
-        for update_type, age in {"patch": "3 days", "minor": "7 days"}.items()
+        for update_type, age in {"patch": "3 days", "minor": "7 days", "major": "30 days"}.items()
     }
     admitted_rules.update({
         "mise": {"matchManagers": ["mise"], "enabled": False},
-        "major": {"matchUpdateTypes": ["major"], "minimumReleaseAge": "30 days", "groupName": None},
-        "weekly dependencies": {
-            "matchUpdateTypes": ["minor", "patch", "digest"],
-            "groupName": "weekly dependencies",
-            "groupSlug": "weekly-dependencies",
-            "schedule": ["* * * * 2"],
-            "updateNotScheduled": False,
+        "linting group": {
+            "matchManagers": ["npm"],
+            "matchUpdateTypes": ["minor", "patch"],
+            "matchPackageNames": [
+                "@eslint/js", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser",
+                "astro-eslint-parser", "eslint", "eslint-plugin-astro", "globals", "typescript-eslint",
+            ],
+            "groupName": "linting",
+        },
+        "formatting group": {
+            "matchManagers": ["npm"],
+            "matchUpdateTypes": ["minor", "patch"],
+            "matchPackageNames": ["prettier", "prettier-plugin-astro"],
+            "groupName": "formatting",
         },
         "Node engine": {
             "matchManagers": ["npm"],
@@ -220,11 +254,10 @@ def validate_central_preset(config: dict[str, Any]) -> None:
         policy = {key: value for key, value in rule.items() if key != "description"}
         matches = [
             name for name, expected in admitted_rules.items()
-            if policy == expected
-            and all(type(policy[key]) is type(value) for key, value in expected.items())
+            if policy == expected and ("enabled" not in policy or policy["enabled"] is False)
         ]
         if not matches:
-            raise OwnershipError(f"central package rule {index} is not an admitted cooldown, weekly batch, or ownership exclusion")
+            raise OwnershipError(f"central package rule {index} is not an admitted cooldown, related group, or ownership exclusion")
         name = matches[0]
         if name in observed:
             raise OwnershipError(f"central Renovate preset repeats the {name} rule")
@@ -238,12 +271,37 @@ def validate_central_preset(config: dict[str, Any]) -> None:
         raise OwnershipError("Node engine exclusion must immediately precede the final first-party Action rule")
 
 
+def validate_weekly_preset(config: dict[str, Any]) -> None:
+    allowed = {"$schema", "description", "extends", "packageRules"}
+    if set(config) - allowed or config.get("extends") != [CENTRAL_PRESET]:
+        raise OwnershipError("weekly Renovate preset must extend the existing policy without other overrides")
+    expected = [
+        {"matchUpdateTypes": ["major"], "groupName": None},
+        {"matchUpdateTypes": ROUTINE_TYPES, "groupName": "weekly dependencies",
+         "groupSlug": "weekly-dependencies", "schedule": ["* * * * 2"], "updateNotScheduled": False},
+    ]
+    for field in ("$schema", "description"):
+        if field in config and not isinstance(config[field], str):
+            raise OwnershipError(f"weekly Renovate preset {field} must be a string")
+    rules = config.get("packageRules")
+    if not isinstance(rules, list) or len(rules) != len(expected):
+        raise OwnershipError("weekly Renovate preset requires the major and Tuesday batch rules")
+    for rule, contract in zip(rules, expected):
+        if not isinstance(rule, dict) or {k: v for k, v in rule.items() if k != "description"} != contract:
+            raise OwnershipError("weekly Renovate grouping, schedule or bounds differ from policy")
+        if "description" in rule and not isinstance(rule["description"], str):
+            raise OwnershipError("weekly Renovate package rule description must be a string")
+        if "updateNotScheduled" in rule and rule["updateNotScheduled"] is not False:
+            raise OwnershipError("weekly Renovate automatic refresh outside Tuesday must be disabled")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", type=Path)
     parser.add_argument("--renovate", type=Path)
     parser.add_argument("--dependabot", type=Path)
     parser.add_argument("--central-preset", type=Path)
+    parser.add_argument("--weekly-preset", type=Path)
     parser.add_argument("--repository-root", type=Path)
     parser.add_argument("--default-branch")
     return parser.parse_args()
@@ -252,8 +310,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        if args.central_preset:
+        if args.central_preset or args.weekly_preset:
+            if not args.central_preset:
+                raise OwnershipError("weekly validation requires its inherited central preset")
             validate_central_preset(load_json(args.central_preset))
+            if args.weekly_preset:
+                validate_weekly_preset(load_json(args.weekly_preset))
             print("✓ Central Renovate preset validation passed")
             return 0
         if not args.policy or not args.renovate or not args.dependabot or not args.repository_root or not args.default_branch:

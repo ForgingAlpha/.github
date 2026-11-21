@@ -1,12 +1,14 @@
 ---
 status: approved
+readme_intent_scopes:
+  main: ["."]
 tags:
   - org/alpha-apps
   - topic/github
 ---
 # ForgingAlpha/.github - Requirements
 
-> These requirements derive from [intent.md](intent.md). Architecture chooses
+> These requirements derive from [Intent](../README.md#intent). Architecture chooses
 > how this repository satisfies them.
 
 ## Shared CI
@@ -35,9 +37,9 @@ indistinguishable results or weaken required checks while changing producers.
 
 ### REQ-002 - Approved Source Truth
 
-Active repositories SHALL validate approved `docs/intent.md`,
-`docs/requirements.md`, and `docs/architecture.md` before ordinary changes
-merge.
+Active repositories SHALL validate approved Intent, Requirements and Architecture before ordinary changes merge. Requirements and Architecture remain in `docs/requirements.md` and `docs/architecture.md`. Intent remains in `docs/intent.md` until the owning repository adopts the README layout. For scopes adopted on a protected branch, the sole Intent source after migration is the owning `README.md#intent`.
+
+The standalone policy action reads `readme_intent_scopes` from the root Requirements on the protected base. The mapping selects the repository root (`["."]`) on `dev` or `main`. The first conversion must preserve the existing approved Intent and source identities. A candidate cannot select its own layout or confer approval.
 
 **Fit:** Missing, provisional, or malformed source truth produces actionable
 failure output while a definition-only change can repair it. The exact canonical
@@ -169,7 +171,9 @@ Renovate SHALL evaluate normal updates daily and use these minimum release ages.
 For eligible updates marked “Weekly batch” above, Renovate SHALL create or
 refresh a single open batch per repository and ordinary target. Automatic creation and refresh
 SHALL run only on Tuesday in `America/New_York`. A human may request a refresh
-outside the window. An empty batch SHALL produce no PR.
+outside the window. An empty batch SHALL produce no PR. A repository MAY split a
+specific dependency into its own proposal for independent testing or rollback
+under the same timing rules.
 Security proposal timing is governed by [REQ-013](#req-013---immediate-security-updates).
 
 **Fit:** Standard setup admits an eligible patch without owner action. An
@@ -665,6 +669,13 @@ A document-only bootstrap profile SHALL be explicitly enrolled by the approved
 central source, validate its governing documents and tracked Markdown, and admit
 only its declared non-executable inputs. Application profiles SHALL fail when
 their expected manifests or commands are missing rather than select bootstrap.
+
+For a private repository's first definitions, the protection operator MAY enroll
+one open same-repository PR against its README-only initial `dev` commit. The
+enrollment SHALL bind the exact head, governing scopes and required human team.
+CI SHALL verify each scope's provisional README Intent, separate Requirements
+and Architecture, their source identities and upstream digests, and the entire
+document-only tree. A change of head or movement beyond the seed ends eligibility.
 
 **Fit:** Unknown enrollment, changed repository identity, application code,
 executable lint configuration, custom formatters/rules, untracked required

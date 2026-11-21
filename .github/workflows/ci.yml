@@ -18,15 +18,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The released checker validates the proposed sources. Candidate policy code
+      # is covered by the local test suites below.
+      - name: Validate Alpha Apps policy
+        uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@main
+
       # Dogfood: exercise the merge-flow guard against this PR itself.
       # Uses a local path so the PR validates the in-branch version of the
       # action. Exact repository identity retains the adopted task-to-main
       # bridge independently of whether dev exists.
       - name: Enforce merge flow (self)
         uses: ./actions/ci-merge-flow
-
-      - name: Validate Alpha Apps policy
-        uses: ./actions/ci-alphaapps-policy
 
       - name: Review dependency changes
         uses: ./actions/ci-dependency-review
@@ -44,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 actions/ci-update-ownership/scripts/validate_update_ownership.py \
-            --central-preset renovate-config.json
+            --central-preset renovate-config.json --weekly-preset renovate-weekly.json
 
       - name: Validate repository update ownership
         uses: ./actions/ci-update-ownership
