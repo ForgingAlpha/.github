@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
@@ -43,15 +44,21 @@ def git(root, *args):
     return result.stdout
 
 
-def blob(root, revision, path, *, optional=False):
+def blob(root, revision, path, *, optional=False, discovery=False):
     record = git(root, "ls-tree", "-z", revision, "--", path)
     if optional and not record:
         return None
-    require(record.startswith(b"100644 blob ") and record.endswith(b"\t" + path.encode() + b"\0")
-            and record.count(b"\0") == 1, "missing or nonregular governing source: " + path)
+    regular = (record.startswith(b"100644 blob ") and record.endswith(b"\t" + path.encode() + b"\0")
+               and record.count(b"\0") == 1)
+    if discovery and not regular:
+        return None
+    require(regular, "missing or nonregular governing source: " + path)
     oid = record.split(b" ", 2)[2].split(b"\t", 1)[0].decode("ascii")
     size = git(root, "cat-file", "-s", oid).strip()
-    require(size.isdigit() and 0 < int(size) <= LIMIT, "invalid governing source size: " + path)
+    bounded = size.isdigit() and 0 < int(size) <= LIMIT
+    if discovery and not bounded:
+        return None
+    require(bounded, "invalid governing source size: " + path)
     return git(root, "cat-file", "blob", oid)
 
 
@@ -79,6 +86,16 @@ def checking_baseline():
     path = Path(__file__).resolve().parents[2] / "ci-org-baseline/scripts/baseline.py"
     spec = importlib.util.spec_from_file_location("product_governing_baseline", path)
     module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@lru_cache(maxsize=1)
+def four_reader():
+    path = Path(__file__).resolve().with_name("four_section.py")
+    spec = importlib.util.spec_from_file_location("alphaapps_four_section", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -320,7 +337,7 @@ def changed_paths(root, base, head):
                .decode().split("\0")[:-1])
 
 
-def require_document_change(root, subject):
+def require_document_change(root, subject, *, manifests=()):
     # A selector may be prepared for a later protected base. Never combine
     # adoption with implementation, executable files, workflows or config.
     raw = git(root, "diff", "--raw", "--no-ext-diff", "--no-renames", "-z", subject.base, subject.head, "--")
@@ -328,8 +345,31 @@ def require_document_change(root, subject):
     require(raw and records[-1] == b"" and len(records) % 2 == 1, "invalid selection preparation diff")
     for header, path in zip(records[0:-1:2], records[1:-1:2]):
         modes = header.removeprefix(b":").split()[:2]
-        require(len(modes) == 2 and all(mode in (b"000000", b"100644") for mode in modes)
-                and path.endswith((b".md", b".markdown")), "README selection or migration requires documentation-only changes")
+        if manifests and path in {b"AGENTS.md", b"CLAUDE.md"}:
+            name = path.decode()
+            if modes[0] == b"120000":
+                require(git(root, "cat-file", "blob", subject.base + ":" + name) == b"PROJECT.md"
+                        and blob(root, subject.base, "PROJECT.md") is not None
+                        and blob(root, subject.head, "PROJECT.md", optional=True) is None,
+                        "unsupported prior native instruction link or target retirement")
+            else:
+                require(modes[0] in {b"000000", b"100644"}, "unsupported prior native instruction mode")
+            if modes[1] == b"120000":
+                require(name == "CLAUDE.md" and git(root, "cat-file", "blob", subject.head + ":" + name) == b"AGENTS.md"
+                        and blob(root, subject.head, "AGENTS.md") == four_reader().NATIVE_POINTER,
+                        "unsupported native instruction alias or target")
+            else:
+                require(modes[1] == b"100644" and blob(root, subject.head, name) == four_reader().NATIVE_POINTER,
+                        "native instruction entry must point to the four README sections")
+        else:
+            require(len(modes) == 2 and all(mode in (b"000000", b"100644") for mode in modes)
+                    and (path.endswith((b".md", b".markdown")) or path in manifests),
+                    "README selection or migration requires documentation-only changes")
+
+
+def require_four_document_change(root, subject, scopes):
+    manifests = { (("" if scope == "." else scope + "/") + four_reader().MANIFEST).encode() for scope in scopes}
+    require_document_change(root, subject, manifests=manifests)
 
 
 def definition_paths(scopes):
@@ -436,7 +476,72 @@ def declared_selection(policy, data):
     return selection(values[SELECTION]) if SELECTION in values else {}
 
 
-def selection_hints(root, env, branch, policy):
+def layouts(root, revision, policy):
+    four = four_reader()
+    data = blob(root, revision, "docs/requirements.md", optional=True)
+    old = declared_selection(policy, data)
+    prepared = {}
+    if data and four.ENROLLMENT.encode() in data:
+        values, _ = metadata(policy, data)
+        if four.ENROLLMENT in values:
+            prepared = selection(values[four.ENROLLMENT])
+    # A legacy consumer may use this name for an unrelated object. Only a
+    # bounded, regular manifest can declare a successor. A previously selected
+    # manifest is mandatory in check_four_enrollment, including after deletion.
+    manifest = blob(root, revision, four.MANIFEST, optional=True, discovery=not prepared)
+    if manifest and four.ENROLLMENT.encode() in manifest:
+        record = four.decode(manifest)
+        if isinstance(record, dict) and four.ENROLLMENT in record:
+            require(record.get("schema_version") == 3, "unsupported selected source manifest version")
+            successor = selection(record[four.ENROLLMENT])
+            require(not prepared or prepared == successor, "conflicting protected source selections")
+            return old, successor, True
+    return old, prepared, False
+
+
+def check_four_enrollment(root, subject, protected, proposed):
+    _, selected, converted = protected
+    _, pending, converting = proposed
+    require(all(set(scopes) <= set(pending.get(target, [])) for target, scopes in selected.items()),
+            "candidate removed protected four-section scope")
+    if selected != pending:
+        require(not converted and not converting, "candidate cannot enroll its own conversion")
+        require_document_change(root, subject)
+    require(not converted or converting, "candidate removed protected four-section manifest")
+    if converting and not converted:
+        require(subject.branch in selected and pending == selected,
+                "candidate cannot select its own four-section conversion")
+
+
+def require_prepared_layout(root, subject, policy, scopes):
+    """The protected opt-in permits a later complete migration. Keep legacy CI live."""
+    four = four_reader()
+    changes = changed_paths(root, subject.base, subject.head)
+    for scope in scopes:
+        prefix = "" if scope == "." else scope + "/"
+        manifest = prefix + four.MANIFEST
+        if manifest in changes:
+            data = blob(root, subject.head, manifest, optional=True)
+            require(data is not None, "incomplete prepared source manifest")
+            record = four.decode(data)
+            require(isinstance(record, dict) and record.get("schema_version") in (1, 2),
+                    "incomplete four-section conversion manifest")
+        readme = prefix + "README.md"
+        if readme in changes:
+            def titles(revision):
+                data = blob(root, revision, readme)
+                lines = data.decode().split("\n")
+                _, first = policy.leading_metadata(lines)
+                return {heading[2].strip().casefold() for _, heading in policy._readme_lines(lines, first)
+                        if heading and heading[1] == "##" and heading[2]}
+            selected = {name.casefold() for name in policy.SECTION_NAMES[1:]}
+            current = titles(subject.head)
+            added = (current - titles(subject.base)) & selected
+            require(not {name.casefold() for name in policy.SECTION_NAMES} <= current and len(added) < 2,
+                    "incomplete four-section conversion without a manifest")
+
+
+def selection_hints(root, env, branch, layout):
     """Runner revision/target hints may require refusal, never authorize a route."""
     hints = []
     if branch in BRANCHES:
@@ -455,14 +560,22 @@ def selection_hints(root, env, branch, policy):
     inspected = False
     for revision in set(hints):
         try:
-            data = blob(root, revision, "docs/requirements.md", optional=True)
+            old, four, _ = layout(revision)
         except ValueError:
             continue
         inspected = True
-        selected = declared_selection(policy, data)
+        selected = old | four
         if selected and (branch is None or branch in selected):
             return True, inspected
     return False, inspected
+
+
+def require_trusted_action(root, policy, env):
+    require(env.get("POLICY_ACTION_REPOSITORY") == "ForgingAlpha/.github"
+            and env.get("POLICY_ACTION_REF") == "main", "selected route requires the protected remote policy action")
+    source = Path(policy.__file__).resolve()
+    require(source.parent == Path(__file__).resolve().parent and not source.is_relative_to(root.resolve()),
+            "selected route cannot execute checking code from the consumer checkout")
 
 
 def maybe_validate(root, policy, env=None):
@@ -472,10 +585,18 @@ def maybe_validate(root, policy, env=None):
     name = env.get("GITHUB_EVENT_NAME")
     branch = (env.get("GITHUB_BASE_REF") if name == "pull_request" else
               env.get("GITHUB_REF", "").removeprefix("refs/heads/")) or None
-    hinted, inspected = selection_hints(root, env, branch, policy)
+    @lru_cache(maxsize=8)
+    def layout(revision):
+        return layouts(root, revision, policy)
+
+    def selected_at(revision):
+        old, four, _ = layout(revision)
+        return old | four
+
+    hinted, inspected = selection_hints(root, env, branch, layout)
     if name not in {"pull_request", "push"}:
         if hinted or branch is None or branch in BRANCHES:
-            local = declared_selection(policy, blob(root, "HEAD", "docs/requirements.md", optional=True))
+            local = selected_at("HEAD")
             require(not hinted and not local, "selected standalone route requires native pull_request or push evidence")
         return False
     # The base is only a lookup until the complete provider/checkout binding below
@@ -491,32 +612,49 @@ def maybe_validate(root, policy, env=None):
             event_branch, prior = base.get("ref"), base.get("sha")
         require(isinstance(event_branch, str), "provider event has no target branch")
         if event_branch != branch:
-            provider_hint, _ = selection_hints(root, env, event_branch, policy)
+            provider_hint, _ = selection_hints(root, env, event_branch, layout)
             hinted = hinted or provider_hint
         require(isinstance(prior, str) and SHA.fullmatch(prior) and prior != "0" * 40,
                 "provider event has no immutable predecessor")
-        base_root = blob(root, prior, "docs/requirements.md", optional=True)
+        git(root, "cat-file", "-e", prior + "^{commit}")
     except (ValueError, OSError, UnicodeError, subprocess.SubprocessError):
         if branch is not None and branch not in BRANCHES and not hinted:
             return False
-        local = declared_selection(policy, blob(root, "HEAD", "docs/requirements.md", optional=True))
+        local = selected_at("HEAD")
         require(not hinted and inspected and not local, "protected selection cannot be checked without exact provider evidence")
         return False
     # A candidate declaration cannot authorize this event, even if the legacy
     # trio is still present. A change to any branch's selection is preparation
     # for a later protected base and must be kept separate from implementation.
-    selected = declared_selection(policy, base_root)
+    protected = layout(prior)
+    selected, four, converted = protected
     if branch in BRANCHES or event_branch in BRANCHES:
         # The checkout is only a refusal hint if exact provider data is missing.
         try:
             head = event["after"] if name == "push" else event["pull_request"]["head"]["sha"]
             require(isinstance(head, str) and SHA.fullmatch(head), "provider event lacks exact candidate revision")
-            candidate = blob(root, head, "docs/requirements.md", optional=True)
+            pending = layout(head)
         except (KeyError, TypeError, ValueError):
-            local = declared_selection(policy, blob(root, "HEAD", "docs/requirements.md", optional=True))
-            require(not hinted and not selected and not local, "README selection requires exact provider evidence")
+            local = selected_at("HEAD")
+            require(not hinted and not selected and not four and not local, "README selection requires exact provider evidence")
             return False
-        proposed = declared_selection(policy, candidate)
+        proposed, new_four, converting = pending
+        if four or new_four or converted or converting:
+            subject = event_subject(root, env, event)
+            check_four_enrollment(root, subject, protected, pending)
+            if subject.branch in four and not converting:
+                require_prepared_layout(root, subject, policy, four[subject.branch])
+            if converting and subject.branch in four:
+                require_trusted_action(root, policy, env)
+                result = four_reader().check_pair(sys.modules[__name__], policy, root, subject, protected, pending)
+                checkout = git(root, "rev-parse", "HEAD").decode().strip()
+                if checkout != head:
+                    merged = Subject(subject.repository, subject.repository_id, subject.branch, subject.base, checkout)
+                    merge_layout = layout(checkout)
+                    require(merge_layout == pending, "merge checkout differs from PR governing selection")
+                    four_reader().check_pair(sys.modules[__name__], policy, root, merged, protected, merge_layout)
+                print("Protected-base four-section README " + result + " passed")
+                return True
         if proposed != selected:
             subject = event_subject(root, env, event)
             require(all(set(scopes) <= set(proposed.get(target, [])) for target, scopes in selected.items()),
@@ -541,11 +679,7 @@ def maybe_validate(root, policy, env=None):
     subject = event_subject(root, env, event)
     if subject.branch not in selected:
         return False
-    require(env.get("POLICY_ACTION_REPOSITORY") == "ForgingAlpha/.github"
-            and env.get("POLICY_ACTION_REF") == "main", "selected route requires the protected remote policy action")
-    source = Path(policy.__file__).resolve()
-    require(source.parent == Path(__file__).resolve().parent and not source.is_relative_to(root.resolve()),
-            "selected route cannot execute checking code from the consumer checkout")
+    require_trusted_action(root, policy, env)
     handled = validate_pair(root, subject, policy, selected)
     checked_head = git(root, "rev-parse", "HEAD").decode().strip()
     if len(proposed[subject.branch]) > 1 and checked_head != subject.head:

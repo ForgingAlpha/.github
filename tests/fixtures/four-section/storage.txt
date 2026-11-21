@@ -1,0 +1,3 @@
+# Storage contract
+
+The recorder appends immutable correction records.

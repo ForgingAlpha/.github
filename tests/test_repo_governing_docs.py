@@ -136,6 +136,79 @@ class RepoGoverningDocsTests(unittest.TestCase):
         self.f.commit()
         self.assertIn("initial provisional definitions", self.invoke(env_changes={"GOV_SCOPES": "."})[0])
 
+    def test_four_section_reader_on_protected_caller_and_exact_revision(self):
+        from four_section_fixture import CASES, MANIFEST, README, TRIO, details, documents, sha
+
+        self.scope_csv = "."
+        self.f.git("rm", "-qr", "engine")
+        self.write_caller(".")
+        (self.f.root / "CLAUDE.md").symlink_to("PROJECT.md")
+        self.f.write("README.md", README.split(b"## Requirements")[0])
+        meta, manifest = documents("dev")
+        for index, (selector, kind) in enumerate(zip(TRIO[1:], ("requirements", "architecture"))):
+            values = meta[selector]
+            values["intent_sha256"] = CASES["digests"]["intent"]
+            if index:
+                values["requirements_sha256"] = sha((self.f.root / "docs/requirements.md").read_bytes())
+            document = "---\n" + "".join(k + ": " + json.dumps(v) + "\n" for k, v in values.items())
+            self.f.write("docs/" + kind + ".md", document + "---\n# Source\n\nRetain observations.\n")
+        self.f.commit()
+        self.followup()
+        self.f.write("docs/notes.md", "# Notes\n\nPrepare the adoption.\n")
+        self.f.commit()
+        self.assertIn("protected documentation update", self.invoke()[0])
+        self.f.write(MANIFEST, '{"schema_version": 3}')
+        self.f.commit()
+        with self.assertRaisesRegex(ValueError, "incomplete four-section conversion"):
+            self.invoke()
+        self.f.git("rm", "-q", "docs/requirements.md", "docs/architecture.md", "PROJECT.md", "AGENTS.md", "CLAUDE.md")
+        pointer = "# Repository instructions\n\n" + "\n\n".join(
+            f"[{name}](README.md#{name.lower().replace(' ', '-')})" for name in baseline.policy.SECTION_NAMES) + "\n"
+        self.f.write("AGENTS.md", pointer)
+        (self.f.root / "CLAUDE.md").symlink_to("AGENTS.md")
+        self.f.write("README.md", README)
+        for path, data in details().items():
+            self.f.write(path, data)
+        meta[TRIO[2]]["requirements_sha256"] = CASES["digests"]["requirements"]
+        self.f.write(MANIFEST, json.dumps(manifest))
+        self.f.commit()
+        out, api = self.invoke()
+        self.assertIn("protected documentation update", out)
+        self.assertEqual(len(api.reads), 4)
+        for expected in CASES["digests"].values():
+            self.assertIn(expected, out)
+        self.followup()
+        for case in CASES["edits"]:
+            with self.subTest(case=case["id"]):
+                changed = README.replace(case["before"].encode(), case["after"].encode())
+                self.f.write("README.md", changed)
+                manifest["local_instructions"]["sha256"] = CASES["digests"]["local-instructions"]
+                if case["decision"] == "instructions":
+                    section = changed.split(b"## Local Instructions", 1)[1].split(b"## Navigation", 1)[0]
+                    manifest["local_instructions"]["sha256"] = sha(b"## Local Instructions" + section.rstrip(b"\n") + b"\n")
+                self.f.write(MANIFEST, json.dumps(manifest))
+                self.f.commit()
+                if case["decision"] == "reject":
+                    with self.assertRaises(ValueError):
+                        self.invoke()
+                else:
+                    out, _ = self.invoke()
+                    self.assertEqual(case["decision"] == "instructions", "Local Instructions changed" in out)
+                    for kind in ("intent", "requirements", "architecture"):
+                        self.assertIn(CASES["digests"][kind], out)
+        self.f.write("README.md", README)
+        manifest["local_instructions"]["sha256"] = CASES["digests"]["local-instructions"]
+        self.f.write(MANIFEST, json.dumps(manifest))
+        self.f.write("docs/storage.md", "# Storage\n\nUnbound text.\n")
+        self.f.commit()
+        with self.assertRaisesRegex(ValueError, "wrong governing source digest"):
+            self.invoke()
+        self.f.write("docs/storage.md", details()["docs/storage.md"])
+        self.f.write("engine/README.md", README)
+        self.f.commit()
+        with self.assertRaisesRegex(ValueError, "unregistered governing scope"):
+            self.invoke()
+
     def test_template_rotation_keeps_adopted_workflow_and_scopes(self):
         rotated = self.template.replace(b"3d3c42e5aac5ba805825da76410c181273ba90b1", b"b" * 40)
         rotated = rotated.replace(b"# v7.0.1", b"# next reviewed version")
