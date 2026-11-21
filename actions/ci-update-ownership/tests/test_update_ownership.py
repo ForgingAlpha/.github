@@ -58,6 +58,54 @@ class UpdateOwnershipTest(unittest.TestCase):
         self.assertNotIn("github.token", action)
         self.assertNotIn("secrets.", action)
 
+    def test_weekly_preset_is_checked_by_required_ci(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+        commands = [step for step in workflow["jobs"]["CI"]["steps"]
+                    if "--central-preset" in step.get("run", "")]
+        self.assertEqual(len(commands), 1)
+        self.assertNotIn("if", commands[0])
+        self.assertNotIn("continue-on-error", commands[0])
+        self.assertIn("--weekly-preset renovate-weekly.json", commands[0]["run"])
+        valid = subprocess.run(["bash", "-c", commands[0]["run"]], cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(valid.returncode, 0, valid.stderr)
+        with tempfile.TemporaryDirectory() as directory:
+            missing = subprocess.run([sys.executable, str(SCRIPT), "--central-preset", str(PRESET),
+                                      "--weekly-preset", str(Path(directory) / "missing.json")], capture_output=True)
+            self.assertNotEqual(missing.returncode, 0)
+
+    def test_weekly_overlay_only_changes_grouping_and_timing(self):
+        original = update_ownership.load_json(ROOT / "renovate-weekly.json")
+        invalid = [dict(original, extends=[]), dict(original, automerge=True),
+                   dict(original, packageRules=original["packageRules"][::-1])]
+        for key, value in (("schedule", ["at any time"]), ("matchUpdateTypes", ["patch"]),
+                           ("updateNotScheduled", 0), ("enabled", True), ("groupSlug", "other")):
+            changed = copy.deepcopy(original)
+            changed["packageRules"][1][key] = value
+            invalid.append(changed)
+        for config in invalid:
+            with self.subTest(config=config), self.assertRaises(update_ownership.OwnershipError):
+                update_ownership.validate_weekly_preset(config)
+
+    def test_weekly_consumer_can_split_only_one_named_package_per_rule(self):
+        weekly = dict(self.renovate, extends=[update_ownership.WEEKLY_PRESET])
+        rule = {"description": "Roll back the formatter independently", "matchManagers": ["npm"],
+                "matchPackageNames": ["@scope/tool"], "matchUpdateTypes": ["minor", "patch", "digest"],
+                "groupName": None}
+        update_ownership.validate_renovate(weekly, "dev")
+        update_ownership.validate_renovate(dict(weekly, packageRules=[rule]), "dev")
+        with self.assertRaises(update_ownership.OwnershipError):
+            update_ownership.validate_renovate(dict(self.renovate, packageRules=[rule]), "dev")
+        with self.assertRaises(update_ownership.OwnershipError):
+            update_ownership.validate_renovate(dict(weekly, extends=["local>other/repo:renovate-weekly"]), "dev")
+        for key, value in (("matchManagers", ["npm", "cargo"]), ("matchPackageNames", ["*", "pkg"]),
+                           ("matchPackageNames", ["/.*/"]), ("matchPackageNames", ["!pkg"]),
+                           ("matchPackageNames", ["@some/*"]), ("matchPackageNames", []),
+                           ("matchPackageNames", [True]), ("matchManagers", ["*"]), ("matchUpdateTypes", ["major"]),
+                           ("groupName", "other"), ("description", " "), ("enabled", True), ("automerge", True),
+                           ("minimumReleaseAge", "0 days"), ("schedule", ["at any time"])):
+            with self.subTest(key=key, value=value), self.assertRaises(update_ownership.OwnershipError):
+                update_ownership.validate_renovate(dict(weekly, packageRules=[dict(rule, **{key: value})]), "dev")
+
     def run_owned_action(self, root, default_branch="main", env_extra=None):
         step = yaml.safe_load(ACTION.read_text())["runs"]["steps"][0]
         env = dict(
@@ -83,6 +131,19 @@ class UpdateOwnershipTest(unittest.TestCase):
             self.assertNotIn("continue-on-error", boundary)
         result = self.run_owned_action(ROOT)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_switching_back_to_the_prior_preset_passes_the_ownership_action(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".github").mkdir()
+            for filename in (".github/dependabot.yml", ".github/update-policy.json"):
+                (root / filename).write_bytes((ROOT / filename).read_bytes())
+            config = update_ownership.load_json(ROOT / "renovate.json")
+            for preset in (update_ownership.WEEKLY_PRESET, update_ownership.CENTRAL_PRESET):
+                with self.subTest(preset=preset):
+                    (root / "renovate.json").write_text(json.dumps(dict(config, extends=[preset])))
+                    result = self.run_owned_action(root)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_owned_action_rejects_absent_or_conflicting_consumer_policy(self):
         policy = {"schema_version": 1, "normal_update_owner": "renovate", "base_branch": "main"}
