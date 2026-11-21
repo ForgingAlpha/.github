@@ -25,6 +25,14 @@ checks baseline presence and repository-specific status metadata. Only the exact
 required status marker; its own CI validates canonical IDs and upstream digests.
 These structural checks cannot establish approval or Currentness.
 
+For the repository-owned documentation route, the shared action reads Git
+objects at the exact PR head and protected base. A README-only seed admits the
+shared caller template with explicit governing scopes. Once adopted, the base
+supplies the expected caller and scopes. The action reuses the organization
+baseline's document inventory, Markdown lint and branch-rule readers. GitHub
+enforces approval. The reviewer checks the actual workflow on the proposed
+head because a replacement job could report the same check name.
+
 The released shared policy action validates `.github/CODEOWNERS` before lower-level
 language checks. Unmigrated control-plane repositories assign their complete tree to an
 authorized human. Consumer repositories assign `.github/` and each detected

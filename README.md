@@ -244,6 +244,21 @@ restoration with valid-pass and invalid-block behavior. Source enrollment suppor
 before reliance. Existing language composites and
 ordinary `ci-markdown` behavior are unchanged.
 
+## Repository-owned CI for first governing documents
+
+A private repository with a README-only initial `dev` commit can introduce its
+first governing documents and a permanent `.github/workflows/ci.yml` together.
+Copy the [caller template](actions/ci-governing-docs/caller.yml). Set `scopes`
+to `'.'` for root definitions or, for example, `'.,catalog'` for root and
+component definitions. Include every directory that owns a governing chain.
+
+The shared action checks the entire proposed tree, the governing sources and
+their upstream digests, and every tracked Markdown document. The human team
+reviews the exact first caller before merge. Subsequent documentation PRs use
+the caller and scopes already adopted on protected `dev`. Verify the hosted
+`CI` run on the consumer PR. When introducing executable code, extend the
+repository workflow with the applicable product checks.
+
 ## Complete Application Profile Source
 
 The [organization baseline contract](actions/ci-org-baseline/README.md) defines the
