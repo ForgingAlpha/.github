@@ -47,6 +47,11 @@ def load_checking_module(name, path):
     return module
 
 
+@cache
+def merge_flow():
+    return load_checking_module("shared_merge_flow", "actions/ci-merge-flow/scripts/check_merge_flow.py")
+
+
 GIT_OUTPUT_LIMIT = 1024 * 1024
 GIT_TIMEOUT = 30
 ORGANIZATION_HUMAN_REVIEW = {"team_id": 20299307, "minimum_approvals": 1}
@@ -404,12 +409,28 @@ def prove_pr(api, event, entry):
                 require(ref["repo"].get("private") is True, "first definition requires a private repository")
         require(value["base"].get("ref") in entry["branches"], "unqualified PR base branch")
     require(pr["base"]["ref"] == live["base"]["ref"] and all(pr[s]["sha"] == live[s]["sha"] for s in ("base", "head")), "PR base/head moved since event")
-    if entry.get("producer") == "repo-docs":
-        require(pr["head"]["ref"] == live["head"].get("ref"), "PR source branch moved since event")
+    head_ref = pr["head"].get("ref")
+    require(isinstance(head_ref, str) and head_ref and head_ref == live["head"].get("ref"),
+            "PR source branch moved since event")
     branch = api.get(f'/repos/{entry["repository"]}/branches/{quote(pr["base"]["ref"], safe="")}')
     require(isinstance(branch, dict) and branch.get("commit", {}).get("sha") == pr["base"]["sha"], "base branch moved since event")
     if entry.get("producer") in {"first-definition", "repo-docs"}:
         require(branch.get("name") == "dev" and branch.get("protected") is True, "first definition requires protected dev")
+        require(head_ref not in merge_flow().PERSISTENT, "definition changes require a task branch")
+    else:
+        # The source ID assignment also governs documentation bootstrap. No checkout
+        # metadata or product command can select the release path.
+        route = merge_flow().assigned_route(entry["repository_id"])
+        op = merge_flow().operation(route, pr["base"]["ref"], head_ref, same_repository=True)
+        if op in {"promotion", "snapshot"}:
+            merge_flow().verify_tip(branch, pr["base"]["ref"], pr["base"]["sha"])
+            source_ref = "dev" if op == "snapshot" else head_ref
+            source_tip = api.get(f'/repos/{entry["repository"]}/branches/{source_ref}')
+            merge_flow().verify_tip(source_tip, source_ref, pr["head"]["sha"])
+            if route == "staged":
+                merge_flow().require_release_claim()
+        if op == "verify-projection":
+            require(entry["profile"] != "documentation-bootstrap", "documentation bootstrap requires ordinary admission")
     return pr["base"]["ref"], pr["base"]["sha"], pr["head"]["sha"]
 
 
@@ -808,6 +829,12 @@ def app_plan(root, event, entry, source_sha, runtime_data=None):
     manifests = classify(root, inventory, entry)
     producer_check(root, inventory, entry, branch)
     route = declared_route(root, entry, base, head)
+    assigned = merge_flow().assigned_route(entry["repository_id"])
+    if assigned == "development":
+        require(entry["branches"] == ["dev"], "development assignment has no release target")
+        route = assigned
+    else:
+        require(assigned == route, "product declaration conflicts with assigned release route")
     runtime = application_integrity(root, inventory, entry, runtime_data)
     return {"schema_version": 2, "consumer": entry["repository"], "repository_id": entry["repository_id"], "pr": event["number"],
             "branch": branch, "base": base, "head": head, "tree": git(root, "rev-parse", "HEAD^{tree}").decode().strip(),
@@ -817,7 +844,8 @@ def app_plan(root, event, entry, source_sha, runtime_data=None):
             "review_policy": entry["review_policy"],
             "checking_fingerprints": {name: hashlib.sha256((SOURCE / name).read_bytes()).hexdigest() for name in
                                       ("actions/ci-org-baseline/enrollment.json", "runtime-profiles/catalog.json",
-                                       "actions/ci-org-baseline/scripts/baseline.py")},
+                                       "actions/ci-org-baseline/scripts/baseline.py", "actions/ci-merge-flow/routes.json",
+                                       "actions/ci-merge-flow/scripts/check_merge_flow.py")},
             "required_jobs": ["baseline", "static", "tests"]}
 
 
@@ -904,12 +932,14 @@ def application_common(root, event, entry, api, plan):
         checked(source_script("actions/ci-alphaapps-policy/scripts/validate_codeowners_contract.py"), root, safe)
     else:
         team_configuration(api.rules(entry["repository"], plan["branch"]), entry["review_policy"])
-    # This is a trusted metadata subprocess, not consumer execution. Token is scoped to this guard alone.
-    guard_env = clean_env()
-    guard_env.update(GH_TOKEN=os.environ.get("GITHUB_TOKEN", ""), GITHUB_ACTION_PATH=str(SOURCE / "actions/ci-merge-flow"),
-                     DECLARED_ROUTE=plan["route"], HEAD_REF=event["pull_request"]["head"]["ref"], HEAD_REPOSITORY=entry["repository"],
-                     BASE_REF=plan["branch"], GITHUB_REPOSITORY=entry["repository"], PR_NUMBER=str(event["number"]))
-    checked(["bash", str(SOURCE / "actions/ci-merge-flow/scripts/check_merge_flow.sh"), "declared-route"], root, guard_env)
+    operation = merge_flow().operation(plan["route"], plan["branch"], event["pull_request"]["head"]["ref"],
+                                     same_repository=True)  # prove_pr binds both repositories before this job.
+    if operation == "verify-projection":
+        proof_env = clean_env()
+        proof_env["GH_TOKEN"] = os.environ.get("GITHUB_TOKEN", "")
+        checked(source_script("actions/security-patch/scripts/security_patch.py") + [
+            "verify-ci-admission", "--repository", entry["repository"], "--pull-request",
+            str(event["number"]), "--target-branch", "main"], root, proof_env)
     inventory = clean_inventory(root, plan["head"], native_pointer=pointer)
     texts, total = {}, 0
     for name in sorted(inventory):

@@ -3009,8 +3009,8 @@ class ActionContractTest(unittest.TestCase):
 
     def test_merge_flow_admits_only_app_attested_projection_to_ci(self):
         text = MERGE_FLOW_ACTION.read_text()
-        self.assertIn('bash "$GITHUB_ACTION_PATH/scripts/check_merge_flow.sh" legacy-observed', text)
-        text += (MERGE_FLOW_ACTION.parent / "scripts/check_merge_flow.sh").read_text()
+        self.assertIn('python3 -I "$GITHUB_ACTION_PATH/scripts/check_merge_flow.py"', text)
+        text += (MERGE_FLOW_ACTION.parent / "scripts/check_merge_flow.py").read_text()
         for fragment in (
             "verify-ci-admission",
             "github.event.pull_request.number",
