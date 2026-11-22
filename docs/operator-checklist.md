@@ -50,7 +50,7 @@ settings retain their own authority.
 - Retired v1 promotion/rollback workflows do not write tags or select fallback
   source. Preserve historical refs and evidence; source retirement grants no tag
   deletion/movement, credential change or protection write authority.
-- Follow [REQ-027](requirements.md#req-027---uniform-proposal-admission): reviewed
+- Follow [REQ-027](../README.md#req-027---uniform-proposal-admission): reviewed
   disposable exploration and refactoring, task PR to dev, whole-batch consolidation
   from frozen dev and reviewed PR back into dev, fixed-snapshot PR to staging,
   integrated qualification, staging-to-main PR and reviewed reconciliation to
@@ -149,7 +149,7 @@ These additional steps apply only when the classified source merges into dev.
   base branch; avoid a competing generated config. Change sole update ownership
   with no overlap or unmanaged interval.
 - Inspect the resolved preset and hosted run history. Compare evaluation frequency,
-  first batch, out-of-window behavior and a pending-age release with [REQ-012](requirements.md#req-012---normal-update-cooldown).
+  first batch, out-of-window behavior and a pending-age release with [REQ-012](../README.md#req-012---normal-update-cooldown).
   Confirm proposal limits, runtime and first-party Action exclusions, and that
   Renovate and GitHub auto-merge are both disabled. Check major upgrades and initial pins stay outside the batch.
   Reconcile existing updater PRs at cutover.

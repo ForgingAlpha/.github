@@ -313,7 +313,7 @@ policy exception, downloaded tool or version and does not claim to repair that g
 
 ## Existing release-route projection and migration
 
-Control-plane ASR-AUTH-005 and [REQ-027](../../docs/requirements.md#req-027---uniform-proposal-admission)
+Control-plane ASR-AUTH-005 and [REQ-027](../../README.md#req-027---uniform-proposal-admission)
 require one repository-level dev/staging/main route with whole-batch consolidation
 from frozen dev back into dev, fixed-snapshot promotion to staging and reviewed
 reconciliation. The schema and helper below describe the
