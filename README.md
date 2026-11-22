@@ -193,6 +193,18 @@ identity and its upstream digests, and preserve the protected set of scopes.
 The first root conversion must preserve the existing approved Intent and source
 identities. Adding a selection and implementing the product require separate PRs.
 
+For the first release from protected `dev` into the inspected Analyzing Alpha
+site main commit `9f61df0595236264e5c515381a73d57625d54585`, the approved
+root README definitions on protected `dev` supply the baseline. This exception
+applies only to `ForgingAlpha/analyzingalpha-site`, repository ID `1151414035`.
+A separate PR into `dev` SHALL first add the identical root scope for `main`
+in both the source manifest's selection and its Requirements metadata. All other
+bytes SHALL be preserved. The release SHALL be a same-repository PR from the
+exact protected `dev` head, with main as its ancestor and its checked merge tree
+identical to that head. The checker SHALL verify the complete governing inventory,
+approved metadata and source bindings. Later main changes use main's adopted
+selection. Existing branch admission and human approvals apply throughout.
+
 **Fit:** Missing, provisional, or malformed source truth produces actionable
 failure output while a definition-only change can repair it. The exact canonical
 `ForgingAlpha/control-plane` source follows its owning source-adoption rules and

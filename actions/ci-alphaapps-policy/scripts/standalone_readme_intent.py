@@ -23,6 +23,9 @@ SELECTION = "readme_intent_scopes"
 LIMIT = 512 * 1024
 SHA = re.compile(r"[0-9a-f]{40}")
 BRANCHES = {"main", "dev"}
+# The existing direct release route and the inspected, pre-governance main commit.
+ANALYZING_ALPHA_SITE = ("ForgingAlpha/analyzingalpha-site", 1151414035)
+LEGACY_SITE_MAIN = "9f61df0595236264e5c515381a73d57625d54585"
 
 
 def require(condition, message):
@@ -524,6 +527,76 @@ def check_preparation_manifest(root, subject, policy, pending):
     require_document_change(root, subject, manifests={four.MANIFEST.encode()})
 
 
+def check_site_snapshot(root, revision, policy, enrollment):
+    four = four_reader()
+    current = four.snapshot(policy, lambda path: blob(root, revision, path), "")
+    require(current.metadata[four.TRIO[1]].get(four.ENROLLMENT) == enrollment,
+            "root Requirements must mirror the protected four-section scopes")
+    require(all(values.get("status") == "approved" for values in current.metadata.values()),
+            "first site promotion requires approved definitions")
+    four.check_inventory(sys.modules[__name__], root, revision, ["."], policy)
+    # The ordinary inventory checks README claims and legacy files. Include
+    # manifests even when their schema is unknown, and require a complete tree.
+    for record in git(root, "ls-tree", "-rz", revision).split(b"\0")[:-1]:
+        header, raw_path = record.split(b"\t", 1)
+        require(not header.startswith(b"160000 "), "first site promotion requires a complete local inventory")
+        if raw_path.lower().split(b"/")[-1] == b"governing-source-bindings.json":
+            require(raw_path == four.MANIFEST.encode(), "unexpected governing manifest in first site promotion")
+    for path in ("docs/intent.md", "docs/requirements.md", "docs/architecture.md"):
+        require(blob(root, revision, path, optional=True) is None,
+                "first site promotion requires completed README-only definitions")
+
+
+def check_site_transition(root, policy, env, event, subject, protected, pending):
+    """Validate the site's isolated dev enrollment or its one-time first release."""
+    if (subject.repository, subject.repository_id) != ANALYZING_ALPHA_SITE:
+        return False
+    dev = {"dev": ["."]}
+    both = {**dev, "main": ["."]}
+    enrolling = subject.branch == "dev" and protected == ({}, dev, True)
+    promoting = subject.branch == "main" and protected == ({}, {}, False)
+    if not (enrolling or promoting) or pending != ({}, both, True):
+        return False
+    require_trusted_action(root, policy, env)
+    checked = git(root, "rev-parse", "HEAD").decode().strip()
+    if env["GITHUB_EVENT_NAME"] == "pull_request":
+        source = event["pull_request"]["head"]
+        require(source["repo"]["id"] == subject.repository_id,
+                "first site promotion requires a same-repository pull request")
+        require(checked == env["GITHUB_SHA"] and
+                git(root, "show", "-s", "--format=%P", checked).decode().split() == [subject.base, subject.head],
+                "first site promotion requires the checked provider test merge")
+        require(git(root, "rev-parse", checked + "^{tree}") == git(root, "rev-parse", subject.head + "^{tree}"),
+                "test merge differs from the checked source tree")
+    else:
+        require(enrolling and git(root, "rev-parse", "refs/remotes/origin/dev").decode().strip() == subject.head,
+                "only an adopted dev enrollment can be validated on push")
+        parents = git(root, "show", "-s", "--format=%P", checked).decode().split()
+        require(len(parents) == 2 and parents[0] == subject.base
+                and git(root, "rev-parse", parents[1] + "^{tree}") == git(root, "rev-parse", checked + "^{tree}"),
+                "dev enrollment push must be the exact reviewed source tree merged onto its prior dev")
+
+    if enrolling:
+        four = four_reader()
+        require(changed_paths(root, subject.base, subject.head) == {four.MANIFEST},
+                "site enrollment must change only the root source manifest")
+        prior, candidate = (blob(root, revision, four.MANIFEST) for revision in (subject.base, subject.head))
+        # Removing exactly the two new main members must reproduce the original bytes.
+        original, count = re.subn(rb'("dev"\s*:\s*\[\s*"\."\s*\]),\s*"main"\s*:\s*\[\s*"\."\s*\]',
+                                  rb'\1', candidate)
+        require(count == 2 and original == prior, "site enrollment may only append the two identical main scopes")
+        check_site_snapshot(root, subject.base, policy, dev)
+    else:
+        require(subject.base == LEGACY_SITE_MAIN and event["pull_request"]["head"]["ref"] == "dev"
+                and git(root, "rev-parse", "refs/remotes/origin/dev").decode().strip() == subject.head,
+                "first site release requires the inspected legacy main and the current protected dev head")
+        git(root, "merge-base", "--is-ancestor", subject.base, subject.head)
+    # HEAD (including a PR test merge) and the source have the same complete tree.
+    check_site_snapshot(root, subject.head, policy, both)
+    print("Protected-base four-section README " + ("dev enrollment" if enrolling else "first site promotion") + " passed")
+    return True
+
+
 def check_four_enrollment(root, subject, protected, proposed, policy):
     _, selected, converted = protected
     _, pending, converting = proposed
@@ -680,6 +753,8 @@ def maybe_validate(root, policy, env=None):
         proposed, new_four, converting = pending
         if four or new_four or converted or converting:
             subject = event_subject(root, env, event)
+            if check_site_transition(root, policy, env, event, subject, protected, pending):
+                return True
             check_four_enrollment(root, subject, protected, pending, policy)
             if subject.branch in four and not converting:
                 require_prepared_layout(root, subject, policy, four[subject.branch])
