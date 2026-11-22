@@ -499,14 +499,53 @@ def layouts(root, revision, policy):
     return old, prepared, False
 
 
-def check_four_enrollment(root, subject, protected, proposed):
+def check_preparation_manifest(root, subject, policy, pending):
+    """A protected legacy snapshot may need its Requirements digest refreshed at opt-in."""
+    four = four_reader()
+    path = "docs/requirements.md"
+    require(changed_paths(root, subject.base, subject.head) <= {path, four.MANIFEST},
+            "paired legacy snapshot refresh allows only Requirements and its manifest")
+    before, after = (blob(root, revision, path) for revision in (subject.base, subject.head))
+    old_meta, old_end = metadata(policy, before)
+    new_meta, new_end = metadata(policy, after)
+    require(four.same_metadata(new_meta, old_meta | {four.ENROLLMENT: pending})
+            and before.split(b"\n")[old_end:] == after.split(b"\n")[new_end:],
+            "legacy snapshot preparation may change only the scope opt-in")
+    manifest = four.decode(blob(root, subject.base, four.MANIFEST))
+    require(isinstance(manifest, dict) and type(manifest.get("schema_version")) is int
+            and manifest["schema_version"] in (1, 2) and isinstance(manifest.get("sources"), list),
+            "unsupported protected legacy source manifest")
+    rows = [row for row in manifest["sources"] if isinstance(row, dict) and row.get("path") == path]
+    require(len(rows) == 1 and rows[0].get("sha256") == four.digest(before),
+            "legacy snapshot lacks the exact protected Requirements digest")
+    rows[0]["sha256"] = four.digest(after)
+    require(four.same_metadata(four.decode(blob(root, subject.head, four.MANIFEST)), manifest),
+            "legacy snapshot must change only the exact Requirements digest")
+    require_document_change(root, subject, manifests={four.MANIFEST.encode()})
+
+
+def check_four_enrollment(root, subject, protected, proposed, policy):
     _, selected, converted = protected
     _, pending, converting = proposed
     require(all(set(scopes) <= set(pending.get(target, [])) for target, scopes in selected.items()),
             "candidate removed protected four-section scope")
     if selected != pending:
         require(not converted and not converting, "candidate cannot enroll its own conversion")
-        require_document_change(root, subject)
+        four = four_reader()
+        prior = blob(root, subject.base, four.MANIFEST, optional=True, discovery=True)
+        # Unknown, unrelated legacy data at this optional name does not opt in.
+        try:
+            record = four.decode(prior) if prior else None
+        except ValueError:
+            record = None
+        claimed = (isinstance(record, dict) and record.get("schema_version") in (1, 2)
+                   and isinstance(record.get("sources"), list)
+                   and any(isinstance(row, dict) and row.get("path") == "docs/requirements.md"
+                           for row in record["sources"]))
+        if claimed or four.MANIFEST in changed_paths(root, subject.base, subject.head):
+            check_preparation_manifest(root, subject, policy, pending)
+        else:
+            require_document_change(root, subject)
     require(not converted or converting, "candidate removed protected four-section manifest")
     if converting and not converted:
         require(subject.branch in selected and pending == selected,
@@ -641,7 +680,7 @@ def maybe_validate(root, policy, env=None):
         proposed, new_four, converting = pending
         if four or new_four or converted or converting:
             subject = event_subject(root, env, event)
-            check_four_enrollment(root, subject, protected, pending)
+            check_four_enrollment(root, subject, protected, pending, policy)
             if subject.branch in four and not converting:
                 require_prepared_layout(root, subject, policy, four[subject.branch])
             if converting and subject.branch in four:

@@ -98,7 +98,7 @@ def check(baseline, root, event, scopes, api):
     subject = route.Subject(entry["repository"], entry["repository_id"], "dev", base, head)
     protected = route.layouts(root, base, baseline.policy)
     proposed = route.layouts(root, head, baseline.policy)
-    route.check_four_enrollment(root, subject, protected, proposed)
+    route.check_four_enrollment(root, subject, protected, proposed, baseline.policy)
     pointer = route.four_reader().NATIVE_POINTER
     head_pointer = pointer if proposed[2] else None
     prior = None

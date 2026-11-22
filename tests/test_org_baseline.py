@@ -15,6 +15,8 @@ import time
 import unittest
 from unittest.mock import patch
 
+import four_section_fixture
+
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("tested_org_baseline", ROOT / "actions/ci-org-baseline/scripts/baseline.py")
 baseline = importlib.util.module_from_spec(spec)
@@ -598,6 +600,43 @@ class ApplicationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
         self.f = ApplicationFixture(self.directory / 'consumer')
+
+    def test_approved_readme_uses_selected_route_and_preserves_product_checks(self):
+        f = self.f
+        fixture = four_section_fixture
+        _, manifest = fixture.documents("dev")
+        prior = fixture.README
+        body = b"Run the repository checks before proposing a change."
+        region = b"<!-- route -->\nDirect release through dev.\n<!-- end-route -->"
+        text = prior.replace(body, body + b"\n\n" + region)
+        # Route-like text outside Local Instructions must not satisfy the declaration.
+        f.write("README.md", text + b"\n" + region + b"\n")
+        manifest["local_instructions"]["sha256"] = fixture.sha(
+            baseline.policy.readme_sections(text).sections["Local Instructions"])
+        for name in baseline.REQUIRED:
+            (f.root / name).unlink()
+        pointer = baseline.readme_route().four_reader().NATIVE_POINTER
+        f.write("AGENTS.md", pointer)
+        (f.root / "CLAUDE.md").symlink_to("AGENTS.md")
+        for path, data in fixture.details().items():
+            f.write(path, data)
+        f.write(fixture.MANIFEST, json.dumps(manifest))
+        f.entry["release_route"]["declarations"][0]["path"] = "README.md#local-instructions"
+        f.commit()
+        f.base = f.head
+        f.git("update-ref", "refs/remotes/origin/dev", f.base)
+        f.write("docs/change.md", "# Reviewed change\n")
+        f.commit()
+        self.assertEqual(f.plan()["required_jobs"], ["baseline", "static", "tests"])
+        f.write("AGENTS.md", "# Different target\n")
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "native README instruction pointer"):
+            f.plan()
+        f.write("AGENTS.md", pointer)
+        (f.root / "package.json").unlink()
+        f.commit()
+        with self.assertRaisesRegex(ValueError, "missing Astro component"):
+            f.plan()
 
     def test_markdown_only_product_failure_then_repair_entire_profile(self):
         """P2/P5/P20: same profile on docs-only edits, actual helper failures reach fan-in."""
