@@ -10,7 +10,7 @@
     {
       "id": "README.md#requirements",
       "path": "README.md#requirements",
-      "sha256": "418b7164f990cc6a9e47b5612d294f91c18ee8133954b4e574523536fc7039c5",
+      "sha256": "a523e2b3b5ee4600d043bcc79ba7536055af01f227ffc64b286af5aa0807d8e7",
       "upstream": [
         {
           "path": "README.md#intent",
@@ -29,7 +29,7 @@
         },
         {
           "path": "README.md#requirements",
-          "sha256": "418b7164f990cc6a9e47b5612d294f91c18ee8133954b4e574523536fc7039c5"
+          "sha256": "a523e2b3b5ee4600d043bcc79ba7536055af01f227ffc64b286af5aa0807d8e7"
         }
       ]
     }
