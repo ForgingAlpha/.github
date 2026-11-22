@@ -1808,14 +1808,14 @@ affected callers together before requesting human review. Use the operator check
 to verify the affected consumers, permissions and hosted settings when applicable.
 [Repository route and retirement conditions](#uniform-proposal-targets) · [Operator checklist](docs/operator-checklist.md)
 
-To prepare an organization CI enrollment change, preview the catalog diff against the consumer’s committed inputs and its owners’ selected checks. [Enrollment preview](actions/ci-org-baseline/README.md#preview-an-enrollment)
-
 ## Consumer Contract
 
 Every repository exposes one required result named `CI`. Unmigrated callers retain
 the full composite and their existing producer. An explicitly qualified central
 application profile can instead select the organization workflow as that producer,
 with a separately required `Organization Baseline` result.
+
+To prepare an organization CI enrollment change, preview the catalog diff against the consumer’s committed inputs and its owners’ selected checks. [Enrollment preview](actions/ci-org-baseline/README.md#preview-an-enrollment)
 
 ```yaml
 name: CI
