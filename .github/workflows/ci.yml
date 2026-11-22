@@ -23,11 +23,13 @@ jobs:
       - name: Validate Alpha Apps policy
         uses: ForgingAlpha/.github/actions/ci-alphaapps-policy@main
 
-      # Dogfood: exercise the merge-flow guard against this PR itself.
-      # Uses a local path so the PR validates the in-branch version of the
-      # action. Exact repository identity retains the adopted task-to-main
-      # bridge independently of whether dev exists.
-      - name: Enforce merge flow (self)
+      # The released guard admits the PR. Qualify the proposed guard and its
+      # own assignments separately against the same real PR metadata.
+      - name: Enforce the adopted release route
+        uses: ForgingAlpha/.github/actions/ci-merge-flow@main
+
+      - name: Qualify the candidate release route on this pull request
+        if: github.event_name == 'pull_request'
         uses: ./actions/ci-merge-flow
 
       - name: Review dependency changes

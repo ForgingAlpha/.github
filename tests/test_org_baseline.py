@@ -25,7 +25,7 @@ spec.loader.exec_module(baseline)
 # Nonauthoritative legacy fixture: preserve schema-1 bootstrap regression coverage
 # independently of the production catalog's coordinated application cutover.
 ENTRY = {
-    "repository": "ForgingAlpha/layas-learning-lab-site",
+    "repository": "ForgingAlpha/layaslearninglab-site",
     "repository_id": 1420939261,
     "branches": ["dev", "main"],
     "profile": "documentation-bootstrap",
@@ -52,6 +52,22 @@ class CatalogTests(unittest.TestCase):
         for entry in entries:
             for branch in entry["branches"]:
                 self.assertEqual(baseline.select(entries, entry["repository"], entry["repository_id"], branch), entry)
+
+
+    def test_enrolled_site_uses_current_repository_identity_and_runtime(self):
+        current = "ForgingAlpha/layaslearninglab-site"
+        previous = "ForgingAlpha/layas-learning-lab-site"
+        identity = 1420939261
+        entries = baseline.catalog(baseline.decode((ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))
+        runtime = baseline.decode((ROOT / "runtime-profiles/catalog.json").read_bytes())["assignments"]
+        for branch in ("dev", "main"):
+            site = baseline.select(entries, current, identity, branch)
+            self.assertEqual((site["profile"], site["producer"]), ("astro", "central-product"))
+            self.assertEqual(runtime[site["repository"]], {"profile": "node-24-astro-7", "status": "active"})
+            for name, repo_id in ((previous, identity), (current, identity + 1)):
+                with self.subTest(name=name, repo_id=repo_id), self.assertRaises(ValueError):
+                    baseline.select(entries, name, repo_id, branch)
+        self.assertNotIn(previous, runtime)
 
 
 def rules():
@@ -99,7 +115,7 @@ class Fixture:
         repo = {"id": ENTRY["repository_id"], "full_name": ENTRY["repository"]}
         return {"repository": repo, "number": 1, "pull_request": {
             "base": {"repo": repo, "ref": self.branch, "sha": self.base},
-            "head": {"repo": repo, "ref": "feature/docs", "sha": self.head}}}
+            "head": {"repo": repo, "ref": "dev" if self.branch == "main" else "feature/docs", "sha": self.head}}}
 
 
 class FakeApi:
@@ -115,7 +131,9 @@ class FakeApi:
         if path.endswith("/pulls/1"):
             return copy.deepcopy(self.live)
         if path.endswith(f"/branches/{self.fixture.branch}"):
-            return {"commit": {"sha": self.base}}
+            return {"name": self.fixture.branch, "protected": True, "commit": {"sha": self.base}}
+        if path.endswith("/branches/dev") and self.fixture.branch == "main":
+            return {"name": "dev", "protected": True, "commit": {"sha": self.fixture.head}}
         raise AssertionError("unexpected or non-read evidence operation " + path)
 
     def rules(self, repository, branch):
@@ -240,7 +258,32 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual((result["base"], result["head"]), (fixture.base, fixture.head))
         self.assertEqual(result["source_sha"], "b" * 40)
         self.assertEqual(api.reads, [f'/repos/{ENTRY["repository"]}/pulls/1',
-                                    f'/repos/{ENTRY["repository"]}/branches/main'] * 2)
+                                    f'/repos/{ENTRY["repository"]}/branches/main',
+                                    f'/repos/{ENTRY["repository"]}/branches/dev'] * 2)
+
+    def test_promotion_rechecks_live_source_branch_and_protection(self):
+        fixture = Fixture(Path(self.temp.name) / "promote", branch="main")
+        for case in ("retargeted", "stale-source", "unprotected", "feature"):
+            with self.subTest(case=case):
+                api = FakeApi(fixture)
+                event = fixture.event()
+                original = api.get
+
+                def get(path):
+                    data = original(path)
+                    if path.endswith("/branches/dev") and case == "stale-source":
+                        data["commit"]["sha"] = "a" * 40
+                    if path.endswith("/branches/dev") and case == "unprotected":
+                        data["protected"] = False
+                    return data
+
+                api.get = get
+                if case == "retargeted":
+                    api.live["head"]["ref"] = "other"
+                if case == "feature":
+                    api.live["head"]["ref"] = event["pull_request"]["head"]["ref"] = "task/ordinary"
+                with self.assertRaises(ValueError):
+                    baseline.prove_pr(api, event, ENTRY)
 
     def test_main_refuses_stale_or_weaker_evidence_and_application_input(self):
         cases = [("head", "moved"), ("base", "base branch moved"),
@@ -768,7 +811,8 @@ class ApplicationTests(unittest.TestCase):
             self.assertEqual(plan["review_policy"], entry["review_policy"])
             self.assertEqual(plan["components"], entry["components"])
             expected = ("actions/ci-org-baseline/enrollment.json", "runtime-profiles/catalog.json",
-                        "actions/ci-org-baseline/scripts/baseline.py")
+                        "actions/ci-org-baseline/scripts/baseline.py", "actions/ci-merge-flow/routes.json",
+                        "actions/ci-merge-flow/scripts/check_merge_flow.py")
             self.assertEqual(plan["checking_fingerprints"], {
                 path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in expected})
             self.assertFalse(any("validate_codeowners_contract.py" in str(part)
@@ -828,6 +872,13 @@ class ApplicationTests(unittest.TestCase):
         self.f.commit()
         with self.assertRaisesRegex(ValueError, 'compiler environment'): self.f.plan()
 
+    def test_development_only_assignment_preserves_dev_and_refuses_release_targets(self):
+        with patch.object(baseline.merge_flow(), "assigned_route", return_value="development"):
+            with self.assertRaisesRegex(ValueError, "development assignment has no release target"):
+                self.f.plan()
+            self.f.entry["branches"] = ["dev"]
+            self.assertEqual(self.f.plan()["route"], "development")
+
     def test_route_unrelated_edit_and_authorized_transition(self):
         self.f.write('docs/route.md', '# Unrelated architecture edit\n\n<!-- route -->\nDirect release through dev.\n<!-- end-route -->\n')
         self.f.commit()
@@ -839,7 +890,10 @@ class ApplicationTests(unittest.TestCase):
         self.f.entry['release_route']['declarations'].append(successor)
         self.f.entry['release_route']['transition'] = 'owner-authorized'
         self.f.entry['branches'] = ['dev', 'staging', 'main']
-        self.assertEqual(self.f.plan()['route'], 'staged')
+        with self.assertRaisesRegex(ValueError, 'conflicts with assigned'):
+            self.f.plan()
+        with patch.object(baseline.merge_flow(), 'assigned_route', return_value='staged'):
+            self.assertEqual(self.f.plan()['route'], 'staged')
         # New declaration may be proposed before its commit is an ancestor of base.
         self.assertNotEqual(self.f.head, self.f.base)
 
@@ -1027,7 +1081,7 @@ class ApplicationTests(unittest.TestCase):
         for owner in ('validate_product_lifecycle_baseline.py', 'validate_codeowners_contract.py', 'lint_bootstrap.mjs', 'check_workflows.py', 'check_dependabot_coverage.py', 'validate_update_ownership.py'):
             self.assertEqual(sum(owner in command for command in joined), 1, owner)
         self.assertFalse(any('lint_markdown.mjs' in command for command in joined))
-        self.assertTrue(any('check_merge_flow.sh declared-route' in command for command in joined))
+        self.assertFalse(any('verify-ci-admission' in command for command in joined))
         self.assertTrue(any('--default-branch dev' in command for command in joined))
         for (argv, cwd, *rest), _ in calls:
             self.assertIn(cwd, (self.f.root, baseline.SOURCE))
@@ -1036,7 +1090,7 @@ class ApplicationTests(unittest.TestCase):
         event = self.f.event(); event['repository']['default_branch'] = 'dev'
         plan = self.f.plan()
         owners = ('validate_product_lifecycle_baseline.py', 'validate_codeowners_contract.py',
-                  'check_merge_flow.sh', 'lint_bootstrap.mjs', 'install_actionlint.sh',
+                  'lint_bootstrap.mjs', 'install_actionlint.sh',
                   'check_workflows.py', 'check_dependabot_coverage.py',
                   'validate_update_ownership.py')
         for owner in owners:

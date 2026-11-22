@@ -203,10 +203,7 @@ the separately verified trusted checkout in the central workflow. A missing sibl
 helper fails. Keep pinned external setup/cache Actions in wrappers, their current
 inputs/defaults/conditions, full common steps, command order, flags and failure
 semantics. This preserves observed legacy behavior for unknown/unmigrated callers,
-not a claim that its existing merge-route defect satisfies governing policy. The
-legacy guard permits dev-to-main for staged products and rejects staging-to-main;
-that drift remains explicitly unresolved until authoritative affected route bindings
-exist. Central schema-2 admission must not inherit that wrong behavior. Wrappers keep their existing changed/all Actions-safety choice and canonical literal
+subject to the owner-assigned release route in REQ-027. Wrappers keep their existing changed/all Actions-safety choice and canonical literal
 `@main` common calls. Retain each job’s native resolved Action commit. Same-ref reuse
 is inferred for the normal inspected runner acquisition path; deployed cache modes
 remain unqualified, and local/SHA candidate parents with nested live main do not
@@ -229,7 +226,7 @@ The common job runs the following once, before product jobs, with exact head/bas
    mandatory static-job obligation after admitted setup; no Cargo runs in admission.
 2. Schema-2 declared release-route admission below, with its separate exact security
    projection carveout; no changed event is passed to that guard. Bootstrap remains
-   unchanged. Do not use the legacy dev-only guard as central application admission.
+   unchanged. Use the shared release decision on the trusted product declaration.
 3. Full source-truth policy script; full CODEOWNERS script for `codeowners`, or fresh
    complete effective-team rules for a qualified-team record. Team membership/bypass
    qualification remains external; a matching ID does not prove it.
@@ -311,21 +308,15 @@ configured Renovate ownership does not establish automation for those numeric to
 literals. The pre-existing coverage gap stays explicit; this change adds no manager,
 policy exception, downloaded tool or version and does not claim to repair that gap.
 
-## Existing release-route projection and migration
+## Release-route admission
 
 Control-plane ASR-AUTH-005 and [REQ-027](../../README.md#req-027---uniform-proposal-admission)
-require one repository-level dev/staging/main route with whole-batch consolidation
-from frozen dev back into dev, fixed-snapshot promotion to staging and reviewed
-reconciliation. The schema and helper below describe the
-existing implementation; its `staged` mode is dev-to-staging and does not implement
-the successor consolidation/promotion admission. Neither that label nor a green
-constituent result proves the successor route. Existing owner-bound prior routes
-remain available during qualified migration. Exact-subject consolidation/promotion,
-repair and reconciliation evidence, compatible plan consumers and actual checking
-sources must qualify before successor enrollment or predecessor retirement.
-Preserve complete product, security, event and result coverage and unsupported
-profile refusals. No implementation, enrollment or hosted settings change follows
-from this source amendment; use the existing owner transition record.
+select the approved repository route. The checking source binds the immutable
+repository ID to that route. For an enrolled application, `release_route` also
+binds the product owner's reconciled exact declaration. Compare the selected
+regular Markdown region on both protected base and head. Duplicate or missing
+delimiters, mismatched declarations and conflicting assignments refuse admission.
+The retained owner reconciliation supplies declaration meaning.
 
 An application `release_route` has exactly `declarations`, `transition` and
 `reconciliation_sha256`. The digest identifies the retained attributable product-owner
@@ -371,28 +362,13 @@ remain owner-qualified activation prerequisites. The source fixtures exercise ma
 and ordering only. An unresolved/superseded owner reconciliation blocks affected
 activation; branch presence or a matching declaration alone is not owner authority.
 
-The common owner's fixed helper has two explicit internal interfaces:
-`legacy-observed` retains existing wrapper behavior and known drift;
-`declared-route` receives only the trusted decoded enrollment declaration set, validated exact
-consumer root and fresh PR event. Legacy wrappers expose no new route or bypass input.
-The central runner always chooses declared-route for schema-2 applications, including
-qualification; it cannot select legacy behavior because evidence is unavailable.
-Use the existing common-owner helper path and canonical security verifier, not a
-consumer JSON file, branch-existence API inference or a second route registry.
-The central helper validates the source binding above, same-repository PR identities,
-exact head/base and permitted pair before returning admission; no arbitrary branch
-or shell expression is accepted as a route. Extend this bounded helper's owned tests.
-
-For a matched direct route, ordinary promotion to main requires same-repository dev; staging is not
-an admitted target. For staged, ordinary promotion to staging requires same-repository
-dev and ordinary promotion to main requires same-repository staging. Staged dev-to-main
-is refused even if staging is absent, unused or has a failing check. Neither path
-creates or updates a branch. Normal authored PRs into dev remain under the existing
-nonpersistent-source/human proposal process. This helper retains the existing absence
-of a promotion-source restriction for targets named dev, including main/staging-to-dev;
-it does not invent a new prohibition. Passing the guard does not authorize such a
-proposal, and branch-name shape alone is not proof of nonpersistent authority.
-Source identity, exact revision, approved scope and human execution remain separate.
+Standalone and central callers share the same admission decisions. The central
+workflow rechecks the live PR ref and both exact commit identities during
+admission and finalization. Ordinary promotions bind current protected tips.
+A website releases from dev to main. A paid application uses staging, and
+its release additionally requires the owner's bound snapshot and active claim.
+Keep staging admission closed until that proof is qualified. Nonpersistent
+tasks can target dev in advance of launch. See [Uniform proposal targets](../../README.md#uniform-proposal-targets).
 
 The existing `security_patch.py verify-ci-admission` remains a separate exact
 machine-attested security-projection exception for main. It is not evidence of an
@@ -484,7 +460,7 @@ Bootstrap retains the exact existing public receipt field set and meanings; topo
 or internal plan metadata does not silently change that public contract. Application
 receipts use a distinct versioned shape containing approved plan identities,
 SHA256 fingerprints for exactly `actions/ci-org-baseline/enrollment.json`,
-`runtime-profiles/catalog.json` and `actions/ci-org-baseline/scripts/baseline.py`,
+`runtime-profiles/catalog.json`, the release guard and its assignments, and `actions/ci-org-baseline/scripts/baseline.py`,
 required lane IDs and exact conclusions. Every fingerprint uses bytes from the same
 checking-source checkout. Application fields are never inferred for a bootstrap receipt.
 Freeze public subject metadata before authenticated operations, emit only after

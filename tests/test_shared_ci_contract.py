@@ -314,8 +314,10 @@ class SharedCiContractTest(unittest.TestCase):
         validate_shell_run = validate_shell_step.get("run", "")
         self.assertIn("ForgingAlpha/.github/actions/ci-alphaapps-policy@main", uses)
 
+        published_guard = uses.index("ForgingAlpha/.github/actions/ci-merge-flow@main")
+        candidate_guard = uses.index("./actions/ci-merge-flow")
+        self.assertLess(published_guard, candidate_guard)
         for expected in (
-            "./actions/ci-merge-flow",
             "./actions/ci-markdown",
             "./actions/ci-dependency-review",
             "./actions/ci-github-actions",

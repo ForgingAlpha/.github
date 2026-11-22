@@ -50,21 +50,14 @@ settings retain their own authority.
 - Retired v1 promotion/rollback workflows do not write tags or select fallback
   source. Preserve historical refs and evidence; source retirement grants no tag
   deletion/movement, credential change or protection write authority.
-- Follow [REQ-027](../README.md#req-027---uniform-proposal-admission): reviewed
-  disposable exploration and refactoring, task PR to dev, whole-batch consolidation
-  from frozen dev and reviewed PR back into dev, fixed-snapshot PR to staging,
-  integrated qualification, staging-to-main PR and reviewed reconciliation to
-  current dev. Every merge is human. Verify the dev merge hold, frozen baseline,
-  reviewed consolidation, actual integrated dev snapshot, intended/actual staging
-  result, dependencies and active release claim; a branch name is not evidence.
-  Honor the owner's hold until verified promotion or authorized terminal
-  cancellation is reconciled under ASR-AUTH-005. Preserve later dev work and
-  revalidate tasks based on representations changed by consolidation.
-  Preserve each repository's adopted prior route until workspace, actual CI/callers,
-  protection, updater and consumer prerequisites qualify. Update its existing
-  transition record and retire the bridge only after that proof. Missing branches
-  grant neither fallback nor branch-creation authority. Source adoption alone
-  changes no branches, grants, saved settings or deployment.
+- Verify the repository ID and its adopted route under [REQ-027](../README.md#req-027---uniform-proposal-admission).
+  Exercise task-to-dev and the exact website dev-to-main release. For a paid
+  production app qualify the release claim, frozen dev snapshot, staging task,
+  current staged candidate, isolated environment and staging-to-main release.
+  Pending launch, keep ordinary development on dev. Shared tooling retains its
+  main-only task path. Check refusal for an unknown identity, an undeclared
+  target and an attempted paid-release shortcut. Preserve push/security/check
+  consumers, required human review and human merge when qualifying a route.
 
 ## Security Classification And Projection
 
@@ -189,7 +182,7 @@ update, deletion and non-fast-forward requirements throughout.
 2. Select only repository and branch identities explicitly enrolled by the qualified
    central source and the task's authorized target scope recorded under this
    procedure. The source catalog
-   selects repository ID `1420939261` (`ForgingAlpha/layas-learning-lab-site`) and
+   selects repository ID `1420939261` (`ForgingAlpha/layaslearninglab-site`) and
    branches `dev` and `main`. Preserve the existing qualified `dev` selector while
    completing the profile's required pilot cases. Select the additional `main`
    target only from a human-merged, checked source, and qualify its actual target
@@ -294,7 +287,7 @@ interfaces. Source qualification alone does not authorize a hosted change.
 
 Runtime assignments retain their current catalog. Actual Rust backend/lock/tool selection,
 consumer route/review scope and hosted results still need their own evidence.
-The existing legacy guard drift and numeric-tool update-coverage gap remain explicit.
+The release-owner evidence needed for paid staging and the numeric-tool update-coverage gap remain explicit.
 
 The historical retained Q6 source B was adopted `97a8a94c884f43c039278d117d0d9313d1465ec9`:
 its baseline job produces bootstrap `CI`. This candidate moves `CI` to the final
