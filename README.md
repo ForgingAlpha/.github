@@ -849,9 +849,11 @@ SHALL preserve the caller and scopes adopted on protected `dev`. A dedicated
 workflow-only PR MAY upgrade the caller to the current template at those scopes. Native
 protection SHALL require current human team review, including review of the
 initial caller on the exact head. Reliance requires an observed hosted run.
-Adding application code requires applicable product checks.
+Adding application code requires applicable product checks. Under REQ-029, a
+verified repository-owned caller also supplies the first-definitions path
+when the repository has no central assignment.
 
-**Fit:** Unknown enrollment, changed repository identity, application code,
+**Fit:** Unknown enrollment for a central bootstrap, changed repository identity, application code,
 executable lint configuration, custom formatters/rules, untracked required
 inputs, malformed configuration and unavailable required evidence fail with
 actionable remediation. Bootstrap reuses existing checking implementations only
@@ -946,20 +948,31 @@ or an existing mandatory check; it cannot claim execution that did not occur.
 After qualification of the common baseline and each affected profile under
 REQ-025, the protection operator SHALL select new active repositories for the
 common baseline on protected `dev` and `main` through an organization-owned
-rule. Its selection criterion SHALL cover creation outside a template. Shared
-tooling with its own required workflow SHALL retain that protection.
+rule. Only the protection operator SHALL control the selection criterion and
+its exclusions. It SHALL cover creation outside a template. Existing repositories
+enter after their validation configuration and handover are qualified. Shared
+tooling keeps its required workflow. A later staging branch receives its
+protections during the paid application's release-route qualification under REQ-027.
 
 For the same trusted policy, repository identity, protected base and candidate
 tree, onboarding SHALL identify the same supported component types and roots
 or report the unresolved input. An application's accepted checks come from
 its repository-owned CI under REQ-001 or its explicitly approved central
 assignment, including its runtime and the product owner's test obligations.
+Without a central assignment, the common baseline SHALL validate governing
+documents and tracked Markdown with trusted checks. Branch protection SHALL
+require the expected repository-owned `CI` as a separate result on the same candidate.
+A first-definitions PR MUST meet the repository-owned admission path in REQ-026
+or obtain explicit bootstrap enrollment. Other unconfigured candidates receive
+the missing assignment or caller diagnostic. The common baseline retains its
+distinct result and cannot grant a product or documentation assignment.
+
 The first application PR SHALL run the complete accepted checks on the full
-candidate tree before merge. Missing assignments, unsupported layouts and
+candidate tree before merge. A change of producer follows the handover in REQ-025. Missing assignments, unsupported layouts and
 missing owner decisions SHALL block that transition and identify the necessary
 remediation. REQ-026 governs positive admission of a documentation bootstrap.
 Changes to declared test obligations require review of the affected coverage.
-Removing a marker cannot reduce an established obligation.
+Removing an identifying input cannot reduce an established obligation.
 
 **Fit:** A fresh repository created outside a template receives the common
 baseline on its first governed PR without manual selection of that repository.
