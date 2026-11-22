@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 
+import four_section_fixture
 from test_org_baseline import ApplicationFixture, Fixture, ROOT
 
 
@@ -72,6 +73,8 @@ class PreviewTests(unittest.TestCase):
         field["astro_checks"]["."]["tests"]["scripts"].append("missing")
         with self.assertRaisesRegex(ValueError, "missing required npm script"):
             self.result(field)
+        with self.assertRaisesRegex(ValueError, "positive integer ID"):
+            self.result(dict(self.fields, repository_id=float(self.f.entry["repository_id"])))
         self.f.runtime["assignments"] = {}
         with self.assertRaises(ValueError):
             self.result(self.fields)
@@ -141,6 +144,19 @@ class PreviewTests(unittest.TestCase):
                 self.assertEqual(outcome["repositories"][-1], f.entry)
 
     def test_cli_outputs_an_applicable_diff_then_an_explicit_noop(self):
+        # A converted consumer emits governance diagnostics during validation.
+        # Those receipts must never become part of a patch (including a no-op).
+        f = self.f
+        for path in preview.ci.REQUIRED:
+            (f.root / path).unlink()
+        f.write("README.md", four_section_fixture.README)
+        f.write("AGENTS.md", preview.ci.readme_route().four_reader().NATIVE_POINTER)
+        (f.root / "CLAUDE.md").symlink_to("AGENTS.md")
+        f.write(four_section_fixture.MANIFEST, json.dumps(four_section_fixture.documents("dev")[1]))
+        for path, data in four_section_fixture.details().items():
+            f.write(path, data)
+        f.commit()
+        f.base = f.head
         checker = self.directory / "checking-source"
         checker.mkdir()
         for component in ("ci-org-baseline", "ci-alphaapps-policy", "ci-merge-flow", "ci-runtime-profile"):
@@ -165,7 +181,9 @@ class PreviewTests(unittest.TestCase):
         first = subprocess.run(command + ["--owner-fields", str(fields)], capture_output=True, check=True)
         second = subprocess.run(command + ["--owner-fields", str(fields)], capture_output=True, check=True)
         self.assertEqual(first.stdout, second.stdout)
+        self.assertTrue(first.stdout.startswith(b"--- a/"))
         self.assertIn(b"proposed", first.stderr)
+        self.assertIn(b"Four-section digests", first.stderr)
         subprocess.run(git + ["apply", "-"], input=first.stdout, check=True)
         self.assertEqual(json.loads(catalog.read_text())["repositories"], [EXISTING, self.f.entry])
         subprocess.run(git + ["commit", "-qam", "accept fixture"], check=True)

@@ -1,6 +1,7 @@
 """Preview an organization CI enrollment from committed data and reviewed owner inputs."""
 
 import argparse
+from contextlib import redirect_stdout
 import difflib
 import importlib.util
 import json
@@ -70,7 +71,9 @@ def make_entry(repository, repository_id, roots, fields):
     missing = sorted(required - fields.keys())
     ci.require(not missing, "product and protection owners must supply: " + ", ".join(missing))
     ci.require(set(fields) == required, "unexpected owner fields")
-    ci.require((fields["repository"], fields["repository_id"]) == (repository, repository_id), "owner fields refer to another consumer")
+    ci.require(ci.positive(fields["repository_id"]) and
+               (fields["repository"], fields["repository_id"]) == (repository, repository_id),
+               "owner fields must identify the same repository by its positive integer ID and name")
     checks = fields["astro_checks"]
     ci.require(isinstance(checks, dict), "product owner must supply an astro_checks object keyed by component root")
     astro = {k for k, v in roots.items() if v == "astro"}
@@ -176,7 +179,10 @@ def main():
                    "use a clean, reviewed shared-CI checkout to bind the preview to its source revision")
         before = (ci.SOURCE / CATALOG_PATH).read_text(encoding="utf-8")
         catalog = ci.decode(before.encode())
-        updated = preview(root, args.base, args.head, args.repository, args.repository_id, catalog, fields, None, branch=args.branch)
+        # The governance validator emits additional receipts on converted consumers.
+        with redirect_stdout(sys.stderr):
+            updated = preview(root, args.base, args.head, args.repository, args.repository_id,
+                              catalog, fields, None, branch=args.branch)
         after = before if updated == catalog else json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
         action = "unchanged" if updated == catalog else "proposed"
         print(f"Offline enrollment {action} for {args.repository} ({args.repository_id}); target {args.branch}@{args.base}, candidate {args.head}; shared source {source_sha}.", file=sys.stderr)
