@@ -295,6 +295,15 @@ needs its approved README Intent, Requirements and Architecture with current
 upstream references. The usual product CI, including the policy step inside
 `ci-rust`, validates the selected scopes and runs its product checks.
 
+An enrolled four-section scope can retire its bound `docs/requirements.md` or
+`docs/architecture.md` into the corresponding README section. Place the complete
+document body immediately after the section heading. Preserve the source metadata
+in the manifest, rebase links to the README location, demote body headings by one
+level and refresh exact upstream digests. The protected-base policy compares the
+old Git blob with the proposed section before accepting removal of its binding.
+Other detail paths and identities retain their bindings. Apply the shared reader
+to protected main before proposing a migration that uses this check.
+
 ## Complete Application Profile Source
 
 The [organization baseline contract](actions/ci-org-baseline/README.md) defines the

@@ -2,6 +2,7 @@
 """Read-only, centrally enrolled documentation admission. Never import consumer code."""
 
 import argparse
+from functools import cache
 import hashlib
 import importlib.util
 import json
@@ -32,6 +33,7 @@ DATA_PATHS = {
     "docs/changes/site-foundation/production-preparation/retained-inputs.json",
 }
 ALIASES = {"AGENTS.md", "CLAUDE.md"}
+README_REQUIRED = ALIASES | {"README.md", "docs/governing-source-bindings.json"}
 COMPILER_SELECTORS = {"RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "RUSTUP_TOOLCHAIN",
                       "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"}
 
@@ -141,6 +143,11 @@ policy = load_checking_module("org_baseline_policy", "actions/ci-alphaapps-polic
 first_definition = load_checking_module("org_first_definition", "actions/ci-org-baseline/scripts/first_definition.py")
 
 
+@cache
+def readme_route():
+    return load_checking_module("org_standalone_policy", "actions/ci-alphaapps-policy/scripts/standalone_readme_intent.py")
+
+
 def positive(value):
     return type(value) is int and value > 0
 
@@ -183,6 +190,25 @@ def clean_document_checkout(root, expected_head):
     require(not git(root, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "HEAD", "--"), "modified consumer worktree/index")
     require(not git(root, "diff", "--cached", "--name-only", "HEAD", "--"), "modified consumer index")
     require(not git(root, "ls-files", "--others", "-z"), "untracked consumer inputs (including ignored files)")
+
+
+def approved_readme_pointer(root, event, entry):
+    """Only the protected enrollment can select a replacement for the legacy trio."""
+    standalone = readme_route()
+    pr = event["pull_request"]
+    subject = standalone.Subject(entry["repository"], entry["repository_id"], pr["base"]["ref"],
+                                 pr["base"]["sha"], pr["head"]["sha"])
+    old = standalone.layouts(root, subject.base, policy)
+    new = standalone.layouts(root, subject.head, policy)
+    standalone.check_four_enrollment(root, subject, old, new, policy)
+    if not new[2]:
+        if subject.branch in old[1]:
+            standalone.require_prepared_layout(root, subject, policy, old[1][subject.branch])
+        return None
+    reader = standalone.four_reader()
+    require(reader.check_pair(standalone, policy, root, subject, old, new) == "approved-structure",
+            "complete approved structural governing metadata required")
+    return reader.NATIVE_POINTER
 
 
 def document_inputs(root, revision, *, definition_scopes=None, caller=None, working=False, native_pointer=None):
@@ -248,7 +274,8 @@ def document_inputs(root, revision, *, definition_scopes=None, caller=None, work
         if mode == "100644" and name.endswith((".md", ".markdown")):
             texts[name] = text
     if definition_scopes is None:
-        require(REQUIRED <= seen, "missing required project/governing inputs")
+        require((README_REQUIRED if native_pointer else REQUIRED) <= seen, "missing required project/governing inputs")
+        require(not native_pointer or "PROJECT.md" not in seen, "competing native project instructions")
     if caller is not None:
         require(".github/workflows/ci.yml" in seen, "missing canonical consumer workflow")
     if native_pointer is not None:
@@ -261,9 +288,9 @@ def document_inputs(root, revision, *, definition_scopes=None, caller=None, work
     return texts
 
 
-def admit_tree(root, expected_head, *, definition_scopes=None):
+def admit_tree(root, expected_head, *, definition_scopes=None, native_pointer=None):
     clean_document_checkout(root, expected_head)
-    texts = document_inputs(root, expected_head, definition_scopes=definition_scopes, working=True)
+    texts = document_inputs(root, expected_head, definition_scopes=definition_scopes, working=True, native_pointer=native_pointer)
     if definition_scopes is not None:
         first_definition.check_documents(texts, definition_scopes, policy)
     return texts
@@ -404,17 +431,19 @@ def run(root, event, entries, api):
     origin = git(root, "remote", "get-url", "origin").decode().strip()
     require(origin in (f'https://github.com/{entry["repository"]}', f'https://github.com/{entry["repository"]}.git'), "consumer origin mismatch")
     require(git(root, "rev-parse", f"refs/remotes/origin/{branch}").decode().strip() == base, "checkout base does not match current PR base")
-    strings = admit_tree(root, head)
-    statuses = policy.baseline_statuses(root)
-    require(not policy.incomplete_baseline(statuses), "complete approved structural governing metadata required; definition-only fallback is unsupported")
+    pointer = approved_readme_pointer(root, event, entry)
+    strings = admit_tree(root, head, native_pointer=pointer)
     # Exact head checkout, not a synthetic merge; disable the legacy HEAD^2 heuristic.
     safe = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     safe.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1",
                 GIT_TERMINAL_PROMPT="0", GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="core.fsmonitor", GIT_CONFIG_VALUE_0="false",
                 GIT_CONFIG_KEY_1="core.hooksPath", GIT_CONFIG_VALUE_1="/dev/null", ALPHAAPPS_POLICY_BASE_REF=base,
                 ALPHAAPPS_POLICY_REPO_KIND="code", GITHUB_EVENT_NAME="org_baseline_exact_head")
-    result = subprocess.run([sys.executable, "-I", "-B", str(SOURCE / "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")], cwd=root, env=safe, timeout=45, check=False)
-    require(result.returncode == 0, "structural lifecycle validation failed")
+    if pointer is None:
+        require(not policy.incomplete_baseline(policy.baseline_statuses(root)),
+                "complete approved structural governing metadata required; definition-only fallback is unsupported")
+        result = subprocess.run([sys.executable, "-I", "-B", str(SOURCE / "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")], cwd=root, env=safe, timeout=45, check=False)
+        require(result.returncode == 0, "structural lifecycle validation failed")
     team_configuration(api.rules(entry["repository"], branch), entry)
     try:
         lint_documents(root, strings)
@@ -422,7 +451,7 @@ def run(root, event, entries, api):
         raise Refused("central data-only Markdown validation failed") from None
     prove_pr(api, event, entry)
     team_configuration(api.rules(entry["repository"], branch), entry)
-    admit_tree(root, head)
+    admit_tree(root, head, native_pointer=pointer)
     return public_receipt(root, event, entries, os.environ.get("BASELINE_SOURCE_SHA"))
 
 
@@ -472,8 +501,9 @@ def route_schema(value):
     for row in declarations:
         shape(row, "kind path start end text", "route declaration")
         require(row["kind"] in ("direct", "staged"), "unknown declared route")
-        safe_path(row["path"])
-        require(row["path"].endswith((".md", ".markdown")), "route declaration must select existing Markdown")
+        if row["path"] != "README.md#local-instructions":
+            safe_path(row["path"])
+            require(row["path"].endswith((".md", ".markdown")), "route declaration must select existing Markdown")
         for key in ("start", "end"):
             require(isinstance(row[key], str) and row[key] and "\n" not in row[key] and "\r" not in row[key] and len(row[key].encode()) <= 256, "invalid route delimiter")
         require(row["start"] != row["end"] and isinstance(row["text"], str) and 0 < len(row["text"].encode()) <= 8192, "invalid route declaration region")
@@ -584,7 +614,7 @@ def yaml_data(data):
     return value
 
 
-def clean_inventory(root, head):
+def clean_inventory(root, head, *, native_pointer=None):
     require(root == root.resolve() and git(root, "rev-parse", "--show-toplevel").decode().strip() == str(root), "explicit physical consumer root required")
     require(isinstance(head, str) and SHA.fullmatch(head) and git(root, "rev-parse", "HEAD").decode().strip() == head, "consumer checkout differs from PR head")
     require(git(root, "rev-parse", "--show-object-format").strip() == b"sha1", "unsupported Git object format")
@@ -606,11 +636,20 @@ def clean_inventory(root, head):
                 break
             require(stat.S_ISDIR(parent.lstat().st_mode), "linked input ancestor")
         if mode == "120000":
-            require(name in ALIASES and target.is_symlink() and os.readlink(target) == "PROJECT.md", "unsupported linked application input")
+            expected = {"CLAUDE.md": "AGENTS.md"} if native_pointer else dict.fromkeys(ALIASES, "PROJECT.md")
+            require(name in expected and target.is_symlink() and os.readlink(target) == expected[name],
+                    "unsupported linked application input")
         else:
             require(stat.S_ISREG(target.lstat().st_mode), "nonregular application input")
         inventory[name] = (mode, oid)
-    require(REQUIRED <= set(inventory), "missing required governing/project input")
+    require((README_REQUIRED if native_pointer else REQUIRED) <= set(inventory), "missing required governing/project input")
+    if native_pointer:
+        require("PROJECT.md" not in inventory, "competing native project instructions")
+        for name in ALIASES:
+            if inventory[name][0] != "120000":
+                require(inventory[name][0] == "100644" and tracked_bytes(root, inventory, name) == native_pointer,
+                        "invalid native README instruction pointer")
+
     return inventory
 
 
@@ -719,11 +758,18 @@ def declared_route(root, entry, base, head):
         matching = []
         for i, row in enumerate(declarations):
             # Git reads committed data, not consumer-supplied executable/config code.
-            mode = git(root, "ls-tree", revision, "--", row["path"]).decode().split()
+            selected = row["path"] == "README.md#local-instructions"
+            path = "README.md" if selected else row["path"]
+            mode = git(root, "ls-tree", revision, "--", path).decode().split()
             if not mode or mode[0] != "100644":
                 continue
-            text = git(root, "show", revision + ":" + row["path"], limit=512 * 1024).decode("utf-8")
-            lines = text.splitlines(keepends=True)
+            data = git(root, "show", revision + ":" + path, limit=512 * 1024)
+            if selected:
+                # During transition the legacy README can exist as ordinary navigation.
+                if not readme_route().layouts(root, revision, policy)[2]:
+                    continue
+                data = policy.readme_sections(data).sections["Local Instructions"]
+            lines = data.decode("utf-8").splitlines(keepends=True)
             starts = [n for n, line in enumerate(lines) if line.rstrip("\r\n") == row["start"]]
             ends = [n for n, line in enumerate(lines) if line.rstrip("\r\n") == row["end"]]
             require(len(starts) <= 1 and len(ends) <= 1, "ambiguous route delimiters")
@@ -757,7 +803,8 @@ def application_integrity(root, inventory, entry, runtime_data=None):
 def app_plan(root, event, entry, source_sha, runtime_data=None):
     pr = event["pull_request"]
     base, head, branch = pr["base"]["sha"], pr["head"]["sha"], pr["base"]["ref"]
-    inventory = clean_inventory(root, head)
+    pointer = approved_readme_pointer(root, event, entry)
+    inventory = clean_inventory(root, head, native_pointer=pointer)
     manifests = classify(root, inventory, entry)
     producer_check(root, inventory, entry, branch)
     route = declared_route(root, entry, base, head)
@@ -849,8 +896,10 @@ def literal_values():
 def application_common(root, event, entry, api, plan):
     safe = clean_env()
     safe.update(ALPHAAPPS_POLICY_BASE_REF=plan["base"], ALPHAAPPS_POLICY_REPO_KIND="code", GITHUB_EVENT_NAME="org_baseline_exact_head")
-    require(not policy.incomplete_baseline(policy.baseline_statuses(root)), "complete approved structural governing metadata required")
-    checked(source_script("actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py"), root, safe)
+    pointer = approved_readme_pointer(root, event, entry)
+    if pointer is None:
+        require(not policy.incomplete_baseline(policy.baseline_statuses(root)), "complete approved structural governing metadata required")
+        checked(source_script("actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py"), root, safe)
     if entry["review_policy"]["kind"] == "codeowners":
         checked(source_script("actions/ci-alphaapps-policy/scripts/validate_codeowners_contract.py"), root, safe)
     else:
@@ -861,7 +910,7 @@ def application_common(root, event, entry, api, plan):
                      DECLARED_ROUTE=plan["route"], HEAD_REF=event["pull_request"]["head"]["ref"], HEAD_REPOSITORY=entry["repository"],
                      BASE_REF=plan["branch"], GITHUB_REPOSITORY=entry["repository"], PR_NUMBER=str(event["number"]))
     checked(["bash", str(SOURCE / "actions/ci-merge-flow/scripts/check_merge_flow.sh"), "declared-route"], root, guard_env)
-    inventory = clean_inventory(root, plan["head"])
+    inventory = clean_inventory(root, plan["head"], native_pointer=pointer)
     texts, total = {}, 0
     for name in sorted(inventory):
         if name.endswith((".md", ".markdown")) and inventory[name][0] != "120000":
@@ -1113,7 +1162,8 @@ def make_plan(root, event, entry, source_sha):
         return {**public_receipt(root, event, [entry], source_sha), "producer": "first-definition",
                 "pr": event["number"], "branch": "dev", "registration": definition,
                 "components": [], "required_jobs": ["baseline"]}
-    admit_tree(root, event["pull_request"]["head"]["sha"])
+    pointer = approved_readme_pointer(root, event, entry)
+    admit_tree(root, event["pull_request"]["head"]["sha"], native_pointer=pointer)
     return {**public_receipt(root, event, [bootstrap_entry(entry)], source_sha), "producer": "bootstrap", "components": [], "required_jobs": ["baseline"]}
 
 

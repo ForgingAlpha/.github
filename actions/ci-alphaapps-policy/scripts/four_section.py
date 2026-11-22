@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import html
 import json
+import posixpath
 import re
 
 
@@ -40,6 +41,12 @@ def decode(data):
         raise ValueError("invalid source manifest") from None
 
 
+def same_metadata(left, right):
+    # Python equates 1, 1.0 and True. Authored JSON/YAML fields must retain their types.
+    return left == right and json.dumps(left, sort_keys=True, allow_nan=False) == json.dumps(
+        right, sort_keys=True, allow_nan=False)
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -51,6 +58,7 @@ class Snapshot:
     details: set
     digests: dict
     identities: dict
+    detail_owners: dict
 
 
 # Normative bindings name a whole file. An ordinary quoted or parenthesized
@@ -226,7 +234,117 @@ def snapshot(policy, read, prefix, *, canonical=False):
         require(edges == [edge(owner) for owner in owners], "wrong normative detail owner or digest")
         for owner in owners:
             require(path in links[owner], "missing link to normative detail: " + path)
-    return Snapshot(selection, metadata, details, hashes, identities)
+    return Snapshot(selection, metadata, details, hashes, identities, owner_details)
+
+
+def relocated_destination(target, directory):
+    public_docs = "https://github.com/ForgingAlpha/.github/blob/main/docs/"
+    path, mark, fragment = target.partition("#")
+    if target.startswith(public_docs):
+        name = path.removeprefix(public_docs)
+        if name in {"requirements.md", "architecture.md"}:
+            return public_docs.removesuffix("docs/") + "README.md#" + (fragment or name[:-3])
+        return target
+    if not path or path.startswith("/") or re.match(r"[a-z][a-z0-9+.-]*:", path, re.I):
+        return target
+    path = posixpath.normpath(posixpath.join(directory, path))
+    for name in ("intent", "requirements", "architecture"):
+        if path == f"docs/{name}.md":
+            return "#" + (fragment or name)
+    if path == "README.md" and mark:
+        return "#" + fragment
+    return path + mark + fragment
+
+
+def transferred_detail(policy, data, *, upstream, directory="docs"):
+    """Project an adopted docs source under its owner's H2, without editing its prose."""
+    lines = data.decode("utf-8").split("\n")
+    metadata, end = policy.leading_metadata(lines)
+    require(directory or not metadata, "unsupported project instruction frontmatter")
+    body = lines[end:]
+    while body and not body[0].strip():
+        body.pop(0)
+    require(body and re.fullmatch(r"# [^\n]+", body[0]), "detail must begin with its document title")
+    body = body[1:]
+    while body and not body[0].strip():
+        body.pop(0)
+    while body and not body[-1].strip():
+        body.pop()
+    require(body, "empty transferred governing source")
+    for i, heading in policy._readme_lines(body, 0):
+        if heading is not None:
+            require(2 <= len(heading[1]) <= 5, "unsupported transferred detail heading")
+            start = heading.start(1)
+            body[i] = body[i][:start] + "#" + body[i][start:]
+    # Only simple destinations need moving in these sources. Leave external URLs
+    # and literal examples alone. An upstream hash changes only to its bound successor.
+    fence = None
+    for i, line in enumerate(body):
+        marker = policy._FENCE.match(line)
+        if fence:
+            if marker and marker[1].startswith(fence) and not marker[2].strip():
+                fence = None
+            continue
+        if marker:
+            fence = marker[1]
+            continue
+        body[i] = re.sub(r"(\]\()([^()\s<>]+)(\))",
+                         lambda m: m[1] + relocated_destination(m[2], directory) + m[3], line)
+        body[i] = re.sub(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])",
+                         lambda m: upstream.get(m[0], m[0]), body[i])
+    return ("\n".join(body) + "\n").encode()
+
+
+def check_source_transfer(route, policy, root, subject, prefix, before, after):
+    """Only retire same-owner canonical documents proven present in the selected README."""
+    if not before and not after.details:
+        project = route.blob(root, subject.base, prefix + "PROJECT.md", optional=True)
+        if project is not None:
+            require(route.blob(root, subject.head, prefix + "PROJECT.md", optional=True) is None,
+                    "competing native project instructions")
+            body = transferred_detail(policy, project, upstream={}, directory="")
+            expected = b"## Local Instructions\n\n" + body
+            section = after.selection.sections["Local Instructions"]
+            require(section == expected or section.startswith(expected + b"\n"),
+                    "incomplete transfer into README Local Instructions")
+    retired = before.details - after.details if before else set()
+    if before:
+        for path, identity in before.identities.items():
+            if path not in retired:
+                require(after.identities.get(path) == identity, "removed or reassigned governing source")
+                continue
+            require(path in {"docs/requirements.md", "docs/architecture.md"} and identity == path
+                    and identity not in after.identities.values(), "removed or reassigned governing source")
+        if not retired:
+            return
+    prior_hashes = {}
+    for i, selector in enumerate(TRIO):
+        kind = selector.split("#")[1]
+        path = f"docs/{kind}.md"
+        old = route.blob(root, subject.base, prefix + path, optional=True)
+        if path in retired:
+            require([owner for owner, paths in before.detail_owners.items() if path in paths] == [selector],
+                    "cannot retire a reassigned or shared governing source")
+        if path in retired or (not before and i and old is not None and not after.detail_owners[selector]):
+            require(route.blob(root, subject.head, prefix + path, optional=True) is None,
+                    "retired governing detail remains present: " + path)
+            old_meta, _ = route.metadata(policy, old)
+            parents = {p.split("#")[1] + "_sha256": after.digests[p] for p in TRIO[:i]}
+            for source in (old_meta, before.metadata[selector] if before else {}):
+                for field, value in source.items():
+                    require(field in after.metadata[selector]
+                            and same_metadata(after.metadata[selector][field], parents.get(field, value)),
+                            "changed or removed transferred source metadata: " + field)
+            body = transferred_detail(policy, old, upstream=prior_hashes)
+            title = kind.title()
+            expected = ("## " + title + "\n\n").encode() + body
+            section = after.selection.sections[title]
+            require(section == expected or section.startswith(expected + b"\n"),
+                    "incomplete transfer into README " + title)
+        if before:
+            prior_hashes[before.digests[selector]] = after.digests[selector]
+        if old is not None:
+            prior_hashes[digest(old)] = after.digests[selector]
 
 
 def check_inventory(route, root, revision, scopes, policy):
@@ -298,8 +416,8 @@ def check_pair(route, policy, root, subject, protected, proposed, *, caller_scop
                     require(key in new_meta, "removed authored governing digest")
                 elif not before or key in {"id", "intent", "requirements", route.SELECTION, ENROLLMENT}:
                     require(new_meta.get(key) == value, "changed or removed protected source metadata: " + key)
+        check_source_transfer(route, policy, root, subject, prefix, before, after)
         if before:
-            require(before.identities.items() <= after.identities.items(), "removed or reassigned governing source")
             if before.selection.instructions != after.selection.instructions:
                 classified.append("instructions")
             if before.selection.outside != after.selection.outside:

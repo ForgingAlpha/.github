@@ -91,6 +91,14 @@ No schema-2 field can select a catalog, checkout, script path, shell command, ru
 version, exclusion glob, CI job name, token or opt-out. Unknown is an error;
 `not-applicable` is an explicit decision with its own predicate, never missing evidence.
 
+A protected branch can opt into the four README sections before migrating its
+governing documents. Admission verifies the protected and proposed Git sources,
+approved status, bound metadata and native instruction pointers. A route declaration
+can select `README.md#local-instructions` to bind its delimiters to that section.
+Moving a declaration requires the existing owner-reconciled transition. Branch,
+repository identity, runtime assignment, product components and required jobs retain
+their existing enrollment and validation rules.
+
 ## First governing definitions on a private development branch
 
 The protection operator can register one open PR on a previously unenrolled

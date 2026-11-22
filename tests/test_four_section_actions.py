@@ -125,6 +125,73 @@ class FourSectionActions(unittest.TestCase):
         self.save()
         self.assertIn("removed or reassigned governing source", self.run_policy(1))
 
+    def test_prepare_legacy_manifest_only_refreshes_unchanged_requirements_body(self):
+        self.f.git("checkout", "--detach", self.f.base)
+        old = (self.f.repo / "docs/requirements.md").read_bytes()
+        prepared = next(line for line in old.splitlines(keepends=True) if line.startswith(KEY.encode() + b":"))
+        prior = old.replace(prepared, b"")
+        self.f.write("docs/requirements.md", prior)
+        record = {"schema_version": 1, "sources": [{"path": "docs/requirements.md", "sha256": sha(prior)}]}
+        self.f.write(MANIFEST, encoded(record))
+        self.f.head = self.f.commit()
+        self.f.adopt_migration()
+        self.f.write("docs/requirements.md", old)
+        record["sources"][0]["sha256"] = sha(old)
+        self.f.write(MANIFEST, encoded(record))
+        self.f.head = self.f.commit()
+        self.f.refresh_event()
+        self.run_policy()
+        record["sources"][0]["sha256"] = sha(prior)
+        self.f.write(MANIFEST, encoded(record))
+        self.f.head = self.f.commit()
+        self.f.refresh_event()
+        self.assertIn("only the exact Requirements digest", self.run_policy(1))
+        record["sources"][0]["sha256"] = sha(old)
+        record["schema_version"] = True
+        self.f.write(MANIFEST, encoded(record))
+        self.f.head = self.f.commit()
+        self.f.refresh_event()
+        self.assertIn("only the exact Requirements digest", self.run_policy(1))
+
+    def test_retirement_requires_exact_selected_text_and_authored_metadata(self):
+        # A previously bound canonical detail can move into its own selector.
+        # Set up the adopted v3 manifest, including an independently bound sibling.
+        old_path = "docs/observations.md"
+        path = "docs/requirements.md"
+        prior_readme = README.replace(old_path.encode(), path.encode())
+        data = (b"---\nstatus: approved\ntags: [history]\n---\n# Requirements\n\n"
+                b"See the [Intent](../README.md#intent).\n\n## Traceability\n\nKeep the original value.\n")
+        self.f.write("README.md", prior_readme)
+        (self.f.repo / old_path).unlink()
+        self.f.write(path, data)
+        rows = self.manifest["sources"]
+        req = sha(legacy.policy.readme_sections(prior_readme).sections["Requirements"])
+        rows[1]["sha256"] = req
+        rows[2]["upstream"][1].update(sha256=req, detail_sha256=sha(data))
+        rows[3].update(id=path, path=path, sha256=sha(data))
+        rows[3]["upstream"][0]["sha256"] = req
+        self.save()
+        self.f.adopt_migration()
+        (self.f.repo / path).unlink()
+        rows.remove(rows[3])
+        del rows[2]["upstream"][1]["detail_sha256"]
+        self.meta[TRIO[1]]["tags"] = ["history"]
+        body = b"See the [Intent](#intent).\n\n### Traceability\n\nKeep the original value."
+        def submit(content):
+            readme = prior_readme.replace(prior_readme.split(b"## Requirements\n\n")[1].split(b"\n\n")[0], content)
+            self.f.write("README.md", readme)
+            value = sha(legacy.policy.readme_sections(readme).sections["Requirements"])
+            rows[1]["sha256"] = rows[2]["upstream"][1]["sha256"] = value
+            self.save()
+        submit(body)
+        self.run_policy()
+        for changed in (body.replace(b"original ", b""), b";\n\n" + body):
+            submit(changed)
+            self.assertIn("incomplete transfer", self.run_policy(1))
+        self.meta[TRIO[1]].pop("tags")
+        submit(body)
+        self.assertIn("transferred source metadata", self.run_policy(1))
+
     def test_stale_child_even_after_parent_hash_refresh(self):
         self.f.adopt_migration()
         detail = b"# New observation contract\n\nRetain the full audit trail.\n"
