@@ -371,7 +371,8 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(writer["environment"], "native-merge-request")
         self.assertTrue(all(access == "read" for access in writer["permissions"].values()))
         source = next(step for step in preflight["steps"] if step.get("id") == "source")
-        self.assertEqual(source["env"]["DEFINING_SHA"], "${{ job.workflow_sha }}")
+        self.assertEqual(source["env"]["JOB_CONTEXT"], "${{ toJSON(job) }}")
+        self.assertIn(".workflow_sha", source["run"])
         self.assertIn("request-auto-merge.yml@refs/heads/main", source["run"])
         self.assertIn("native-merge.yml@refs/heads/$DEFAULT_BRANCH", source["run"])
         for job, immutable_ref in ((preflight, "${{ steps.source.outputs.sha }}"),

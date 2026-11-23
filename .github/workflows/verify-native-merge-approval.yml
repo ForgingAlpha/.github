@@ -20,18 +20,22 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Verify defining workflow
+        id: source
         env:
-          WORKFLOW_REF: ${{ job.workflow_ref }}
-          DEFINING_SHA: ${{ job.workflow_sha }}
+          JOB_CONTEXT: ${{ toJSON(job) }}
         run: |
-          test "$WORKFLOW_REF" = 'ForgingAlpha/.github/.github/workflows/verify-native-merge-approval.yml@refs/heads/main'
-          [[ "$DEFINING_SHA" =~ ^[a-f0-9]{40}$ ]]
-
+          set -eu
+          sha=$(jq -er '
+            select(.workflow_repository == "ForgingAlpha/.github" and
+                   .workflow_ref == "ForgingAlpha/.github/.github/workflows/verify-native-merge-approval.yml@refs/heads/main") |
+            .workflow_sha | select(type == "string" and test("^[0-9a-f]{40}$"))
+          ' <<< "$JOB_CONTEXT")
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Read the exact protected checker
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ForgingAlpha/.github
-          ref: ${{ job.workflow_sha }}
+          ref: ${{ steps.source.outputs.sha }}
           persist-credentials: false
 
       - name: Create repository-scoped proof installation token

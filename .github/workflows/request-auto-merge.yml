@@ -21,17 +21,17 @@ jobs:
       - name: Verify the protected workflow and its caller
         id: source
         env:
-          DEFINING_REPO: ${{ job.workflow_repository }}
-          DEFINING_REF: ${{ job.workflow_ref }}
-          DEFINING_SHA: ${{ job.workflow_sha }}
+          JOB_CONTEXT: ${{ toJSON(job) }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -eu
-          test "$DEFINING_REPO" = ForgingAlpha/.github
-          test "$DEFINING_REF" = ForgingAlpha/.github/.github/workflows/request-auto-merge.yml@refs/heads/main
-          [[ "$DEFINING_SHA" =~ ^[0-9a-f]{40}$ ]]
+          sha=$(jq -er '
+            select(.workflow_repository == "ForgingAlpha/.github" and
+                   .workflow_ref == "ForgingAlpha/.github/.github/workflows/request-auto-merge.yml@refs/heads/main") |
+            .workflow_sha | select(type == "string" and test("^[0-9a-f]{40}$"))
+          ' <<< "$JOB_CONTEXT")
           test "$GITHUB_WORKFLOW_REF" = "$GITHUB_REPOSITORY/.github/workflows/native-merge.yml@refs/heads/$DEFAULT_BRANCH"
-          echo "sha=$DEFINING_SHA" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Checkout the protected shared implementation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
