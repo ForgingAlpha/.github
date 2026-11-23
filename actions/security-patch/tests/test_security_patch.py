@@ -315,10 +315,12 @@ def source_fixture() -> FakeApi:
         "parents": [{"sha": sha("9")}],
     }
     api.gets[f"repos/{repository}/git/commits/{source_base}"] = {
+        "sha": source_base,
         "tree": {"sha": base_tree},
         "parents": [{"sha": sha("8")}],
     }
     api.gets[f"repos/{repository}/git/trees/{base_tree}"] = {
+        "sha": base_tree,
         "truncated": False,
         "tree": [
             {"path": "package.json", "mode": "100644", "type": "blob", "sha": manifest_blob},
@@ -1117,6 +1119,22 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
         pr["labels"] = [{"name": "security-autopromote"}]
         with self.assertRaisesRegex(security_patch.PolicyError, "retired security-autopromote"):
             self.preflight(api)
+
+    def test_classified_source_admits_only_the_enrolled_request(self):
+        api = source_candidate_fixture()
+        pr = api.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]
+        pr["base"]["repo"] = {"id": 41}
+        pr["auto_merge"] = {"enabled_by": {"type": "Bot", "id": 74}, "merge_method": "merge"}
+        policy = {"security_sources": True, "branch": "dev", "repository_id": 41, "requester_id": 74}
+        with patch.object(security_patch.native_enrollment, "load_policy", return_value=policy):
+            self.assertEqual(self.preflight(api).pull_request, 17)
+            policy["security_sources"] = False
+            with self.assertRaisesRegex(security_patch.PolicyError, "native auto-merge"):
+                self.preflight(api)
+            policy["security_sources"] = True
+            pr["auto_merge"]["enabled_by"]["id"] = 76
+            with self.assertRaisesRegex(security_patch.PolicyError, "native auto-merge"):
+                self.preflight(api)
 
     def test_preflight_rejects_wrong_or_failed_required_check(self):
         api = source_candidate_fixture()
@@ -2346,6 +2364,49 @@ class HumanMergeEvidenceTest(unittest.TestCase):
         )
         self.assertEqual(evidence.source_merged_by, "authorized-maintainer")
         self.assertEqual(evidence.source_merged_at, "2026-08-16T12:00:00Z")
+        self.assertFalse(api.posts or api.puts or api.patches)
+
+    def test_native_source_requires_independent_approval_and_native_timeline(self):
+        repository = "ForgingAlpha/alphaapps-site"
+        api = source_fixture()
+        pr = api.gets[f"repos/{repository}/pulls/17"]
+        actor = {"id": 74, "login": "native-request[bot]", "type": "Bot", "node_id": "B74"}
+        pr.update(merged_by=actor, node_id="PR17", user={"login": "dependabot[bot]", "id": 49699333})
+        pr["base"]["repo"] = {"id": 41}
+        pr["head"]["ref"] = "patch"
+        api.gets[f"repos/{repository}/activity?ref=refs%2Fheads%2Fpatch&direction=desc&per_page=100"] = [
+            {"id": 31, "ref": "refs/heads/patch", "after": sha("b"), "pushed_at": "2026-08-16T10:00:00Z"}]
+        api.page_values[f"repos/{repository}/pulls/17/reviews?per_page=100"] = [[]]
+        policy = {"security_sources": True, "branch": "dev", "repository_id": 41, "requester_id": 74,
+                  "proof_app_id": 75}
+        arm = {"id": "E1", "__typename": "AutoMergeEnabledEvent", "createdAt": "2026-08-16T11:58:00Z",
+               "actor": {"login": actor["login"], "id": actor["node_id"]}}
+        api.graphql = lambda query, variables: {"data": {"repository": {"pullRequest":
+                                  {"id": "PR17", "arm": {"nodes": [arm]}, "transitions": {"nodes": []}}}}}
+        submitted = "2026-08-16T11:58:30Z"
+        receipt = {"schema": security_patch.native_proof.SCHEMA, "pr": 17, "pr_node": "PR17",
+                   "repository_id": 41, "head": sha("b"), "base": sha("a"), "branch": "dev",
+                   "tree": sha("e"), "integration": sha("4"), "head_ref": "refs/heads/patch", "head_update_id": 31,
+                   "request": {"actor_id": 74, "actor_node": "B74", "enabled_at": arm["createdAt"],
+                               "event": "E1", "method": "MERGE"},
+                   "reviews": [{"user_id": 45, "commit": sha("b"), "review_id": 56, "submitted_at": submitted}]}
+        review = {"id": 56, "state": "APPROVED", "user": {"id": 45, "type": "User"},
+                  "commit_id": sha("b"), "submitted_at": submitted}
+        api.gets[f"repos/{repository}/pulls/17/reviews/56"] = review
+        proof = {"name": "Exact human approval", "app": {"id": 75}, "head_sha": sha("b"),
+                 "external_id": security_patch.native_proof.external_id(pr), "status": "completed",
+                 "conclusion": "success", "output": {"summary": json.dumps(receipt)},
+                 "completed_at": "2026-08-16T11:59:48Z"}
+        api.page_values[f"repos/{repository}/commits/{sha('b')}/check-runs?filter=latest&per_page=100"] = [
+            {"check_runs": [proof]}]
+        with patch.object(security_patch.native_enrollment, "load_policy", return_value=policy):
+            evidence = security_patch.build_source_evidence(api, repository, sha("c"), "dev", "package.json",
+                                                           "package-lock.json")
+            self.assertEqual(evidence.source_merged_by, actor["login"])
+            review["state"] = "DISMISSED"
+            with self.assertRaisesRegex(security_patch.PolicyError, "native security source merge"):
+                security_patch.build_source_evidence(api, repository, sha("c"), "dev", "package.json",
+                                                     "package-lock.json")
         self.assertFalse(api.posts or api.puts or api.patches)
 
     def test_source_rejects_known_automation_or_missing_actor_without_writes(self):

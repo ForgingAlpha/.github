@@ -8,6 +8,7 @@ import base64
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -16,6 +17,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
 from urllib.parse import quote
+
+# Both helpers come from this same pinned shared Actions checkout.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "native-auto-merge"))
+import enrollment as native_enrollment
+import proof as native_proof
 
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -136,6 +142,12 @@ class GhApi:
 
     def post(self, path: str, payload: Any) -> Any:
         return self._run(["--method", "POST", path, "--input", "-"], payload)
+
+    def patch(self, path: str, payload: Any) -> Any:
+        return self._run(["--method", "PATCH", path, "--input", "-"], payload)
+
+    def graphql(self, query: str, variables: dict) -> dict:
+        return self._run(["graphql", "--input", "-"], {"query": query, "variables": variables})
 
     def security_ghsa_evidence(
         self,
@@ -565,7 +577,10 @@ def resolve_source_pointer(
     require(pr.get("user", {}).get("login") == "dependabot[bot]", "source pull request is not Dependabot-authored")
     require(pr.get("base", {}).get("ref") == source_branch, "source pull-request base branch mismatch")
     require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "source pull-request head is not same-repository")
-    require(pr.get("auto_merge") is None, "source pull request retains stale native auto-merge state")
+    if pr.get("auto_merge") is not None:
+        policy = native_source_policy(api, repository, pr)
+        require(native_enrollment.approved_request(pr["auto_merge"], policy),
+                "source pull request retains stale native auto-merge state")
     labels = pr.get("labels")
     require(isinstance(labels, list), "source pull-request labels must be a list")
     require(
@@ -939,6 +954,30 @@ def observed_merge_actor(pull: dict[str, Any], app_slug: str) -> str:
     return login
 
 
+def native_source_policy(api, repository, pull):
+    try:
+        policy = native_enrollment.load_policy(api, repository, pull["base"]["sha"])
+        if policy and policy["security_sources"] and policy["branch"] == pull["base"]["ref"]:
+            require(policy["repository_id"] == pull["base"]["repo"]["id"], "security enrollment repository mismatch")
+            return policy
+    except (ValueError, TypeError, KeyError) as error:
+        raise PolicyError("invalid native auto-merge security source enrollment") from error
+    return None
+
+
+def source_merge_actor(api, repository, pull, app_slug, tree):
+    policy = native_source_policy(api, repository, pull)
+    if policy:
+        try:
+            native = native_proof.observe_completion(api, repository, pull, policy, tree)
+        except (KeyError, TypeError, IndexError, ValueError) as error:
+            raise PolicyError("native security source merge could not be verified") from error
+        if native is not None:
+            return native
+    require(pull.get("auto_merge") is None, "unexpected armed security source")
+    return observed_merge_actor(pull, app_slug)
+
+
 def validate_pair_diff(
     files: Iterable[dict[str, Any]],
     pre: dict[str, BlobEntry],
@@ -1091,7 +1130,7 @@ def build_source_evidence_from_pull(
     head_commit = git_commit(api, repository, source_head)
     source_tree = merge_commit["tree"]["sha"]
     require(source_tree == head_commit["tree"]["sha"], "source merge tree does not equal source head tree")
-    merged_by = observed_merge_actor(pull, app_slug)
+    merged_by = source_merge_actor(api, repository, pull, app_slug, source_tree)
 
     # GitHub may clear vulnerabilityAlert.dependabotUpdate after the exact
     # source PR merges, and its repository alert index may briefly lag that

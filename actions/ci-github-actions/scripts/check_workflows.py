@@ -180,7 +180,7 @@ def validate_uses_ref(
             errors.append(
                 f"{path}: internal shared automation '{uses}' must use literal @main. "
                 "WHAT: the fixed first-party source ref is not main. "
-                "WHY: protected human-merged main is the active shared source. "
+                "WHY: protected human-reviewed main is the active shared source. "
                 "HOW: use canonical ForgingAlpha/.github ownership and @main."
             )
         return
