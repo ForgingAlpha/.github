@@ -30,9 +30,11 @@ automation without copying workflow logic between repositories.
 - Every control-plane and protected production-control change is approved by
   an authorized human reviewer on its exact current revision; an agent or
   authoring-bot identity cannot substitute for that approval.
-- Shared baseline and complete applicable product checks can be required by an organization ruleset without
-  depending on each consumer to install a caller. Enrollment, actual execution
-  and preservation of product-specific checks are verified before reliance.
+- New active repositories participate in the shared baseline from their first
+  governed pull request. Deterministic onboarding identifies supported components
+  from committed inputs. Product owners define their test obligations. Before
+  relying on CI, the organization verifies enrollment, actual execution and
+  preservation of the complete applicable product checks on each repository.
 - Protected, human-merged `.github/main` is the active shared automation source.
   Required checks and exact-revision human review precede the merge; no later tag
   promotion, source acceptance or recurring ruleset repin makes it active.
@@ -847,9 +849,11 @@ SHALL preserve the caller and scopes adopted on protected `dev`. A dedicated
 workflow-only PR MAY upgrade the caller to the current template at those scopes. Native
 protection SHALL require current human team review, including review of the
 initial caller on the exact head. Reliance requires an observed hosted run.
-Adding application code requires applicable product checks.
+Adding application code requires applicable product checks. Under REQ-029, a
+verified repository-owned caller also supplies the first-definitions path
+when the repository has no central assignment.
 
-**Fit:** Unknown enrollment, changed repository identity, application code,
+**Fit:** Unknown enrollment for a central bootstrap, changed repository identity, application code,
 executable lint configuration, custom formatters/rules, untracked required
 inputs, malformed configuration and unavailable required evidence fail with
 actionable remediation. Bootstrap reuses existing checking implementations only
@@ -938,6 +942,45 @@ checker and its applicable required result producer. A negative assertion may
 pass while the consumer result remains failed. Corrected inputs require their
 corresponding evidence. Impact assessment cannot waive a changed required behavior
 or an existing mandatory check; it cannot claim execution that did not occur.
+
+#### REQ-029 - Default Participation In The Common Baseline
+
+After qualification of the common baseline and each affected profile under
+REQ-025, the protection operator SHALL select new active repositories for the
+common baseline on protected `dev` and `main` through an organization-owned
+rule. Only the protection operator SHALL control the selection criterion and
+its exclusions. It SHALL cover creation outside a template. Existing repositories
+enter after their validation configuration and handover are qualified. Shared
+tooling keeps its required workflow. A later staging branch receives its
+protections during the paid application's release-route qualification under REQ-027.
+
+For the same trusted policy, repository identity, protected base and candidate
+tree, onboarding SHALL identify the same supported component types and roots
+or report the unresolved input. An application's accepted checks come from
+its repository-owned CI under REQ-001 or its explicitly approved central
+assignment, including its runtime and the product owner's test obligations.
+Without a central assignment, the common baseline SHALL validate governing
+documents and tracked Markdown with trusted checks. Branch protection SHALL
+require the expected repository-owned `CI` as a separate result on the same candidate.
+A first-definitions PR MUST meet the repository-owned admission path in REQ-026
+or obtain explicit bootstrap enrollment. Other unconfigured candidates receive
+the missing assignment or caller diagnostic. The common baseline retains its
+distinct result and cannot grant a product or documentation assignment.
+
+The first application PR SHALL run the complete accepted checks on the full
+candidate tree before merge. A change of producer follows the handover in REQ-025. Missing assignments, unsupported layouts and
+missing owner decisions SHALL block that transition and identify the necessary
+remediation. REQ-026 governs positive admission of a documentation bootstrap.
+Changes to declared test obligations require review of the affected coverage.
+Removing an identifying input cannot reduce an established obligation.
+
+**Fit:** A fresh repository created outside a template receives the common
+baseline on its first governed PR without manual selection of that repository.
+The protection operator qualifies an enforcing rule on a bounded target with
+observed valid-pass and invalid-block runs before expanding it. Verify positive
+documentation admission, its transition to complete application CI and actionable
+refusal of unsupported input. On every newly selected target, verify the actual
+identity, head/base, check producers and effective protections before reliance.
 
 ### Requirements scope
 
@@ -1061,7 +1104,7 @@ security proof and ordinary proposals cannot claim it by choosing a branch name.
 
 The central entrypoint is `.github/workflows/org-baseline.yml` in this
 repository, selected by a ForgingAlpha organization ruleset tracking protected
-`refs/heads/main`, with explicit consumer repository/branch selectors. The
+`refs/heads/main`, with explicit consumer repository/branch selectors during the pilot. The
 one-time human settings transition replaces the old immutable workflow pin;
 later protected human merges need no recurring ruleset update or activation.
 Required source checks and exact-head human review precede those merges.
@@ -1075,6 +1118,17 @@ the same workflow-source SHA, using local paths within that checkout. It does
 not combine its defining workflow revision with helpers fetched from a newer
 `main` or an older tag. It records the exact resolved defining-workflow SHA;
 movement of `main` after resolution does not replace that execution's source.
+
+Under REQ-029 the protection operator qualifies the selector on a bounded
+target using the REQ-016 settings path and captures the prior rule, saved rule
+and effective protections. Existing required checks stay active throughout.
+Evaluation-mode insights can inform selection; verified enforcement requires
+actual pass and block results. The organization rule selects the common
+baseline. Onboarding reads the consumer's exact Git inputs and existing
+central enrollment and runtime catalog to prepare reviewable assignments.
+Repository content cannot write trusted enrollment or choose a release route.
+Product owners retain their tests and release assignments, and the separate
+organization security configuration retains its own owner.
 
 The central source owns explicit pilot profiles and their human-review team
 identity. A consumer cannot grant itself bootstrap or weaken its required
@@ -1226,8 +1280,9 @@ A profile with every required pilot case verified and qualified shared dependenc
 progress independently of unrelated profiles. Cases include valid/invalid/repair,
 App-created and already-open triggers, consumer skip/configuration/application-input
 refusal and observed source restoration with valid-pass and invalid-block behavior.
-Adding a repository or branch still requires explicit central enrollment and live
-qualification of that target's identity, head/base, token access, check producers and
+A new central product or documentation assignment still requires explicit enrollment.
+Every additional repository or branch, including one selected by the common default,
+requires live qualification of that target's identity, head/base, token access, check producers and
 required protections. Reusable content evidence does not replace current-target CI or
 review. The full declared profile runs against the complete proposed tree; this rule
 introduces no changed-file test selector.
@@ -1247,7 +1302,8 @@ human credentials; browser consent alone does not establish that authority.
 Any protected executor requires separate qualification before a settings write.
 
 Initial enrollment and the one-time main-reference transition require the
-human-owned settings path and observable target runs. Compare the complete
+human-owned settings path and observable target runs. For that source-reference
+transition, compare the complete
 captured prior rule, change only the approved source reference, and read back
 the complete saved configuration and effective protection on both target
 branches. Preserve check identities, strictness, selectors, bypasses and
@@ -1887,7 +1943,8 @@ qualified full application profile described below. Qualification follows the en
 profile and affected shared behavior, with independently verified Material impact
 judgments retained in the existing task or proposal record. A qualified profile can
 progress independently of unrelated profiles; each additional repository or branch still
-needs explicit enrollment and actual target-context checks. Shared-enforcement changes
+needs actual target-context checks. Central documentation and product assignments
+require explicit enrollment under REQ-025 and REQ-026. Shared-enforcement changes
 and broader migrations require coverage across all affected profiles before reliance or
 common-call retirement. The initial documentation and actual hosted Rust cases retain
 their own complete pilot-case obligations, including App-created/already-open triggers,
