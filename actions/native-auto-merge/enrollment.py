@@ -11,6 +11,8 @@ from pathlib import PurePosixPath
 CONTEXT = "Exact human approval"
 SHA = re.compile(r"[0-9a-f]{40}")
 BOT_IDS = {49699333, 29139614, 41898282}  # Dependabot, Renovate, generic Actions
+SHARED_APP_SLUGS = {"github-actions", "dependabot", "renovate", "forgingalpha-agent-credential",
+                    "forgingalpha-security-automation"}
 FIELDS = {"repository_id", "branch", "requester_id", "proof_app_id", "proof_context",
           "ordinary_paths", "security_sources", "ruleset_qualification"}
 
@@ -24,6 +26,10 @@ def positive(value):
     return type(value) is int and value > 0
 
 
+def dedicated_app_slug(slug):
+    return isinstance(slug, str) and bool(re.fullmatch(r"[a-z0-9-]+", slug)) and slug not in SHARED_APP_SLUGS
+
+
 def valid_path(path):
     return (isinstance(path, str) and bool(path) and all(ch.isprintable() for ch in path)
             and not set(path).intersection("*?[]\\") and not path.startswith("/")
@@ -33,11 +39,11 @@ def valid_path(path):
 def matches_ordinary_path(policy, path):
     if not valid_path(path):
         return False
-    parts = PurePosixPath(path).parts
+    parts = tuple(part.casefold() for part in PurePosixPath(path).parts)
     if (any(part.startswith(".") for part in parts)
             or parts[0] in ("actions", "system", "workflow-templates")
-            or parts[-1] in ("GLOBAL.md", "AGENTS.md", "CLAUDE.md", "PROJECT.md", "CODEOWNERS",
-                             "README.md", "renovate.json", "renovate-config.json", "renovate-weekly.json",
+            or parts[-1] in ("global.md", "agents.md", "claude.md", "project.md", "codeowners",
+                             "readme.md", "renovate.json", "renovate-config.json", "renovate-weekly.json",
                              "governing-source-bindings.json")):
         return False
     return any(path == item or item.endswith("/**") and path.startswith(item[:-2])

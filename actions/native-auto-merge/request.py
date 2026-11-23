@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "ci-org-baseline/scripts"))
 from eligibility import security, verify_eligible
-from enrollment import SHA, approved_request, load_policy, positive, require
+from enrollment import SHA, approved_request, dedicated_app_slug, load_policy, positive, require
 from protection import effective_rules, snapshot, verify_qualification
 from verify_team_review import verify_rule
 
@@ -126,9 +126,7 @@ def request(api, event, env, mutate=False):
         return True
     repo, pr, policy = subject
     slug = env["REQUESTER_SLUG"]
-    require(re.fullmatch(r"[a-z0-9-]+", slug) and slug not in
-            {"github-actions", "dependabot", "renovate", "forgingalpha-agent-credential", "forgingalpha-security-automation"},
-            "requester is not a dedicated installation")
+    require(dedicated_app_slug(slug), "requester is not a dedicated installation")
     app = api.get(f"apps/{slug}", fresh=True)
     require(positive(app["id"]) and app["slug"] == slug and app["id"] not in
             (policy["proof_app_id"], security.TRUSTED_SECURITY_AUTOMATION_APP_ID, security.TRUSTED_CI_APP_ID),

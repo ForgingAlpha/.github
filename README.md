@@ -1089,6 +1089,9 @@ independent review, CI, scanning and strict current-base rules, including strong
 target-specific gates. If the actor boundary or the necessary evidence cannot be
 qualified, use the applicable personal human procedure. Verify that this route can satisfy
 its required checks as well. Source publication and hosted configuration have separate authorization.
+After an ordinary native merge, retain its verified outcome with the read-only
+`actions/native-auto-merge/observe.py` command. It reads the merged PR, validates
+the merge parents and tree, and reconciles the review, requester and recorded merger.
 [Operator interface and qualification](docs/operator-checklist.md#native-auto-merge-enrollment)
 
 #### Uniform proposal targets

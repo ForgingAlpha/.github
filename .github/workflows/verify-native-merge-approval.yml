@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 5
     environment: native-merge-proof
     concurrency:
-      group: native-merge-proof-${{ github.repository_id }}-${{ github.event.workflow_run.pull_requests[0].number }}
+      group: native-merge-proof-${{ github.repository_id }}-${{ github.event.workflow_run.head_sha }}
       cancel-in-progress: false
     steps:
       - name: Verify defining workflow

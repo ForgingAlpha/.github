@@ -64,10 +64,15 @@ protected shared definitions and supplies no PR checkout, cache or artifacts.
 | `pull_request_target` on `opened` or `ready_for_review`; or a completed successful `AlphaApps Security Classification` check from App `4618077` | `ForgingAlpha/.github/.github/workflows/request-auto-merge.yml@main` |
 | `workflow_run` on completion of the named unprivileged PR or PR-review signal workflows | `ForgingAlpha/.github/.github/workflows/verify-native-merge-approval.yml@main` |
 
-The review signal must wake on review changes even after CI finishes. Each wake must
-identify a single PR and its head from the same repository. The protected proof job reads
-actual review, membership, PR, head and base evidence afresh. Keep ordinary CI independent
-of the proof so that approval before or after CI can complete the required checks.
+Wake the proof on review submission or dismissal, head or base changes, draft/ready
+transitions, and native enable or disable events even after CI finishes. A signal only
+identifies the affected same-repository PRs and heads. An ambiguous shared head must
+supersede an earlier green proof for every affected enrolled PR. Verify that invalidation
+and restoration under concurrent hosted events before requiring the check. Keep product
+CI independent so either approval or CI can finish first. When a check completes in the
+merge second, the observer requires the GitHub rule evaluation for that actual merge
+to name the successful check run and App. An unreadable or truncated evaluation leaves
+the outcome unverified. [GitHub rule-suite metadata](https://docs.github.com/en/rest/repos/rule-suites#get-a-repository-rule-suite)
 
 | Branch-restricted environment | Dedicated identity and inputs |
 | --- | --- |
@@ -122,6 +127,18 @@ or a blocked native path does not establish that a human can merge. Record check
 producer and subject, review, requester, actual merger and resulting content separately.
 Keep failures and unqualified cases visible. Source preparation supplies no hosted settings,
 App setup, consumer caller or activation.
+
+After GitHub reports an ordinary native merge, use the protected shared source and the
+target’s scoped read credential. Substitute the actual repository, PR number and merge
+commit shown on that PR, then retain the verified JSON with the proposal record.
+
+```bash
+python3 -I -B actions/native-auto-merge/observe.py OWNER/REPO PR_NUMBER MERGE_COMMIT
+```
+
+A missing receipt or a disagreement between the PR, parent commits, reviewed tree
+and recorded merger leaves delivery unverified. Use the security-source observer
+for a Dependabot security PR.
 
 ## Shared Checks, Main Source And Recovery
 

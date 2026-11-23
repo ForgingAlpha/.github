@@ -327,6 +327,16 @@ class RequestTests(unittest.TestCase):
                     api.rows[FILES] = [[row]]
                 self.assert_refused(api)
 
+    def test_reserved_paths_are_case_insensitive_but_enrollment_is_exact(self):
+        from enrollment import matches_ordinary_path
+        policy = {"ordinary_paths": ["src/**", "AcTions/**", "SyStEm/**", "Workflow-Templates/**"]}
+        self.assertTrue(matches_ordinary_path(policy, "src/component/module.py"))
+        for path in ("Src/component/module.py", "src/ReAdMe.Md", "src/component/aGeNtS.mD",
+                     "src/CoDeOwNeRs", "src/Renovate.JsOn", "src/GOVERNING-SOURCE-BINDINGS.JSON",
+                     "AcTions/script.py", "SyStEm/policy.json", "Workflow-Templates/ci.yml"):
+            with self.subTest(path=path):
+                self.assertFalse(matches_ordinary_path(policy, path))
+
     def test_classified_dependabot_source_is_eligible_without_ordinary_path_admission(self):
         api = GitHub()
         api.classify()

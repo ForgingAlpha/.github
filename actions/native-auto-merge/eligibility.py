@@ -13,13 +13,18 @@ from enrollment import SHA, matches_ordinary_path, positive, require
 
 
 def verify_eligible(api, repository, pull, policy):
+    require(pull["state"] == "open" and pull["draft"] is False, "PR is not open and ready")
+    return classify_change(api, repository, pull, policy)
+
+
+def classify_change(api, repository, pull, policy):
+    """Classify the same change for open admission and after a confirmed merge."""
     base, head = pull["base"], pull["head"]
     for side in (base, head):
         require(side["repo"]["full_name"] == repository and side["repo"]["id"] == policy["repository_id"]
                 and SHA.fullmatch(side["sha"]), "PR is not bound to this enrolled repository and revision")
-    require(pull["state"] == "open" and pull["draft"] is False and positive(pull["number"])
-            and base["ref"] == policy["branch"] and head["ref"] not in routes.PERSISTENT,
-            "PR is not an open, ready task on the enrolled target")
+    require(positive(pull["number"]) and base["ref"] == policy["branch"] and head["ref"] not in routes.PERSISTENT,
+            "PR is not a task on the enrolled target")
     require(not head["ref"].startswith(("security/dependabot-", "security-projection/")), "security projections require personal human merge")
     actor = pull["user"]
     require(positive(actor["id"]), "unknown PR author")

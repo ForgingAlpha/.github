@@ -10,6 +10,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -70,8 +72,9 @@ class FakeApi:
         self.last_security_query = (repository, pull_request)
         return self.ghsas
 
-    def security_ghsa_evidence(self, repository, pull_request):
+    def security_ghsa_evidence(self, repository, pull_request, manual_merge_at=None):
         self.last_security_query = (repository, pull_request)
+        self.manual_merge_at = manual_merge_at
         self.security_evidence_calls += 1
         if self.security_evidence_sequence:
             return self.security_evidence_sequence.pop(0)
@@ -721,7 +724,7 @@ class SecurityAlertSequenceApi(FakeApi):
         self.evidence = list(evidence)
         self.security_calls = []
 
-    def security_ghsa_evidence(self, repository, pull_request):
+    def security_ghsa_evidence(self, repository, pull_request, manual_merge_at=None):
         self.security_calls.append((repository, pull_request))
         if not self.evidence:
             raise AssertionError("unexpected security-alert reconciliation query")
@@ -804,6 +807,40 @@ class SecurityAlertAssociationTest(unittest.TestCase):
 
         with self.assertRaisesRegex(security_patch.PolicyError, "no official OPEN or FIXED"):
             api.security_ghsas("ForgingAlpha/analyzingalpha-site", 40)
+
+    def test_human_attributed_source_checks_native_history_on_the_same_alert_read(self):
+        merged_at = "2026-08-16T12:00:00Z"
+        merge = {"__typename": "MergedEvent", "createdAt": merged_at}
+        disarm = {"__typename": "AutoMergeDisabledEvent"}
+        for events, eligible in (([merge], True), ([disarm, merge], True), ([], False),
+                                 ([merge, disarm], False), ([dict(merge, createdAt="2026-08-16T11:59:00Z")], False),
+                                 ([{"__typename": "AutoMergeEnabledEvent"}, merge], False),
+                                 ([{"__typename": "AutoSquashEnabledEvent"}, merge], False),
+                                 ([{"__typename": "AutoRebaseEnabledEvent"}, merge], False), (None, False)):
+            with self.subTest(events=events):
+                pages = vulnerability_alert_pages([vulnerability_alert_node(40)])
+                pages[0]["data"]["repository"]["pullRequest"] = {
+                    "number": 40, "mergedAt": merged_at, "arm": {"nodes": events},
+                }
+                api = SecurityAlertGraphqlApi(pages)
+                if eligible:
+                    associated, _ = api.security_ghsa_evidence("ForgingAlpha/site", 40, merged_at)
+                    self.assertTrue(associated)
+                else:
+                    with self.assertRaises(security_patch.PolicyError):
+                        api.security_ghsa_evidence("ForgingAlpha/site", 40, merged_at)
+                self.assertEqual(len(api.calls), 1)
+                self.assertIn("number=40", api.calls[0][0])
+                self.assertIn("arm:timelineItems(last:2", api.calls[0][0][4])
+
+    def test_human_attributed_source_requires_history_for_its_own_pr_and_merge(self):
+        merged_at = "2026-08-16T12:00:00Z"
+        for subject in (None, {"number": 41, "mergedAt": merged_at, "arm": {"nodes": []}},
+                        {"number": 40, "mergedAt": "2026-08-16T11:59:00Z", "arm": {"nodes": []}}):
+            pages = vulnerability_alert_pages([vulnerability_alert_node(40)])
+            pages[0]["data"]["repository"]["pullRequest"] = subject
+            with self.subTest(subject=subject), self.assertRaises(security_patch.PolicyError):
+                SecurityAlertGraphqlApi(pages).security_ghsa_evidence("ForgingAlpha/site", 40, merged_at)
 
     def test_cleared_post_merge_pointer_retains_repository_advisory_evidence_only(self):
         api = SecurityAlertGraphqlApi(vulnerability_alert_pages([{
@@ -1126,7 +1163,7 @@ class SecurityPatchSourceWorkflowTest(unittest.TestCase):
         pr["base"]["repo"] = {"id": 41}
         pr["auto_merge"] = {"enabled_by": {"type": "Bot", "id": 74}, "merge_method": "merge"}
         policy = {"security_sources": True, "branch": "dev", "repository_id": 41, "requester_id": 74}
-        with patch.object(security_patch.native_enrollment, "load_policy", return_value=policy):
+        with patch.object(security_patch.native_module("enrollment"), "load_policy", return_value=policy):
             self.assertEqual(self.preflight(api).pull_request, 17)
             policy["security_sources"] = False
             with self.assertRaisesRegex(security_patch.PolicyError, "native auto-merge"):
@@ -2359,9 +2396,11 @@ class HumanMergeEvidenceTest(unittest.TestCase):
         api = source_fixture()
         # Later unrelated dev movement does not rewrite the captured source chain.
         api.gets["repos/ForgingAlpha/alphaapps-site/git/ref/heads/dev"] = {"object": {"sha": sha("9")}}
-        evidence = security_patch.build_source_evidence(
-            api, "ForgingAlpha/alphaapps-site", sha("c"), "dev", "package.json", "package-lock.json",
-        )
+        with patch.object(security_patch, "native_module", side_effect=AssertionError("unexpected native read")):
+            evidence = security_patch.build_source_evidence(
+                api, "ForgingAlpha/alphaapps-site", sha("c"), "dev", "package.json", "package-lock.json",
+            )
+        self.assertEqual(api.manual_merge_at, evidence.source_merged_at)
         self.assertEqual(evidence.source_merged_by, "authorized-maintainer")
         self.assertEqual(evidence.source_merged_at, "2026-08-16T12:00:00Z")
         self.assertFalse(api.posts or api.puts or api.patches)
@@ -2375,16 +2414,17 @@ class HumanMergeEvidenceTest(unittest.TestCase):
         pr["base"]["repo"] = {"id": 41}
         pr["head"]["ref"] = "patch"
         api.gets[f"repos/{repository}/activity?ref=refs%2Fheads%2Fpatch&direction=desc&per_page=100"] = [
-            {"id": 31, "ref": "refs/heads/patch", "after": sha("b"), "pushed_at": "2026-08-16T10:00:00Z"}]
+            {"id": 31, "ref": "refs/heads/patch", "after": sha("b"), "timestamp": "2026-08-16T10:00:00Z"}]
         api.page_values[f"repos/{repository}/pulls/17/reviews?per_page=100"] = [[]]
         policy = {"security_sources": True, "branch": "dev", "repository_id": 41, "requester_id": 74,
                   "proof_app_id": 75}
         arm = {"id": "E1", "__typename": "AutoMergeEnabledEvent", "createdAt": "2026-08-16T11:58:00Z",
-               "actor": {"login": actor["login"], "id": actor["node_id"]}}
+               "actor": {"__typename": "Bot", "id": actor["node_id"], "databaseId": actor["id"]}}
+        merged = {"__typename": "MergedEvent", "createdAt": pr["merged_at"], "commit": {"oid": pr["merge_commit_sha"]}}
         api.graphql = lambda query, variables: {"data": {"repository": {"pullRequest":
-                                  {"id": "PR17", "arm": {"nodes": [arm]}, "transitions": {"nodes": []}}}}}
+                                  {"id": "PR17", "history": {"nodes": [arm, merged], "pageInfo": {"hasPreviousPage": False}}}}}}
         submitted = "2026-08-16T11:58:30Z"
-        receipt = {"schema": security_patch.native_proof.SCHEMA, "pr": 17, "pr_node": "PR17",
+        receipt = {"schema": security_patch.native_module("proof").SCHEMA, "pr": 17, "pr_node": "PR17",
                    "repository_id": 41, "head": sha("b"), "base": sha("a"), "branch": "dev",
                    "tree": sha("e"), "integration": sha("4"), "head_ref": "refs/heads/patch", "head_update_id": 31,
                    "request": {"actor_id": 74, "actor_node": "B74", "enabled_at": arm["createdAt"],
@@ -2393,13 +2433,13 @@ class HumanMergeEvidenceTest(unittest.TestCase):
         review = {"id": 56, "state": "APPROVED", "user": {"id": 45, "type": "User"},
                   "commit_id": sha("b"), "submitted_at": submitted}
         api.gets[f"repos/{repository}/pulls/17/reviews/56"] = review
-        proof = {"name": "Exact human approval", "app": {"id": 75}, "head_sha": sha("b"),
-                 "external_id": security_patch.native_proof.external_id(pr), "status": "completed",
+        proof = {"id": 931, "name": "Exact human approval", "app": {"id": 75}, "head_sha": sha("b"),
+                 "external_id": security_patch.native_module("proof").external_id(pr), "status": "completed",
                  "conclusion": "success", "output": {"summary": json.dumps(receipt)},
                  "completed_at": "2026-08-16T11:59:48Z"}
         api.page_values[f"repos/{repository}/commits/{sha('b')}/check-runs?filter=latest&per_page=100"] = [
             {"check_runs": [proof]}]
-        with patch.object(security_patch.native_enrollment, "load_policy", return_value=policy):
+        with patch.object(security_patch.native_module("enrollment"), "load_policy", return_value=policy):
             evidence = security_patch.build_source_evidence(api, repository, sha("c"), "dev", "package.json",
                                                            "package-lock.json")
             self.assertEqual(evidence.source_merged_by, actor["login"])
@@ -2449,6 +2489,26 @@ class HumanMergeEvidenceTest(unittest.TestCase):
 
 class CliEffectsTest(unittest.TestCase):
     """Exercise real command dispatch and GhApi serialization with recorded calls."""
+    def test_existing_cli_starts_from_a_checkout_with_only_the_security_action(self):
+        with TemporaryDirectory() as workspace:
+            script = Path(workspace) / "actions/security-patch/scripts/security_patch.py"
+            script.parent.mkdir(parents=True)
+            script.write_bytes(SCRIPT.read_bytes())
+            result = subprocess.run([sys.executable, "-I", str(script), "--help"],
+                                    cwd=workspace, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("verify-source", result.stdout)
+
+    def test_native_module_rejects_shadowed_imports_and_restores_search_path(self):
+        before = sys.path[:]
+        with patch.dict(sys.modules, {"enrollment": SimpleNamespace(__file__="/elsewhere/enrollment.py")}):
+            with self.assertRaisesRegex(security_patch.PolicyError, "outside the shared action"):
+                security_patch.native_module("proof")
+        self.assertEqual(sys.path, before)
+        self.assertEqual(Path(security_patch.native_module("proof").__file__).resolve(),
+                         ROOT / "actions/native-auto-merge/proof.py")
+        self.assertEqual(sys.path, before)
+
     def execute(self, command, fixture, arguments):
         import contextlib
         import io
@@ -2457,9 +2517,16 @@ class CliEffectsTest(unittest.TestCase):
         def record(adapter, args, payload=None):
             requests.append((args, payload))
             if args[0] == "graphql":
-                return vulnerability_alert_pages([
+                pages = vulnerability_alert_pages([
                     vulnerability_alert_node(17, ghsa=ghsa) for ghsa in fixture.ghsas
                 ])
+                if "number=17" in args:
+                    pr = fixture.gets["repos/ForgingAlpha/alphaapps-site/pulls/17"]
+                    pages[0]["data"]["repository"]["pullRequest"] = {
+                        "number": 17, "mergedAt": pr["merged_at"],
+                        "arm": {"nodes": [{"__typename": "MergedEvent", "createdAt": pr["merged_at"]}]},
+                    }
+                return pages
             if args[0] == "--method":
                 self.assertEqual(args[1], "POST")
                 return fixture.post(args[2], payload)

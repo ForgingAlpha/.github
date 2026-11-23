@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import importlib
 import json
 import os
 from pathlib import Path
@@ -17,12 +18,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
 from urllib.parse import quote
-
-# Both helpers come from this same pinned shared Actions checkout.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "native-auto-merge"))
-import enrollment as native_enrollment
-import proof as native_proof
-
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 APP_ID_RE = re.compile(r"^[1-9][0-9]*$")
@@ -56,6 +51,26 @@ class PolicyError(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise PolicyError(message)
+
+
+def native_module(name):
+    """Load optional native-merge code only from this action's shared checkout."""
+    directory = Path(__file__).resolve().parents[2] / "native-auto-merge"
+    require(name in ("enrollment", "proof"), "unexpected native-merge helper")
+    # proof also imports enrollment. Reject an unrelated already-loaded namesake.
+    for helper in {"enrollment", name}:
+        require((directory / f"{helper}.py").is_file(), "native-merge helper is missing")
+        module = sys.modules.get(helper)
+        if module is not None:
+            require(getattr(module, "__file__", None)
+                    and Path(module.__file__).resolve() == directory / f"{helper}.py",
+                    "native-merge helper came from outside the shared action")
+    previous_path = sys.path[:]
+    try:
+        sys.path.insert(0, str(directory))
+        return importlib.import_module(name)
+    finally:
+        sys.path[:] = previous_path
 
 
 def require_sha(value: str, label: str) -> str:
@@ -153,35 +168,44 @@ class GhApi:
         self,
         repository: str,
         pull_request: int,
+        manual_merge_at: str | None = None,
     ) -> tuple[tuple[str, ...], tuple[str, ...]]:
         """Return exact PR-linked and repository-visible official GHSA sets."""
         owner, name = repository.split("/", 1)
+        # The REST auto_merge field may be cleared after merge. Fetch history for
+        # human-attributed sources on the same read and permissions as the alerts.
+        history = ""
+        number_variable = ""
+        if manual_merge_at is not None:
+            number_variable = ",$number:Int!"
+            history = (
+                "pullRequest(number:$number){number mergedAt "
+                "arm:timelineItems(last:2,itemTypes:[MERGED_EVENT,AUTO_MERGE_ENABLED_EVENT,AUTO_MERGE_DISABLED_EVENT,"
+                "AUTO_REBASE_ENABLED_EVENT,AUTO_SQUASH_ENABLED_EVENT]){nodes{__typename "
+                "... on MergedEvent{createdAt}}}}"
+            )
         query = (
-            "query($owner:String!,$name:String!,$endCursor:String){"
-            "repository(owner:$owner,name:$name){"
+            f"query($owner:String!,$name:String!,$endCursor:String{number_variable}){{"
+            f"repository(owner:$owner,name:$name){{{history}"
             "vulnerabilityAlerts(first:100,after:$endCursor,states:[OPEN,FIXED]){"
             "nodes{state securityAdvisory{ghsaId}dependabotUpdate{pullRequest{number}}}"
             "pageInfo{hasNextPage endCursor}}}}"
         )
-        pages = self._run(
-            [
-                "graphql",
-                "--paginate",
-                "--slurp",
-                "-f",
-                f"query={query}",
-                "-f",
-                f"owner={owner}",
-                "-f",
-                f"name={name}",
-            ]
-        )
+        args = ["graphql", "--paginate", "--slurp", "-f", f"query={query}",
+                "-f", f"owner={owner}", "-f", f"name={name}"]
+        if manual_merge_at is not None:
+            args.extend(["-F", f"number={pull_request}"])
+        pages = self._run(args)
         require(isinstance(pages, list), "vulnerability-alert pagination must be a list")
+        require(manual_merge_at is None or pages, "missing manual source merge history")
         associated_ghsas: set[str] = set()
         repository_ghsas: set[str] = set()
         for page in pages:
             try:
-                nodes = page["data"]["repository"]["vulnerabilityAlerts"]["nodes"]
+                repo = page["data"]["repository"]
+                nodes = repo["vulnerabilityAlerts"]["nodes"]
+                if manual_merge_at is not None:
+                    verify_manual_merge_history(repo.get("pullRequest"), pull_request, manual_merge_at)
             except (KeyError, TypeError) as error:
                 raise PolicyError("vulnerability-alert response schema is invalid") from error
             require(isinstance(nodes, list), "vulnerability-alert nodes must be a list")
@@ -376,6 +400,23 @@ def github_timestamp(value: Any, label: str) -> datetime:
         raise PolicyError(f"{label} must be a GitHub UTC timestamp") from error
 
 
+def verify_manual_merge_history(pull, number, merged_at):
+    require(isinstance(pull, dict) and type(pull.get("number")) is int
+            and pull["number"] == number and pull.get("mergedAt") == merged_at,
+            "manual source merge history has a different subject")
+    arm = pull.get("arm")
+    nodes = arm.get("nodes") if isinstance(arm, dict) else None
+    require(isinstance(nodes, list) and 1 <= len(nodes) <= 2, "manual source merge history is incomplete")
+    # The provider orders the timeline even for events in the same second.
+    merge = nodes[-1]
+    require(isinstance(merge, dict) and merge.get("__typename") == "MergedEvent"
+            and merge.get("createdAt") == merged_at, "manual source merge event is unresolved")
+    if len(nodes) == 2:
+        prior = nodes[0]
+        require(isinstance(prior, dict) and prior.get("__typename") == "AutoMergeDisabledEvent",
+                "human-attributed source was armed when it merged")
+
+
 def wait_for_attested_security_ghsas(
     api: GhApi,
     repository: str,
@@ -383,6 +424,7 @@ def wait_for_attested_security_ghsas(
     attested_ghsas: tuple[str, ...],
     wait_seconds: int = SOURCE_ALERT_RECONCILIATION_WAIT_SECONDS,
     poll_seconds: int = SOURCE_ALERT_RECONCILIATION_POLL_SECONDS,
+    manual_merge_at: str | None = None,
 ) -> tuple[str, ...]:
     """Reconcile GitHub's post-merge alert index without weakening source proof."""
     require(0 <= wait_seconds <= 300, "security-alert reconciliation wait must be between zero and 300 seconds")
@@ -395,7 +437,7 @@ def wait_for_attested_security_ghsas(
     )
     deadline = time.monotonic() + wait_seconds
     while True:
-        associated_ghsas, repository_ghsas = api.security_ghsa_evidence(repository, pull_request)
+        associated_ghsas, repository_ghsas = api.security_ghsa_evidence(repository, pull_request, manual_merge_at)
         require(set(associated_ghsas) <= set(attested_ghsas), "live GHSA set contains an advisory outside source attestation")
         if associated_ghsas == attested_ghsas or set(attested_ghsas) <= set(repository_ghsas):
             return attested_ghsas
@@ -579,7 +621,7 @@ def resolve_source_pointer(
     require(pr.get("head", {}).get("repo", {}).get("full_name") == repository, "source pull-request head is not same-repository")
     if pr.get("auto_merge") is not None:
         policy = native_source_policy(api, repository, pr)
-        require(native_enrollment.approved_request(pr["auto_merge"], policy),
+        require(native_module("enrollment").approved_request(pr["auto_merge"], policy),
                 "source pull request retains stale native auto-merge state")
     labels = pr.get("labels")
     require(isinstance(labels, list), "source pull-request labels must be a list")
@@ -956,7 +998,7 @@ def observed_merge_actor(pull: dict[str, Any], app_slug: str) -> str:
 
 def native_source_policy(api, repository, pull):
     try:
-        policy = native_enrollment.load_policy(api, repository, pull["base"]["sha"])
+        policy = native_module("enrollment").load_policy(api, repository, pull["base"]["sha"])
         if policy and policy["security_sources"] and policy["branch"] == pull["base"]["ref"]:
             require(policy["repository_id"] == pull["base"]["repo"]["id"], "security enrollment repository mismatch")
             return policy
@@ -966,16 +1008,20 @@ def native_source_policy(api, repository, pull):
 
 
 def source_merge_actor(api, repository, pull, app_slug, tree):
+    actor = pull.get("merged_by")
+    if not isinstance(actor, dict) or actor.get("type") != "Bot":
+        require(pull.get("auto_merge") is None, "unexpected armed security source")
+        # The existing alert query also verifies historical arm/disarm state.
+        return observed_merge_actor(pull, app_slug)
     policy = native_source_policy(api, repository, pull)
     if policy:
         try:
-            native = native_proof.observe_completion(api, repository, pull, policy, tree)
+            native = native_module("proof").observe_completion(api, repository, pull, policy, tree)
         except (KeyError, TypeError, IndexError, ValueError) as error:
             raise PolicyError("native security source merge could not be verified") from error
         if native is not None:
             return native
-    require(pull.get("auto_merge") is None, "unexpected armed security source")
-    return observed_merge_actor(pull, app_slug)
+    raise PolicyError("known automated or unrecognized merge actor is ineligible")
 
 
 def validate_pair_diff(
@@ -1144,6 +1190,7 @@ def build_source_evidence_from_pull(
         tuple(attested_ghsas),
         alert_wait_seconds,
         alert_poll_seconds,
+        manual_merge_at=pull["merged_at"] if pull["merged_by"]["type"] == "User" else None,
     )
 
     _, pre = load_pair(api, repository, source_base, manifest_path, lock_path)
