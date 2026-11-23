@@ -12,7 +12,7 @@ CONTEXT = "Exact human approval"
 SHA = re.compile(r"[0-9a-f]{40}")
 BOT_IDS = {49699333, 29139614, 41898282}  # Dependabot, Renovate, generic Actions
 FIELDS = {"repository_id", "branch", "requester_id", "proof_app_id", "proof_context",
-          "ordinary_paths", "security_sources"}
+          "ordinary_paths", "security_sources", "ruleset_qualification"}
 
 
 def require(condition, reason):
@@ -60,6 +60,10 @@ def validate(value):
             and value["proof_app_id"] not in {15368, 4618077}, "invalid or shared native merge identity")
     require(value["branch"] in ("dev", "main") and value["proof_context"] == CONTEXT
             and type(value["security_sources"]) is bool, "invalid native merge target or proof")
+    anchor = value["ruleset_qualification"]
+    require(isinstance(anchor, dict) and set(anchor) == {"sha256", "observed_at"}
+            and isinstance(anchor["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", anchor["sha256"])
+            and isinstance(anchor["observed_at"], str), "missing owner ruleset qualification")
     paths = value["ordinary_paths"]
     require(isinstance(paths, list) and all(isinstance(item, str) and valid_path(item.removesuffix("/**"))
             for item in paths) and len(paths) == len(set(paths)), "invalid ordinary-path selection")

@@ -10,6 +10,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "actions/native-auto-merge"))
 import proof
+import protection
 
 REPO = "ForgingAlpha/example"
 TARGET = {"id": 200, "full_name": REPO}
@@ -40,6 +41,12 @@ class API:
         self.last_push = {"ref": "refs/heads/feature/task", "after": HEAD, "id": 81,
                           "pushed_at": DATE + "09Z", "pusher": {"id": 51}}
         self.rules = [deepcopy(RULE)]
+        self.rule_detail = {"id": RULE["ruleset_id"], "node_id": "rule-node", "source": "ForgingAlpha",
+                            "source_type": "Organization", "enforcement": "active", "target": "branch",
+                            "updated_at": "2026-08-01T10:00:00Z", "conditions": {},
+                            "rules": [{"type": RULE["type"], "parameters": deepcopy(RULE["parameters"])}]}
+        digest, _ = protection.snapshot(self, REPO, "dev", self.rules)
+        self.policy = dict(POLICY, ruleset_qualification={"observed_at": "2026-08-01T11:00:00Z", "sha256": digest})
         self.writes = []
         self.checks = []
         self.later_reviews = []
@@ -58,6 +65,8 @@ class API:
         raise AssertionError(path)
 
     def get(self, path, fresh=False):
+        if path == f"repos/{REPO}/rulesets/{RULE['ruleset_id']}?includes_parents=true":
+            return deepcopy(self.rule_detail)
         if path == f"repos/{REPO}/pulls/12":
             return deepcopy(self.pull)
         if path == proof.TEAM_PATH:
@@ -96,7 +105,7 @@ class API:
                               "createdAt": DATE + "08Z", "actor": {"id": BOT["node_id"], "login": BOT["login"]}}]}
 
     def run_check(self):
-        with patch.object(proof, "load_policy", return_value=POLICY):
+        with patch.object(proof, "load_policy", return_value=self.policy):
             return proof.publish(self, REPO, 12, HEAD, 88)
 
 
@@ -142,6 +151,20 @@ class ProofTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "moved"):
                 api.run_check()
         self.assertEqual(api.writes, ["in_progress", "failure"])
+
+    def test_armed_proof_rechecks_the_qualified_rules_but_does_not_gate_manual_paths_on_it(self):
+        for armed in (True, False):
+            with self.subTest(armed=armed):
+                api = API()
+                api.rule_detail["updated_at"] = "2026-09-01T12:37:00Z"
+                if armed:
+                    api.arm()
+                    with patch("eligibility.verify_eligible", return_value="ordinary"), self.assertRaisesRegex(ValueError, "qualification"):
+                        api.run_check()
+                    self.assertEqual(api.writes, ["in_progress", "failure"])
+                else:
+                    api.run_check()
+                    self.assertEqual(api.writes, ["in_progress", "success"])
 
     def test_source_readback_binds_request_producer_review_time_and_tree(self):
         for reason in ("valid", "actor", "context", "time", "tree", "disabled", "different-event", "dismissed", "superseded", "changed-subject"):

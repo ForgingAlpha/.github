@@ -12,6 +12,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "ci-org-baseline/scripts"))
 from eligibility import security, verify_eligible
 from enrollment import SHA, approved_request, load_policy, positive, require
+from protection import effective_rules, snapshot, verify_qualification
 from verify_team_review import verify_rule
 
 REQUEST = """mutation($id:ID!, $head:GitObjectID!){
@@ -29,16 +30,12 @@ STATE = """query($id:ID!) { node(id:$id) { ... on PullRequest {
 
 def live_rules(api, repo, policy):
     branch = policy["branch"]
-    rows = security.flatten_pages(api.pages(f"repos/{repo}/rules/branches/{branch}?per_page=100", fresh=True),
-                                  "effective branch rules")
+    rows = effective_rules(api, repo, branch)
     verify_rule(rows)
     require(not any(r["type"] == "merge_queue" for r in rows), "merge queues require a different route")
     matches = []
     required_ci = False
-    enforced = {}
     for row in rows:
-        if row["type"] in {"pull_request", "required_status_checks", "workflows", "code_scanning", "required_deployments"}:
-            enforced[row["ruleset_id"]] = row
         if row["type"] != "required_status_checks":
             continue
         parameters = row["parameters"]
@@ -51,18 +48,7 @@ def live_rules(api, repo, policy):
                         "exact approval must be strict and bound to the independent producer")
                 matches.append(row)
     require(len(matches) == 1 and required_ci, "required CI or independent exact approval rule missing")
-    for row in enforced.values():
-        ident = row["ruleset_id"]
-        require(positive(ident), "unknown ruleset identity")
-        if row["ruleset_source_type"] == "Organization" and row["ruleset_source"] == "ForgingAlpha":
-            path = f"orgs/ForgingAlpha/rulesets/{ident}"
-        else:
-            require(row["ruleset_source_type"] == "Repository" and row["ruleset_source"] == repo,
-                    "unexpected rule owner")
-            path = f"repos/{repo}/rulesets/{ident}"
-        detail = api.get(path, fresh=True)
-        require(detail["id"] == ident and detail["enforcement"] == "active" and detail.get("bypass_actors") == [],
-                "cannot verify an active nonbypassable review or proof rule")
+    verify_qualification(api, repo, policy, rows)
 
 
 def locate(event, env):
@@ -169,8 +155,22 @@ def request(api, event, env, mutate=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("assess", "request"))
-    mode = parser.parse_args().operation
+    operations = parser.add_subparsers(dest="operation", required=True)
+    operations.add_parser("assess")
+    operations.add_parser("request")
+    inspect = operations.add_parser("ruleset-snapshot", help="read the visible ruleset fingerprint for owner qualification")
+    inspect.add_argument("repository")
+    inspect.add_argument("branch", choices=("main", "dev"))
+    args = parser.parse_args()
+    mode = args.operation
+    if mode == "ruleset-snapshot":
+        require(re.fullmatch(r"ForgingAlpha/[A-Za-z0-9_.-]+", args.repository), "unexpected repository")
+        api = security.GhApi()
+        rows = effective_rules(api, args.repository, args.branch)
+        digest, newest = snapshot(api, args.repository, args.branch, rows)
+        print(json.dumps({"sha256": digest, "latest_ruleset_update": newest.isoformat(),
+                          "ruleset_ids": sorted({r["ruleset_id"] for r in rows})}))
+        return
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_bytes())
     eligible = request(security.GhApi(), event, os.environ, mutate=(mode == "request"))
     if mode == "assess":

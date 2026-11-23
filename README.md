@@ -1069,7 +1069,10 @@ Consumers of the existing composites use
 `ForgingAlpha/.github/actions/<action>@main`. Self-CI exercises proposed implementations locally. Its lifecycle policy step uses the released shared action so the pull request cannot supply the checker that admits its own governing sources. Candidate policy code runs in the local test suites.
 
 The protected workflow `.github/workflows/request-auto-merge.yml` binds its
-defining source and reads live PR and protection metadata. It requests native
+defining source and compares current effective branch rules with the settings owner’s
+qualification on the protected base. The owner verifies privileged bypass and update
+admission across all applicable layers. The requester uses repository metadata to
+detect changes without a ruleset administration grant. It requests native
 auto-merge with the PR node ID, expected head OID and permitted merge method.
 Its execution boundary excludes PR code, PR-supplied credentials, merge queues,
 direct merges and protected-ref writes. A lost response requires readback of the

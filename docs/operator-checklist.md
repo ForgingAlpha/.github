@@ -39,6 +39,7 @@ fail validation.
   "requester_id": 0,
   "proof_app_id": 0,
   "proof_context": "Exact human approval",
+  "ruleset_qualification": {"sha256": "<owner-verified fingerprint>", "observed_at": "<UTC inspection time>"},
   "ordinary_paths": ["docs/guides/**"],
   "security_sources": false
 }
@@ -80,6 +81,35 @@ isolation and actual rules must jointly prevent agent access, direct merges, pro
 writes, self-approval and bypass. Retain each identity’s actual grant and effective
 organization, repository and inherited rules. Unavailable bypass or actor data leaves the
 route unqualified.
+
+The settings owner qualifies the branch under their own authority.
+
+1. From the reviewed shared checkout, obtain the visible fingerprint and applicable
+   ruleset IDs with `python3 -I -B actions/native-auto-merge/request.py ruleset-snapshot ForgingAlpha/REPO dev`
+   (or `main`). The command uses the scoped read connection. It includes update
+   restrictions, safety rules and inherited enterprise rules. It performs no mutation.
+2. In the owning settings for **each** ID, inspect full actor lists, bypass modes,
+   selectors, update admission and actual effective grants. Verify that exactly the
+   authorized human exceptions survive, that neither App can bypass review, proof,
+   CI or security, and that the requester can request native completion without
+   permission to merge directly. Retain that inspection in the authorized settings
+   record. GitHub omits bypass actors from a repository REST response when the
+   reader lacks ruleset write access. A missing list supplies no evidence.
+   [GitHub ruleset visibility](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset)
+3. Qualify a bypass-only change on a separately authorized representative ruleset
+   for each applicable ownership layer. Verify that the read-only fingerprint changes
+   when adding, changing or removing a bypass without changing visible rules. Verify
+   both the prior and restored actor state with the authorized owner. If a layer or
+   edit path cannot be observed or tested, keep the branch on the human procedure.
+4. Fingerprint the target again after the complete owner inspection. Both reads
+   must agree. Record the matching `sha256` and actual inspection time in
+   `observed_at` (UTC with a trailing `Z`, after the latest update’s whole second).
+   The enrollment PR binds them to the repository and branch. Changed or incomplete
+   rules require fresh qualification. Before any ruleset, App grant or protection
+   change, stop requests and have the owner disarm and reconcile outstanding requests
+   while the existing protections still hold. Grant and classic branch-protection
+   changes fall outside this ruleset fingerprint. For an armed PR the proof producer
+   checks the fingerprint again. GitHub must still enforce protection when it merges.
 
 Require strict current-base `CI` from the expected Actions producer and strict
 `Exact human approval` from the enrolled proof App. Verify the designated human team,

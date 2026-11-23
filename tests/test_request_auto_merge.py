@@ -77,11 +77,22 @@ class GitHub:
                                         "file_patterns": ["*"]}]})],
                     [checks(PROOF_RULE, "Exact human approval", PROOF_APP), checks(CI_RULE, "CI", 15368)]],
         }
-        for ident in (TEAM_RULE, PROOF_RULE, CI_RULE):
-            self.rows[f"orgs/ForgingAlpha/rulesets/{ident}"] = {"id": ident, "enforcement": "active", "bypass_actors": []}
+        update = rule("update", 434, {"update_allows_fetch_and_merge": False})
+        safety = {**rule("non_fast_forward", 435, {}), "ruleset_source_type": "Enterprise",
+                  "ruleset_source": "fixture-enterprise"}
+        self.rows[RULES].append([update, safety])
+        self.reads = []
+        for row in [row for page in self.rows[RULES] for row in page]:
+            ident = row["ruleset_id"]
+            self.rows[f"{PREFIX}/rulesets/{ident}?includes_parents=true"] = {
+                "id": ident, "node_id": f"ruleset-{ident}", "enforcement": "active", "source": row["ruleset_source"],
+                "source_type": row["ruleset_source_type"], "target": "branch", "conditions": {"ref_name": {"include": ["dev"]}},
+                "updated_at": "2026-08-01T10:00:00.350Z", "rules": [{"type": row["type"], "parameters": row["parameters"]}]}
+        fingerprint, _ = armer.snapshot(self, REPO, "dev", armer.effective_rules(self, REPO, "dev"))
         self.policy = {"repository_id": RID, "branch": "dev", "requester_id": REQUESTER, "proof_app_id": PROOF_APP,
                        "proof_context": "Exact human approval", "ordinary_paths": ["src/**", "package.json"],
-                       "security_sources": True}
+                       "security_sources": True,
+                       "ruleset_qualification": {"sha256": fingerprint, "observed_at": "2026-08-01T11:00:00Z"}}
         self.set_blob(json.dumps(self.policy).encode())
         self.reads = []
         self.mutations = []
@@ -186,7 +197,7 @@ class RequestTests(unittest.TestCase):
 
     def test_effective_nonbypassable_team_proof_and_ci_required(self):
         for variant in ("missing-proof", "wrong-producer", "non-strict", "shadow", "team-bypass", "proof-bypass",
-                        "ci-app-bypass", "missing-bypass-data", "missing-ci", "queue"):
+                        "ci-app-bypass", "visible-invalid-bypass", "missing-ci", "queue"):
             with self.subTest(variant=variant):
                 api = GitHub()
                 rules = api.rows[RULES][1]
@@ -199,17 +210,65 @@ class RequestTests(unittest.TestCase):
                     proof["strict_required_status_checks_policy"] = False
                 elif variant == "shadow":
                     rules.append(deepcopy(rules[0]))
-                elif variant.endswith("-bypass"):
+                elif variant in ("team-bypass", "proof-bypass", "ci-app-bypass"):
                     rule_id = {"team-bypass": TEAM_RULE, "proof-bypass": PROOF_RULE, "ci-app-bypass": CI_RULE}[variant]
-                    api.rows[f"orgs/ForgingAlpha/rulesets/{rule_id}"]["bypass_actors"] = [
+                    api.rows[f"{PREFIX}/rulesets/{rule_id}?includes_parents=true"]["bypass_actors"] = [
                         {"actor_type": "Integration", "actor_id": 91756, "bypass_mode": "always"}]
-                elif variant == "missing-bypass-data":
-                    del api.rows[f"orgs/ForgingAlpha/rulesets/{PROOF_RULE}"]["bypass_actors"]
+                elif variant == "visible-invalid-bypass":
+                    api.rows[f"{PREFIX}/rulesets/{PROOF_RULE}?includes_parents=true"]["bypass_actors"] = None
                 elif variant == "missing-ci":
                     rules.pop(1)
                 else:
                     rules.append(rule("merge_queue", 999, {}))
                 self.assert_refused(api)
+
+    def test_owner_qualification_is_required_for_redacted_active_rulesets(self):
+        for variant in ("mutated-actor-revision", "lost-update-rule", "enterprise-revision", "case-drift",
+                        "changed-selector", "replaced-object", "missing-page", "same-tick", "future", "no-anchor"):
+            with self.subTest(variant=variant):
+                api = GitHub()
+                metadata = api.rows[f"{PREFIX}/rulesets/{PROOF_RULE}?includes_parents=true"]
+                if variant == "mutated-actor-revision":
+                    metadata["updated_at"] = "2026-08-02T10:00:00Z"
+                elif variant == "lost-update-rule":
+                    api.rows[RULES][2].pop(0)
+                elif variant == "enterprise-revision":
+                    api.rows[f"{PREFIX}/rulesets/435?includes_parents=true"]["updated_at"] = "2026-08-01T10:00:01Z"
+                elif variant == "case-drift":
+                    metadata["source"] = "forgingalpha"
+                elif variant == "changed-selector":
+                    metadata["conditions"]["ref_name"]["include"].append("main")
+                elif variant == "replaced-object":
+                    metadata["node_id"] = "replacement"
+                elif variant == "missing-page":
+                    metadata["rules"].append({"type": "deletion"})
+                else:
+                    if variant == "no-anchor":
+                        del api.policy["ruleset_qualification"]
+                    else:
+                        api.policy["ruleset_qualification"]["observed_at"] = (
+                            "2026-08-01T10:00:00.900Z" if variant == "same-tick" else "2099-01-01T00:00:00Z")
+                    api.set_blob(json.dumps(api.policy).encode())
+                self.assert_refused(api)
+
+    def test_explicit_human_exemptions_are_confined_to_the_owner_qualified_rule(self):
+        for ident, mode, allowed in ((434, "exempt", True), (CI_RULE, "pull_request", True),
+                                     (CI_RULE, "always", False), (PROOF_RULE, "pull_request", False)):
+            with self.subTest(ident=ident, mode=mode):
+                api = GitHub()
+                api.rows[f"{PREFIX}/rulesets/{ident}?includes_parents=true"]["bypass_actors"] = [
+                    {"actor_type": "OrganizationAdmin", "bypass_mode": mode}]
+                if allowed:
+                    self.assertTrue(api.run())
+                else:
+                    self.assert_refused(api)
+
+    def test_snapshot_is_stable_across_provider_page_order(self):
+        api = GitHub()
+        api.rows[RULES].reverse()
+        api.rows[RULES][0].reverse()
+        self.assertTrue(api.run())
+        self.assertFalse(any(p.startswith("orgs/") for p in api.reads))
 
     def test_refuses_stale_wrong_credential_or_replayed_wakes(self):
         for variant in ("stale-head", "stale-base", "foreign-caller", "rerun", "unknown-actor",
@@ -392,6 +451,7 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(mint["with"]["private-key"], "${{ secrets.NATIVE_MERGE_REQUEST_PRIVATE_KEY }}")
         writable = {key for key, value in mint["with"].items() if value == "write"}
         self.assertEqual(writable, {"permission-contents", "permission-pull-requests"})
+        self.assertFalse(any("administration" in key for key in mint["with"]))
         effect = writer["steps"][-1]
         self.assertEqual(effect["env"]["GH_TOKEN"], "${{ steps.requester.outputs.token }}")
         self.assertEqual(effect["env"]["REQUESTER_SLUG"], "${{ steps.requester.outputs.app-slug }}")

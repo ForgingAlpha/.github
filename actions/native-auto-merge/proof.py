@@ -146,7 +146,9 @@ def collect(api, repository, pull, policy):
     approvals = review_evidence(snapshot, pull, members, minimum, history[0], different_pusher)
     arm = request_evidence(snapshot, pull, policy)
     if arm:
+        from protection import verify_qualification
         verify_eligible(api, repository, pull, policy)
+        verify_qualification(api, repository, policy, rules)
     tip = api.get(f"repos/{repository}/branches/{branch}", fresh=True)
     compare = api.get(f"repos/{repository}/compare/{base}...{head}", fresh=True)
     require(tip["name"] == branch and tip["protected"] is True and tip["commit"]["sha"] == base

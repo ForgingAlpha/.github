@@ -68,8 +68,6 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-checks: read
-          permission-administration: read
-          permission-organization-administration: read
       - name: Recheck the live PR and request its native merge
         env:
           GH_TOKEN: ${{ steps.requester.outputs.token }}
