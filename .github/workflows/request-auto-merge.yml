@@ -1,0 +1,75 @@
+name: Request native auto-merge
+'on':
+  workflow_call:
+permissions: {}
+
+jobs:
+  assess:
+    if: >-
+      github.server_url == 'https://github.com' && github.repository_owner == 'ForgingAlpha' &&
+      (github.event_name == 'pull_request_target' || (github.event_name == 'check_run' && github.event.check_run.app.id == 4618077 && github.event.check_run.name == 'AlphaApps Security Classification'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    outputs:
+      eligible: ${{ steps.assess.outputs.eligible }}
+      source: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Verify the protected workflow and its caller
+        id: source
+        env:
+          JOB_CONTEXT: ${{ toJSON(job) }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          sha=$(jq -er '
+            select(.workflow_repository == "ForgingAlpha/.github" and
+                   .workflow_ref == "ForgingAlpha/.github/.github/workflows/request-auto-merge.yml@refs/heads/main") |
+            .workflow_sha | select(type == "string" and test("^[0-9a-f]{40}$"))
+          ' <<< "$JOB_CONTEXT")
+          test "$GITHUB_WORKFLOW_REF" = "$GITHUB_REPOSITORY/.github/workflows/native-merge.yml@refs/heads/$DEFAULT_BRANCH"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Checkout the protected shared implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ForgingAlpha/.github
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+      - name: Check enrollment and proposed change
+        id: assess
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I -B actions/native-auto-merge/request.py assess
+
+  request:
+    needs: assess
+    if: needs.assess.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: native-merge-request
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the same protected implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ForgingAlpha/.github
+          ref: ${{ needs.assess.outputs.source }}
+          persist-credentials: false
+      - name: Mint the enrolled requester's installation token for this repository
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: requester
+        with:
+          client-id: ${{ vars.NATIVE_MERGE_REQUEST_CLIENT_ID }}
+          private-key: ${{ secrets.NATIVE_MERGE_REQUEST_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-checks: read
+      - name: Recheck the live PR and request its native merge
+        env:
+          GH_TOKEN: ${{ steps.requester.outputs.token }}
+          REQUESTER_SLUG: ${{ steps.requester.outputs.app-slug }}
+        run: python3 -I -B actions/native-auto-merge/request.py request

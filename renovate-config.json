@@ -86,7 +86,7 @@
       "enabled": false
     },
     {
-      "description": "Keep first-party shared Actions on the protected human-merged main source",
+      "description": "Keep first-party shared Actions on the protected human-reviewed main source",
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["ForgingAlpha/.github"],
       "enabled": false
