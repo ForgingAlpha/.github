@@ -1,0 +1,58 @@
+name: Verify native merge approval
+'on':
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    if: >-
+      github.server_url == 'https://github.com' && github.event_name == 'workflow_run' &&
+      github.event.action == 'completed' &&
+      github.repository_owner == 'ForgingAlpha' &&
+      github.workflow_ref == format('{0}/.github/workflows/native-merge.yml@refs/heads/{1}', github.repository, github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: native-merge-proof
+    concurrency:
+      group: native-merge-proof-${{ github.repository_id }}-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+    steps:
+      - name: Verify defining workflow
+        id: source
+        env:
+          JOB_CONTEXT: ${{ toJSON(job) }}
+        run: |
+          set -eu
+          sha=$(jq -er '
+            select(.workflow_repository == "ForgingAlpha/.github" and
+                   .workflow_ref == "ForgingAlpha/.github/.github/workflows/verify-native-merge-approval.yml@refs/heads/main") |
+            .workflow_sha | select(type == "string" and test("^[0-9a-f]{40}$"))
+          ' <<< "$JOB_CONTEXT")
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Read the exact protected checker
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ForgingAlpha/.github
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+
+      - name: Create repository-scoped proof installation token
+        id: proof
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.NATIVE_MERGE_PROOF_CLIENT_ID }}
+          private-key: ${{ secrets.NATIVE_MERGE_PROOF_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-checks: write
+          permission-members: read
+          permission-contents: read
+          permission-pull-requests: read
+
+      - name: Reconcile live review evidence
+        env:
+          GH_TOKEN: ${{ steps.proof.outputs.token }}
+          PROOF_APP_SLUG: ${{ steps.proof.outputs.app-slug }}
+          PROOF_APP_CLIENT_ID: ${{ vars.NATIVE_MERGE_PROOF_CLIENT_ID }}
+        run: python3 -I -B actions/native-auto-merge/proof.py

@@ -35,7 +35,7 @@ automation without copying workflow logic between repositories.
   from committed inputs. Product owners define their test obligations. Before
   relying on CI, the organization verifies enrollment, actual execution and
   preservation of the complete applicable product checks on each repository.
-- Protected, human-merged `.github/main` is the active shared automation source.
+- Protected `.github/main` is the active shared automation source.
   Required checks and exact-revision human review precede the merge; no later tag
   promotion, source acceptance or recurring ruleset repin makes it active.
 - Agents develop on nonpersistent task branches. The product owner declares the
@@ -45,7 +45,7 @@ automation without copying workflow logic between repositories.
   production release and for subsequent ordinary releases. Development can continue
   on `dev` before that route is ready. Shared tooling retains its adopted route.
   Every protected merge requires complete applicable checks, exact-revision human
-  approval and human execution. Branch existence and repository names confer no
+  approval and the merge procedure in REQ-024. Branch existence and repository names confer no
   release authority.
 
 - Every shared execution retains its exact resolved source revision and consumer
@@ -53,19 +53,19 @@ automation without copying workflow logic between repositories.
   preserves earlier execution evidence.
 - Normal dependency proposals receive a deliberate cooldown; eligible security
   proposals receive immediate classification and exact-patch verification.
-  An authorized human performs every pull-request merge after its required gates.
+  An authorized human approves the exact revision before either a personal merge or a qualified native auto-merge.
 - Every versioned dependency, runtime, tool, Action, image, and external plugin
   has exactly one discoverable update owner; unmanaged version literals fail
   required CI.
 - Renovate owns normal external updates across supported manifests, locks, and
   annotated literals. Internal `ForgingAlpha/.github@main` references follow
-  the protected human-merge path. Cooled normal updates follow the repository's
-  ordinary integration route through human-merged pull requests with exact-head
+  the protected, human-reviewed merge path. Cooled normal updates follow the repository's
+  ordinary integration route through human-approved pull requests with exact-head
   CI; an updater's configured target does not create a route exception.
 - Dependabot owns security remediation only. Every eligible security proposal,
   whether its source targets `main` or `dev`, retains trusted classification of
   GitHub's official vulnerability-alert-to-pull-request association and the exact
-  approved dependency patch before a human merges it.
+  approved dependency patch before the source merges.
 - Runtime and tool upgrades follow the same normal patch, minor, and major
   automation path while preserving exact committed locks and integrity data.
 - Where security remediation uses a separate `dev` source, production promotion
@@ -73,7 +73,7 @@ automation without copying workflow logic between repositories.
   verified dependency patch from its merged `dev` security change onto the
   current production base. It never carries unrelated unreleased `dev` work.
   Direct security proposals to `main` retain the same source-classification and
-  patch-proof obligations, required checks, human review and human merge without
+  patch-proof obligations, required checks and exact human approval without
   inventing a second source merge or cross-branch projection.
 - Static and cross-cutting checks run once; parallel test lanes remain lean.
 - Organization runtime profiles and compatible version tuples have one
@@ -84,10 +84,11 @@ automation without copying workflow logic between repositories.
 - External automation dependencies are immutable and integrity-verifiable.
 - Required CI supplies technical evidence; it does not grant merge authority.
 - Every introduced or updated third-party package has license evidence approved
-  by central policy: an approved SPDX allowlist covering permissive licenses and
-  `LGPL-3.0-or-later`, or a reviewed exception for one repository and immutable
-  artifact. License eligibility and actual-use compliance are separate: product
-  release owners address applicable notice, source and distribution obligations.
+  by central policy: an approved SPDX allowlist covering permissive licenses,
+  `LGPL-3.0-or-later`, and the SIL Open Font License (`OFL-1.1`), or a
+  reviewed exception for one immutable artifact in one repository. Product
+  release owners address the notice, source and distribution obligations of
+  their actual use.
   Fixed first-party actions have governed ownership and release provenance;
   unknown evidence fails closed.
 
@@ -120,8 +121,8 @@ automation never executes untrusted pull-request code.
   are removed after qualified replacement preserves required consumers and evidence.
   Bounded migration is not a permanent alternate development route.
 - Every control-plane change lands through a reviewed pull request with green
-  `CI`, authorized-human approval of the exact current revision, and human
-  execution of the merge. Coherent candidate and affected-consumer validation
+  `CI` and authorized-human approval of the exact current revision. A human personally
+  merges changes to review or merge authority. Coherent candidate and affected-consumer validation
   belongs before merge. No existing required check or enrolled consumer gate may
   be deferred. Main membership makes the resulting source active; execution
   observations do not add another activation decision.
@@ -130,7 +131,7 @@ automation never executes untrusted pull-request code.
   updates.
 - Security urgency may bypass cooldown and release batching, never CI, source
   provenance, exact-patch verification, current-base verification, CodeQL or
-  human merge authority. Cross-branch projection additionally reconstructs only
+  exact human approval. Cross-branch projection additionally reconstructs only
   that proved patch on the current production base.
 - Inactive deployment tooling is removed instead of receiving new update
   automation.
@@ -233,9 +234,9 @@ caller preparation, and their assigned tests.
 
 #### REQ-005 - Protected Main Is Active
 
-Protected, human-merged `.github/main` SHALL be the active first-party shared
+Protected `.github/main` SHALL be the active first-party shared
 automation source. Required exact-revision checks and authorized human review
-SHALL precede the human merge. A separate tag promotion, post-merge acceptance
+SHALL precede the protected merge under REQ-024. A separate tag promotion, post-merge acceptance
 or recurring source-pin update SHALL NOT be required to activate that source.
 
 **Fit:** A new applicable execution selects protected `main`; a successful
@@ -259,8 +260,8 @@ executed-source identity.
 #### REQ-007 - Human-Reviewed Source Recovery
 
 Recovery of active shared automation SHALL use a corrective or revert pull
-request through the same required checks, exact-head human approval and human
-merge into protected `main`. It SHALL preserve the affected run/source evidence.
+request through the same required checks, exact-head human approval and protected
+merge into `main` under REQ-024. It SHALL preserve the affected run/source evidence.
 Automation SHALL NOT force-update `main`, select a historical tag as an active
 fallback or grant itself rollback or merge authority.
 
@@ -343,9 +344,9 @@ Security proposal timing is governed by [REQ-013](#req-013---immediate-security-
 underage release waits. A second eligible routine update joins the open batch
 in the next permitted run. The ordinary target SHALL match the repository's governed route under
 REQ-027, including its prior route during migration. Runtime and tool proposals
-retain their required locks and integrity checks. An authorized human merges
-each proposal after exact-head `CI` and applicable approval. Renovate and
-platform auto-merge remain disabled, including policy overrides. Shared
+retain their required locks and integrity checks. Each proposal follows REQ-024
+after exact-head `CI` and human approval. Renovate's `automerge` and
+`platformAutomerge` remain disabled, including in preset overrides. Shared
 automation becomes active on protected `main` after its complete gates pass.
 
 #### REQ-013 - Immediate Security Updates
@@ -355,7 +356,7 @@ security fix is available, on any day, without a normal release age or weekly
 batch window. Security-only Dependabot proposals MAY target the repository's
 protected default `main` directly, including when a separate `dev` exists. Every eligible security
 source proposal, targeting protected `main` or `dev`, SHALL satisfy the common
-classification, exact-patch, current-base, CI, CodeQL and human-merge obligations
+classification, exact-patch, current-base, CI, CodeQL and exact human approval obligations
 below. Direct-to-main delivery SHALL NOT require a second source merge or a
 cross-branch production projection. Ordinary admission SHALL NOT represent any
 proposal as classified or projected security evidence.
@@ -382,9 +383,9 @@ vulnerability-alert association and a trusted automation-App classification
 check bound to its exact source base, exact current head, complete associated
 OPEN or FIXED GHSA set, and approved manifest-and-lock change SHALL be treated
 as eligible security remediation. Eligible security updates
-SHALL bypass normal cooldown. An authorized human SHALL perform the source
-merge into the bound protected source branch only after that exact head passes its classification,
-required `CI`, CodeQL, and applicable approval. Trusted
+SHALL bypass normal cooldown. A source merge under REQ-024 SHALL target the bound
+protected source branch and require exact classification, required `CI`, CodeQL and
+applicable human approval on the current head. Trusted
 exact-head CI SHALL succeed. Trusted aggregate CodeQL SHALL succeed except that
 its terminal neutral result MAY be accepted only after exact source
 classification proves an exact lockfile-only patch and the trusted
@@ -439,8 +440,9 @@ projection writing. A consumer variable, workflow input, label, branch name, or
 pull-request field SHALL NOT select or override that trust identity. Each
 projection check's current App slug SHALL match the projection pull-request
 bot actor. The source merger and merge time SHALL be recorded as provider
-attribution; a known bot or automation merger SHALL be ineligible. Account type
-alone SHALL NOT establish human authorization. The App SHALL be dedicated to security automation; its
+attribution. A native source merge additionally requires the authorized arming actor and
+exact review evidence under REQ-024. An unidentified actor or unqualified automated source
+merge is ineligible. The App SHALL be dedicated to security automation; its
 private key SHALL NOT be available to a general agent launcher or any
 non-security workflow, and it SHALL have no persistent-branch merge bypass.
 Classification and projection operations SHALL NOT request or schedule a merge.
@@ -462,7 +464,7 @@ changes only the lock.
 A direct-main security merge SHALL preserve the same immutable classified source
 chain and supported merge shape, with `main` as its source and production branch.
 Read-only source observation SHALL re-prove that exact merged pull request, its
-pre-merge classification, observed human merger, ordered parents, source-head tree
+pre-merge classification, actual merge actor, exact human approval, ordered parents, source-head tree
 and official advisory association. It SHALL NOT manufacture a projection
 attestation or retroactively create missing classification. Its exact merged
 revision remains subject to the applicable deployment evidence in REQ-014.
@@ -511,7 +513,7 @@ the exact resulting `main` merge revision and tree. A separate-dev security flow
 SHALL preserve the source Dependabot head, its `dev` merge, production preimage,
 projected head, resulting `main` merge and deployment as one traceable immutable
 chain; those revisions are not required to share one commit SHA. A direct-main
-flow SHALL preserve its classified base and head, actual human merge and applicable
+flow SHALL preserve its classified base and head, observed source merge and applicable
 deployment without adding fictitious intermediate revisions. Shared-source
 activation under REQ-005 is not evidence of a product deployment.
 
@@ -538,10 +540,9 @@ and control-plane release tags SHALL reject untrusted direct
 writes, deletion, and uncontrolled force pushes.
 
 **Fit:** Independent no-bypass rules enforce required CI, CodeQL, current-base
-state, merge shape, deletion, and non-fast-forward protection. Only an
-applicable authorized human executes PR merges. Automation has no bypass
-authorizing persistent-branch updates, including after human approval.
-Repository auto-merge and merge queues are disabled. Separately scoped tag
+state, merge shape, deletion, and non-fast-forward protection. The protected merge procedure in REQ-024
+retains these rules. Agents and updater Apps have no bypass authorizing persistent-branch
+updates, including after human approval. Merge queues remain disabled. Separately scoped tag
 rollout and deployment permissions do not confer branch or merge authority.
 Missing migration branches confer no creation authority; qualify these protections
 before admitting their new integration or release paths under REQ-027.
@@ -550,8 +551,8 @@ before admitting their new integration or release paths under REQ-027.
 
 Agents MAY prepare changes, tests, commits, and operator scripts. Destructive
 pushes, ruleset administration, credential/App setup and settings transitions
-remain operator-owned. Only an authorized human executes a source-recovery PR
-merge; this does not create a separate source-activation step after that merge.
+remain operator-owned. Recovery requires the reviewed PR merge in REQ-007. The resulting source becomes
+active at merge.
 
 **Fit:** Automation and agent workflows contain no operator SSH key, personal
 access token, or agent-readable personal credential.
@@ -569,7 +570,7 @@ request is open.
 Renovate SHALL own normal external version updates and SHALL NOT create
 vulnerability-remediation pull requests. Internal
 `ForgingAlpha/.github@main` references SHALL remain excluded from Renovate and
-owned by the protected human-merge path. Dependabot SHALL own security
+owned by the protected, human-reviewed merge path. Dependabot SHALL own security
 remediation and SHALL NOT create normal version-update pull requests.
 
 **Fit:** A transition verifies the intended repository, ordinary target, package
@@ -632,9 +633,9 @@ Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
 approved SPDX allowlist; callers SHALL NOT disable the review, substitute a
 denylist, or exempt individual packages. The standard allowlist SHALL preserve
-its existing permissive license identifiers and add `LGPL-3.0-or-later`. This
-identifier permits selection of LGPL version 3; its inclusion SHALL NOT imply
-blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
+its existing permissive license identifiers and include `OFL-1.1` and
+`LGPL-3.0-or-later`. The LGPL identifier permits selection of version 3; its
+inclusion SHALL NOT imply blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
 custom or unknown licenses. Those require a separate reviewed central policy
 decision unless an applicable existing artifact exception already covers them.
 For a compound SPDX expression, every obligation in the selected licensing
@@ -691,7 +692,11 @@ updates SHALL require a new reviewed central policy change.
 
 Standard license eligibility SHALL NOT establish compliance for a particular use.
 The accountable product release owner SHALL assess the actual use and contents
-being delivered. For LGPL-covered library modifications, linked/combined works
+being delivered. When distributing OFL-covered fonts, the owner SHALL preserve
+the copyright notice and license, retain the OFL for the font, and respect any
+Reserved Font Names when distributing a modified version. The
+[SIL Open Font License 1.1](https://openfontlicense.org/open-font-license-official-text/) gives the full terms.
+For LGPL-covered library modifications, linked/combined works
 or redistribution, the owner SHALL identify and satisfy applicable copyright and
 license notices, license-copy, corresponding-source, replacement/relinking,
 reverse-engineering and installation-information conditions before delivery.
@@ -728,10 +733,10 @@ including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
-The enforcing release must demonstrate that an approved LGPL expression passes
-eligibility, while mixed expressions with an unapproved mandatory license and
-standalone GPL/AGPL or unknown/custom evidence fail without an applicable central
-exception. Product release verification checks the owner's assessment against the
+The enforcing release must demonstrate that `OFL-1.1` and an approved LGPL
+expression pass eligibility. Expressions with an unapproved mandatory license,
+standalone GPL/AGPL, and unknown/custom evidence must fail without an applicable
+central exception. Product release verification checks the owner's assessment against the
 actual use, delivered contents and applicable terms, including covered generated
 content, library redistribution and changed distribution. Missing required evidence
 or unresolved applicable obligations refuse delivery; CI eligibility alone cannot
@@ -743,10 +748,25 @@ Every change in a control-plane repository and every change to a repository's
 workflow or detected production-control surface SHALL require approval from an
 authorized human reviewer on the exact current pull-request revision. An
 agent or authoring-bot identity SHALL NOT satisfy or bypass that approval.
-Every PR merge, including dependency and security changes, SHALL be executed
-by an applicable authorized human. Separately scoped classification, proposal,
-tag rollout and deployment effects retain their own authorization; none
-authorizes an automated merge or persistent-branch push.
+For an ordinary, ready PR on a qualified protected route, the protected workflow MAY
+request GitHub native auto-merge before approval. GitHub MAY complete it only
+after the designated human has effectively approved the exact current head on
+that PR and all current required gates pass. Any new head requires a fresh
+approval, including a push that preserves the diff. Exact evidence binds the
+repository, PR, head, current base and validated integration. Preserve the
+original review, human identity, arming actor, actual merge actor, method,
+time and resulting commit. An accepted request records the intent to merge. Delivery requires the actual merge event and resulting content.
+
+An authorized human may personally merge through the applicable protected procedure. A human SHALL
+personally merge all branch promotions, including separate production security projections
+to `main`, any PR relying on an expressly authorized exceptional CI override, and changes
+to merge or review authority, including its controls, workflows, callers and enrollment.
+Each override retains its original evidence and the owning procedure’s limits on
+which quality gates a human may waive. Required review and security protections remain in force. A Dependabot security source on `dev` or directly on `main` MAY use the native path
+only on a route qualified for all REQ-013 source proof and REQ-014 observation.
+Its exact classification and current required checks SHALL pass before completion. Updater, security,
+agent and review identities receive no approval, bypass or direct protected-ref
+write authority. Qualification of native auto-merge requires its own hosted evidence.
 
 **Fit:** Team-review verification SHALL be available to repositories that retain
 their own product `CI` producer. For an enrolled team-review profile,
@@ -760,10 +780,10 @@ Unmigrated callers retain the current canonical `.github/CODEOWNERS` validation
 and applicable code-owner rules until an explicit, qualified migration preserves
 their required protection. A CODEOWNERS file is not required solely to duplicate
 verified team protection in an enrolled profile. Tests exercise permitted
-proposal and verification behavior and reject automation that approves, merges,
-queues a merge, or directly updates a persistent branch. Hosted permissions,
-team eligibility, bypass actors and human execution require operational qualification; local
-tests cannot prove them. This contract creates no enrollment or settings change.
+proposal and verification behavior, a qualified native request, and refusal of automation that
+approves, directly merges, invokes a merge queue, bypasses a rule or directly updates a persistent branch.
+Hosted permissions, team eligibility, effective actors, exact-review enforcement and merge attribution
+require operational qualification. This contract creates no enrollment or settings change.
 
 #### REQ-025 - Centrally Required Baseline Pilot
 
@@ -811,7 +831,7 @@ consumer whose existing local-CI security binding or push-event obligations
 cannot be preserved and qualified SHALL retain its existing producer. Source
 capability SHALL NOT enroll a consumer or update an organization ruleset's
 repository or branch selection. An existing enrolled rule SHALL follow protected
-`.github/main` after the one-time human-executed settings transition; later human
+`.github/main` after the one-time human-executed settings transition; subsequent protected
 merges SHALL NOT require a recurring source-pin update or source-activation gate.
 Initial enrollment, selector or producer changes SHALL still bind target,
 preserved controls and observed enforcement/recovery evidence. Producer retirement
@@ -868,7 +888,7 @@ under control-plane ASR-AUTH-005. Bind the exact repository, source and target,
 head and base commits, checking source and applicable release evidence. An
 agent proposes a change on a nonpersistent task branch. Every persistent merge
 requires complete applicable checks, current-base verification, independent
-human approval of the exact revision and human execution of the merge.
+human approval of the exact revision and the applicable merge procedure in REQ-024.
 
 | Adopted route | Ordinary proposals |
 | --- | --- |
@@ -905,7 +925,7 @@ before allowing production release.
 
 The shared-CI owner SHALL own exact-candidate affected-consumer qualification
 and its recorded result. Each consumer SHALL retain its product requirements,
-commands and tests. Existing CI, CodeQL, human review and human merge requirements
+commands and tests. Existing CI, CodeQL, human review and protected merge requirements
 remain mandatory for everyone.
 
 Qualification SHALL bind the shared candidate, consumer input, selected checking
@@ -1035,8 +1055,8 @@ incomplete. The validator preserves GitHub's last-match semantics. Repository
 rules retain their applicable code-owner review until qualified migration and
 invalidate stale approvals. Agents and the
 general-purpose authoring identity may create and update pull requests, but
-their approval cannot satisfy this boundary. An applicable authorized human
-executes every PR merge, including dependency and security updates. Updater,
+their approval cannot satisfy this boundary. REQ-024 governs ordinary completion and
+reserves specified merges for a human. Updater,
 security and release Apps retain only scoped proposal, check, tag rollout and
 deployment effects; they cannot merge or update persistent branches directly.
 
@@ -1049,16 +1069,35 @@ product checks. An explicitly enrolled document-only bootstrap can obtain its
 initial complete-profile `CI` centrally. These responsibilities implement REQ-001,
 REQ-003, REQ-004 and REQ-025. For a central-product profile, lane composition and
 aggregation move to the shared-CI owner; the product owner retains product behavior,
-command meaning and test completeness. Human merge authority does not move.
+command meaning and test completeness. Exact approval remains with the designated human.
 Consumers of the existing composites use
 `ForgingAlpha/.github/actions/<action>@main`. Self-CI exercises proposed implementations locally. Its lifecycle policy step uses the released shared action so the pull request cannot supply the checker that admits its own governing sources. Candidate policy code runs in the local test suites.
 
-Protected branches require the applicable human review, current-revision CI,
-scanning and current-base checks. Repository settings disable auto-merge and
-merge queues; automation receives no persistent-branch update bypass.
-Approval does not schedule a merge. A human executes it under the owning
-repository's protected procedure. Hosted settings, caller enrollment and
-credentials are verified separately from this source contract.
+The protected workflow `.github/workflows/request-auto-merge.yml` binds its
+defining source and compares current effective branch rules with the settings owner’s
+qualification on the protected base. The owner verifies privileged bypass and update
+admission across all applicable layers. The requester uses repository metadata to
+detect changes without a ruleset administration grant. It requests native
+auto-merge with the PR node ID, expected head OID and permitted merge method.
+Its execution boundary excludes PR code, PR-supplied credentials, merge queues,
+direct merges and protected-ref writes. A lost response requires readback of the
+same PR, subject and request. GitHub independently enforces current protections.
+
+The independent workflow `.github/workflows/verify-native-merge-approval.yml` publishes
+`Exact human approval`. Before permitting an arm, qualify this required check for
+the same PR and current head. Verify the trusted producer and demonstrate that
+completion requires an effective review by the designated human on a new head,
+including an update that preserves the diff.
+The expected head OID binds the request. A rule configuration check, delayed disarm
+or approval on an older head cannot authorize eventual completion. Preserve the
+independent review, CI, scanning and strict current-base rules, including stronger
+target-specific gates. If the actor boundary or the necessary evidence cannot be
+qualified, use the applicable personal human procedure. Verify that this route can satisfy
+its required checks as well. Source publication and hosted configuration have separate authorization.
+After an ordinary native merge, retain its verified outcome with the read-only
+`actions/native-auto-merge/observe.py` command. It reads the merged PR, validates
+the merge parents and tree, and reconciles the review, requester and recorded merger.
+[Operator interface and qualification](docs/operator-checklist.md#native-auto-merge-enrollment)
 
 #### Uniform proposal targets
 
@@ -1083,7 +1122,7 @@ back to dev before the next batch. The operator qualifies affected release,
 security, push-event and protection consumers before activation.
 
 For a staged release the owner records the dev merge hold before taking the
-batch snapshot. Human mergers honor the hold through verified staging integration
+batch snapshot. Every merge route honors the hold through verified staging integration
 or reconciled terminal cancellation. If the baseline moves, revalidate it.
 Bind the complete integrated batch, including permitted corrections, and the intended
 main integration. A reviewed no-change consolidation needs no empty PR. Before a
@@ -1106,7 +1145,7 @@ The central entrypoint is `.github/workflows/org-baseline.yml` in this
 repository, selected by a ForgingAlpha organization ruleset tracking protected
 `refs/heads/main`, with explicit consumer repository/branch selectors during the pilot. The
 one-time human settings transition replaces the old immutable workflow pin;
-later protected human merges need no recurring ruleset update or activation.
+later protected merges need no recurring ruleset update or activation.
 Required source checks and exact-head human review precede those merges.
 Existing protections remain in force. The workflow checks out the consumer
 revision separately from its own trusted checking source and records both
@@ -1227,7 +1266,7 @@ merge gate and is never waived. If the handover cannot enforce these refusals or
 preserve controls, retain the caller. There is no automatic retirement in this revision.
 Before caller retirement, recovery preserves the previous qualified producer and
 full protection configuration. After retirement, restoring that caller requires
-a separately reviewed human-merged consumer recovery change; a ruleset revert
+a separately reviewed consumer recovery change merged under REQ-024; a ruleset revert
 alone is insufficient. Retain the exact recovery source, checks and transition
 evidence before retirement. Reconcile an unknown outcome before another effect.
 This source responsibility does not authorize
@@ -1243,7 +1282,7 @@ must rebind and qualify those dependencies with the security/release owners befo
 retirement; this source change does not alter that automation or its protections.
 
 Central workflows and fixed first-party composite callers select protected
-`.github/main`. Source becomes active through the human merge; this does not
+`.github/main`. Source becomes active through the protected merge; this does not
 enroll a new target, alter selectors or establish actual target enforcement.
 All central helpers and cores resolve from the same defining-workflow checkout.
 Composite execution retains its resolved acquisition SHA, identifying the
@@ -1311,7 +1350,7 @@ creation exemptions. A stale or ambiguous state stops the operation; an unknown
 save requires readback before retry. This is not permission for an agent to
 administer rules or expand its credential scope.
 
-After that transition, a human merge into protected main activates source
+After that transition, a protected merge into main activates source
 without another settings operation. Recovery is a human-reviewed corrective or
 revert PR into main, with its resulting immutable commit and observed outcomes
 recorded. Verify required valid-pass and invalid-block behavior; a failed,
@@ -1323,14 +1362,14 @@ producer or coverage change still retains its affected qualification duties.
 Implementation and enrollment remain pending until independently qualified.
 No workflow, profile, team membership, ruleset or operational capability is
 created merely by adopting this architecture. Normal dependency cooldowns,
-expedited security eligibility and human source merges remain. Product deployment
+expedited security eligibility and exact human source approval remain. Product deployment
 schedules and settings transitions retain their own authority; shared source
-does not wait for a scheduled activation hour after its human merge.
+does not wait for a scheduled activation hour after its protected merge.
 
 ### Main-Based Shared Source
 
-Protected, human-merged `.github/main` is active. Required CI and review cover
-the exact candidate before the human merge, including coherent affected
+Protected `.github/main` is active. Required CI and review cover
+the exact candidate before the protected merge, including coherent affected
 consumer-profile checks. Existing enrolled consumer gates belong to that
 premerge validation; they are not silently removed or moved behind a separate
 activation decision. Post-merge observations record their actual subjects, times
@@ -1408,8 +1447,10 @@ there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
 low-or-higher vulnerabilities and licenses outside a centrally owned approved
 SPDX allowlist, subject to the central artifact admission below. The shared-CI
-owner must implement the standard policy's existing permissive identifiers and
-`LGPL-3.0-or-later`. Released enforcement must evaluate compound SPDX expressions
+owner includes the exact `OFL-1.1` and `LGPL-3.0-or-later` identifiers alongside
+the existing permissive licenses. The gate evaluates the reported license
+expression. Product owners verify the terms against the font files they ship.
+Released enforcement must evaluate compound SPDX expressions
 under REQ-023: all mandatory terms in an approved alternative must be eligible.
 The owner verifies that behavior through the actual pinned official action and
 mandatory evidence guard before release; this architecture specifies required
@@ -1466,7 +1507,7 @@ vulnerability enforcement remain separate and unchanged.
 The recorded repository, main snapshot, commit and blob establish source
 provenance only. They do not prove which Action executed, runtime safety,
 license compliance, a grant, human approval or runtime activation. The lookup
-composes with the protected human-merge path; it does not independently re-prove
+composes with the protected, human-reviewed merge path; it does not independently re-prove
 that path.
 
 `license_policy.py` also owns the closed artifact exception for
@@ -1582,7 +1623,7 @@ configuration selects it by its published name. Native
 managers own ordinary package manifests and locks, external
 Actions, and active non-runtime image references. The preset excludes
 `ForgingAlpha/.github` Actions so their internal `@main` references remain owned
-by protected human merges instead of being pinned to one release commit or
+by protected, human-reviewed merges instead of being pinned to one release commit or
 proposed for a new major. The central runtime-profile
 catalog owns governed runtime version declarations; constrained projection
 automation owns the derived consumer mise declaration and lock. Narrow
@@ -1627,8 +1668,7 @@ Security-only Dependabot updates use the repository's protected default branch,
 source, checks and hosted settings. Every eligible security source uses the
 common exact classification and patch proof below. A direct-main proposal does not manufacture a dev merge or projection;
 a separate-dev source additionally uses the cross-branch projection path. Both
-retain current-base CI, scanning, exact-head human approval and human execution
-of the merge. Existing enrolled proof consumers remain required until their
+retain current-base CI, scanning and exact-head human approval under REQ-024. Existing enrolled proof consumers remain required until their
 qualified replacements preserve the applicable evidence and event paths.
 
 The trusted caller binds the source branch from that owned configuration and
@@ -1675,7 +1715,7 @@ routing state is rejected. `security-patch-classification` writes one trusted
 exact-head classification. An identical retry preserves its original completion
 time; it cannot create missing pre-merge evidence after a merge. Its App key
 exists only in this security boundary and is never available to the general
-agent launcher. A human performs the normal two-parent source merge after
+agent launcher. The normal two-parent source merge follows REQ-024 after
 classification, required checks and applicable approval. The unprivileged
 preflight does not read vulnerability alerts and is not full classification.
 
@@ -1704,10 +1744,9 @@ resulting tree. The released control-plane policy pins the dedicated security
 source/projector App's public ID as the identity trust anchor for both source
 classification and projection writing; consumers install that App but cannot
 select or override which App the policy trusts. The projection App's current
-slug must match the projection pull-request bot actor. The source merge must
-postdate classification and must not be attributed to a known bot or automation
-account. That attribution does not prove human authorization; the protected
-human merge procedure owns that decision. Labels,
+slug must match the projection pull-request bot actor. The source merge must postdate classification. Native completion additionally
+requires independent proof of the qualified arming actor and exact human approval.
+The source observer records the actual merge actor and method under REQ-024. Labels,
 titles, bodies, and branch names are routing hints only.
 Any divergent preimage, unsupported file type, extra path, ambiguous API result,
 concurrent lock change, or moved base stops or rebuilds the projection from the
@@ -1768,7 +1807,7 @@ represented as gated by this observation.
 
 For a direct-main security merge, the corresponding read-only observer binds the
 actual main push, merged source pull request and current main ref, then re-proves
-the source classification and recorded human merge through the common source-proof
+the source classification and attributed source merge through the common source-proof
 implementation. It verifies the classified base and head, classification time,
 ordered merge parents, source-head tree, approved manifest-and-lock patch and
 official advisory association. It does not use the projection-only attestation or
@@ -1780,8 +1819,8 @@ source, not a product deployment or an additional post-merge activation gate.
 Quality, CodeQL, current-base, deletion, non-fast-forward, and merge-shape rules
 remain in no-bypass rulesets. Security and updater identities have no branch
 merge or direct-push authority. Consumer enrollment must prove the exact
-source classification, checks, caller serialization, credential boundary and human
-merge; separate-dev production additionally proves projection. Each product retains
+source classification, checks, caller serialization, credential boundary, exact human
+approval and actual source merge. Separate-dev production additionally proves projection. Each product retains
 its applicable deployment evidence. Source publication does not establish that
 enrollment or change existing hosted settings and queued work.
 
@@ -1818,8 +1857,8 @@ diversity; it is diagnostic and never a merge requirement.
 
 Agents prepare scoped repository changes, verification, and `/tmp` scripts.
 The operator owns destructive pushes, organization rules, credential/App setup,
-exact-revision approval, every PR merge, consumer enrollment and settings
-transitions. Source recovery uses the protected human PR path. Updater, security
+exact-revision approval, the personal merges reserved by REQ-024, consumer
+enrollment and settings transitions. Source recovery uses the protected human PR path. Updater, security
 and release automation retains only its separately
 defined non-merge effects. No SSH or personal credentials are available to agents.
 
@@ -1896,7 +1935,7 @@ jobs:
 ```
 
 The caller above illustrates a direct-release consumer. Its ordinary task PRs
-target dev and its dev-to-main release PR is checked before a human merges.
+target dev and its dev-to-main release PR is checked before the protected merge.
 Use the release targets selected under [REQ-027](#req-027---uniform-proposal-admission)
 for other repositories. The shared merge check runs before consumer language
 checks. Its read-only GitHub access verifies the live promotion subject and,
@@ -1921,7 +1960,7 @@ This candidate changes the bootstrap check topology: `CI` moves from the `baseli
 job to the final `result` job, and `baseline` reports `Organization Baseline`.
 The retained live Q6 source B is still adopted source
 `97a8a94c884f43c039278d117d0d9313d1465ec9`, with the old topology. Its results do not
-qualify this candidate. Protected main is active at human merge. Any consumer
+qualify this candidate. Protected main is active at the protected merge. Any consumer
 transition must reconcile both check identities and recovery, then qualify its exact
 target before reliance. No live selector or Q6 binding changes with this source proposal.
 
@@ -2149,9 +2188,9 @@ To set up or verify a repository, follow the [operator checklist](docs/operator-
 
 ## Active Shared Source And Recovery
 
-Protected, human-merged `.github/main` is the active shared source. Complete
+Protected `.github/main` is the active shared source. Complete
 exact-head source CI, coherent candidate and affected-consumer validation, and
-authorized human review precede the human merge. There is no recurring tag
+authorized human review precede the protected merge. There is no recurring tag
 promotion, source repin or post-merge acceptance gate. Push CI still reports
 post-merge failures visibly.
 
@@ -2181,7 +2220,7 @@ CI qualification. License, vulnerability and third-party immutable-reference
 rules remain mandatory.
 
 Recover with a checked corrective or revert pull request, exact-head human review
-and human merge into main. Record the new exact source and affected outcomes;
+and a protected merge into main under REQ-024. Record the new exact source and affected outcomes;
 retain prior execution evidence and historical tags. A whole-policy revert may
 restore earlier catalog approvals, including withdrawn entries: disclose those
 effects and use a forward fix when withdrawal must persist. No automated fallback,

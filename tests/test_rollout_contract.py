@@ -62,7 +62,7 @@ class MainSourceContractTest(unittest.TestCase):
 
     def test_human_reviewed_recovery_preserves_evidence_and_withdrawals(self):
         procedure = (ROOT / 'docs/operator-checklist.md').read_text()
-        for obligation in ('exact-head human', 'human merge into main',
+        for obligation in ('exact-head human', 'protected merge into main',
                            'before/after commits', 'withdrawn catalog approvals',
                            'forward fix', 'complete current rule',
                            'outcome-unknown', 'effective dev/main rules'):

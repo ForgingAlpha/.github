@@ -2,17 +2,17 @@
 
 Source publication does not configure GitHub. Verify the exact repository,
 resolved action revision, callers, permissions and hosted state before enabling
-an effect. Source on protected human-merged main is active; product deployment and hosted
-settings retain their own authority.
+an effect. Source on protected main is active at merge. Product deployment and hosted settings retain their own authority.
 
 ## Human Merge Boundary
 
-- Require pull requests, applicable authorized-human code-owner approval of the
-  exact current revision, stale-approval dismissal, current-base checks and `CI`
+- Require pull requests, designated human-team or applicable code-owner approval of
+  the exact current revision, stale-approval dismissal, current-base checks and `CI`
   on protected branches. Keep scanning and merge-shape protections independent.
-- An applicable authorized human executes every PR merge. Disable repository
-  auto-merge and merge queues; cancel previously queued merges. No bot, App or
-  workflow receives a persistent-branch update or merge bypass.
+- Preserve personal human merges for all branch promotions, including separate security
+  projections to main, exceptional CI overrides and changes to review or merge authority.
+  This includes its protections, requester, proof producer, caller and enrollment.
+  Keep merge queues disabled.
 - Inventory consumer workflows before merging changed action interfaces.
   Reconcile callers, queued runs and credentials of removed merge automation.
   Remove unused merge credentials only after verifying their consumers; retain
@@ -23,10 +23,127 @@ settings retain their own authority.
 - Keep private keys in their scoped secret source and protected environment.
   Agents receive no operator SSH key, personal token or human credential.
 
+### Native auto-merge enrollment
+
+The target repository’s owner selects its ordinary paths and security-source policy.
+A human personally reviews and merges that enrollment into the protected target branch.
+The two shared workflows read `.github/native-auto-merge.json` from the verified Git
+tree at the exact current **base** commit. A proposed configuration cannot enroll its
+own PR. No target is enrolled by the following illustration. The zero IDs deliberately
+fail validation.
+
+```json
+{
+  "repository_id": 0,
+  "branch": "dev",
+  "requester_id": 0,
+  "proof_app_id": 0,
+  "proof_context": "Exact human approval",
+  "ruleset_qualification": {"sha256": "<owner-verified fingerprint>", "observed_at": "<UTC inspection time>"},
+  "ordinary_paths": ["docs/guides/**"],
+  "security_sources": false
+}
+```
+
+Use the target’s numeric repository ID, the requester bot’s numeric **user ID**
+and the independent proof producer’s numeric **App ID**. The branch is `dev` or `main`.
+For ordinary task PRs every changed path, including both sides of a rename, must be an
+admitted exact path or fall under an admitted `directory/**`. Hidden paths, workflow
+and control directories, README and instruction files, and the other reserved names in
+[the enrollment reader](../actions/native-auto-merge/enrollment.py) stay outside that
+path selection. Enable `security_sources` only on a separately qualified protected
+default branch where the existing trusted classifier and proof/observer can establish
+all REQ-013 and REQ-014 obligations.
+
+Use the protected default branch’s thin `.github/workflows/native-merge.yml` caller.
+Grant only the reads required by the called jobs. The caller routes these events to
+protected shared definitions and supplies no PR checkout, cache or artifacts.
+
+| Consumer event | Shared workflow called by the fixed caller |
+| --- | --- |
+| `pull_request_target` on `opened` or `ready_for_review`; or a completed successful `AlphaApps Security Classification` check from App `4618077` | `ForgingAlpha/.github/.github/workflows/request-auto-merge.yml@main` |
+| `workflow_run` on completion of the named unprivileged PR or PR-review signal workflows | `ForgingAlpha/.github/.github/workflows/verify-native-merge-approval.yml@main` |
+
+Wake the proof on review submission or dismissal, head or base changes, draft/ready
+transitions, and native enable or disable events even after CI finishes. A signal only
+identifies the affected same-repository PRs and heads. An ambiguous shared head must
+supersede an earlier green proof for every affected enrolled PR. Verify that invalidation
+and restoration under concurrent hosted events before requiring the check. Keep product
+CI independent so either approval or CI can finish first. When a check completes in the
+merge second, the observer requires the GitHub rule evaluation for that actual merge
+to name the successful check run and App. An unreadable or truncated evaluation leaves
+the outcome unverified. [GitHub rule-suite metadata](https://docs.github.com/en/rest/repos/rule-suites#get-a-repository-rule-suite)
+
+| Branch-restricted environment | Dedicated identity and inputs |
+| --- | --- |
+| `native-merge-request` | Requester App with variable `NATIVE_MERGE_REQUEST_CLIENT_ID` and secret `NATIVE_MERGE_REQUEST_PRIVATE_KEY` |
+| `native-merge-proof` | Independent check producer with variable `NATIVE_MERGE_PROOF_CLIENT_ID` and secret `NATIVE_MERGE_PROOF_PRIVATE_KEY` |
+
+Before separately authorizing activation, verify both installations, reachable workflow
+sources and every credential access path. The requester needs GitHub write scopes that
+can authorize operations beyond requesting auto-merge. The protected code, credential
+isolation and actual rules must jointly prevent agent access, direct merges, protected-ref
+writes, self-approval and bypass. Retain each identity’s actual grant and effective
+organization, repository and inherited rules. Unavailable bypass or actor data leaves the
+route unqualified.
+
+The settings owner qualifies the branch under their own authority.
+
+1. From the reviewed shared checkout, obtain the visible fingerprint and applicable
+   ruleset IDs with `python3 -I -B actions/native-auto-merge/request.py ruleset-snapshot ForgingAlpha/REPO dev`
+   (or `main`). The command uses the scoped read connection. It includes update
+   restrictions, safety rules and inherited enterprise rules. It performs no mutation.
+2. In the owning settings for **each** ID, inspect full actor lists, bypass modes,
+   selectors, update admission and actual effective grants. Verify that exactly the
+   authorized human exceptions survive, that neither App can bypass review, proof,
+   CI or security, and that the requester can request native completion without
+   permission to merge directly. Retain that inspection in the authorized settings
+   record. GitHub omits bypass actors from a repository REST response when the
+   reader lacks ruleset write access. A missing list supplies no evidence.
+   [GitHub ruleset visibility](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset)
+3. Qualify a bypass-only change on a separately authorized representative ruleset
+   for each applicable ownership layer. Verify that the read-only fingerprint changes
+   when adding, changing or removing a bypass without changing visible rules. Verify
+   both the prior and restored actor state with the authorized owner. If a layer or
+   edit path cannot be observed or tested, keep the branch on the human procedure.
+4. Fingerprint the target again after the complete owner inspection. Both reads
+   must agree. Record the matching `sha256` and actual inspection time in
+   `observed_at` (UTC with a trailing `Z`, after the latest update’s whole second).
+   The enrollment PR binds them to the repository and branch. Changed or incomplete
+   rules require fresh qualification. Before any ruleset, App grant or protection
+   change, stop requests and have the owner disarm and reconcile outstanding requests
+   while the existing protections still hold. Grant and classic branch-protection
+   changes fall outside this ruleset fingerprint. For an armed PR the proof producer
+   checks the fingerprint again. GitHub must still enforce protection when it merges.
+
+Require strict current-base `CI` from the expected Actions producer and strict
+`Exact human approval` from the enrolled proof App. Verify the designated human team,
+scanning and all other required gates without a bypass for either identity. Exercise
+same-diff pushes by a writer, a withdrawn review, retargeting, changed integration,
+and two PRs sharing a head. Show that an already-green check or an externally armed
+request cannot complete a manual-only PR. Exercise expired or lost responses, manual
+disarm, and the real human path on excluded PRs. A skipped requester, a failed proof,
+or a blocked native path does not establish that a human can merge. Record check
+producer and subject, review, requester, actual merger and resulting content separately.
+Keep failures and unqualified cases visible. Source preparation supplies no hosted settings,
+App setup, consumer caller or activation.
+
+After GitHub reports an ordinary native merge, use the protected shared source and the
+target’s scoped read credential. Substitute the actual repository, PR number and merge
+commit shown on that PR, then retain the verified JSON with the proposal record.
+
+```bash
+python3 -I -B actions/native-auto-merge/observe.py OWNER/REPO PR_NUMBER MERGE_COMMIT
+```
+
+A missing receipt or a disagreement between the PR, parent commits, reviewed tree
+and recorded merger leaves delivery unverified. Use the security-source observer
+for a Dependabot security PR.
+
 ## Shared Checks, Main Source And Recovery
 
 - Require complete exact-head CI, coherent candidate and affected-consumer checks,
-  and authorized human review before the human source merge. Main membership
+  and authorized human review before the protected source merge. Main membership
   makes the shared source active. Keep post-merge failures visible; there is no
   tag promotion, recurring source repin or post-merge source acceptance.
 - Preserve all external Action SHA pins, license/vulnerability checks and exact
@@ -44,7 +161,7 @@ settings retain their own authority.
   entitlement in private consumers. Qualify actual PR dependency output before
   requiring the gate. Unknown records and API failures refuse without tag fallback.
 - Recover shared source with a checked corrective or revert PR, exact-head human
-  approval and human merge into main. Retain before/after commits, affected runs
+  approval and protected merge into main under REQ-024. Retain before/after commits, affected runs
   and outcomes. A whole-policy revert can restore withdrawn catalog approvals;
   disclose that effect and choose a forward fix when withdrawal must persist.
 - Retired v1 promotion/rollback workflows do not write tags or select fallback
@@ -57,7 +174,7 @@ settings retain their own authority.
   Pending launch, keep ordinary development on dev. Shared tooling retains its
   main-only task path. Check refusal for an unknown identity, an undeclared
   target and an attempted paid-release shortcut. Preserve push/security/check
-  consumers, required human review and human merge when qualifying a route.
+  consumers, exact human review and applicable protected merge controls when qualifying a route.
 
 ## Security Classification And Projection
 
@@ -76,11 +193,12 @@ settings retain their own authority.
   only the required metadata, Actions, content, PR and alert reads plus check
   writes. Re-prove the complete official GHSA set and exact allowed patch before
   writing. Serialize by repository and source head without cancellation.
-  Require classification before the human source merge; an identical retry
+  Require classification before the protected source merge; an identical retry
   preserves its completion time and cannot manufacture pre-merge evidence.
-- The human source merge must have ordered parents `[classified base, head]`
-  and the classified head tree. Record its observed actor and time; those fields
-  alone do not prove authorization. Classification and required exact-head
+- The source merge must have ordered parents `[classified base, head]`
+  and the classified head tree. Record the actual merge actor and time. A native
+  source merge additionally needs a qualified arming identity and the designated
+  human’s effective review of that PR and exact head. Classification and required exact-head
   CI/CodeQL precede that merge. Later unrelated `dev` movement is allowed for a
   separate-dev source.
 
@@ -112,11 +230,11 @@ These additional steps apply only when the classified source merges into dev.
 
 - An eligible default-main security source is the production proposal; require
   its source classification, exact-patch proof, strict current-base CI/CodeQL,
-  exact human approval and human merge. Do not create a second source merge,
+  exact human approval and an attributed source merge under REQ-024. Do not create a second source merge,
   projection PR or projection attestation.
 - Qualify a read-only observer that binds the actual main push, merged source PR
   and current main ref, then re-proves the source classification and its time,
-  classified base/head, human merge, ordered parents, source-head tree and official
+  classified base/head, actual merge actor, ordered parents, source-head tree and official
   advisory association. Do not manufacture missing classification after merge or
   call the projection-only observer with invented attestation evidence.
 - Where the product requires deployment, verify its exact main merge revision
@@ -135,7 +253,7 @@ These additional steps apply only when the classified source merges into dev.
 - Confirm the ordinary updater target against REQ-027, the current default/update
   coupling and the separate security target. Reconcile conflicts through the
   owning qualified transition; this checklist chooses no new default branch.
-  Confirm required human merge gates.
+  Confirm required exact human review and protected merge gates.
   Install the hosted Renovate App only in explicitly enrolled repositories.
 - Inspect onboarding for App access and manager discovery. Use the reviewed
   canonical consumer config, extending only the central preset with its exact
@@ -144,7 +262,8 @@ These additional steps apply only when the classified source merges into dev.
 - Inspect the resolved preset and hosted run history. Compare evaluation frequency,
   first batch, out-of-window behavior and a pending-age release with [REQ-012](../README.md#req-012---normal-update-cooldown).
   Confirm proposal limits, runtime and first-party Action exclusions, and that
-  Renovate and GitHub auto-merge are both disabled. Check major upgrades and initial pins stay outside the batch.
+  Renovate’s own `automerge` and `platformAutomerge` remain disabled.
+  Qualify a protected native request separately under REQ-024. Check major upgrades and initial pins stay outside the batch.
   Reconcile existing updater PRs at cutover.
 - For each new maintained repository at setup and each existing repository at
   cutover, verify in GitHub that the dependency graph, Dependabot alerts and
@@ -161,8 +280,8 @@ These additional steps apply only when the classified source merges into dev.
   the constrained resolver, writer and rollout gates are qualified. Record
   temporary exceptions with scope, owner, approval revision and expiry.
 
-Agents prepare reviewable source and commands. Humans perform PR merges,
-credential and ruleset changes, consumer settings transitions and source recovery.
+Agents prepare reviewable source and commands. Humans retain exact PR approval, personal merges for the manual lanes,
+credential and ruleset changes, and consumer settings transitions. Source recovery follows REQ-007.
 
 ## Organization-Required Documentation Pilot
 
@@ -171,21 +290,21 @@ operator path; an agent must not borrow a human browser session or credential to
 perform reserved protection writes. Preserve the existing status, scanning, review,
 update, deletion and non-fast-forward requirements throughout.
 
-1. Verify the exact current human-merged `.github/main` source and pre-merge check/
+1. Verify the exact current protected `.github/main` source and pre-merge check/
    review evidence. For the one authorized selector transition, capture and compare
    the complete current rule against expected-old state. Replace only its shared
    workflow source selector with `main`, preserving workflow path, repository and
    branch selectors, CI App binding, strictness, bypasses, creation flags and all
    inherited controls. Stop on stale or unknown state; read back an outcome-unknown
    save before any retry. Verify the full saved rule and effective dev/main rules.
-   Future human main merges do not require selector repins or source activation.
+   Future protected main merges do not require selector repins or source activation.
 2. Select only repository and branch identities explicitly enrolled by the qualified
    central source and the task's authorized target scope recorded under this
    procedure. The source catalog
    selects repository ID `1420939261` (`ForgingAlpha/layaslearninglab-site`) and
    branches `dev` and `main`. Preserve the existing qualified `dev` selector while
    completing the profile's required pilot cases. Select the additional `main`
-   target only from a human-merged, checked source, and qualify its actual target
+   target only from a checked, human-approved source on protected main, and qualify its actual target
    context before reliance. Other repositories or branches need separately approved
    source enrollment and qualification. Exclude the
    defining `.github` repository. Its skipped non-consumer
@@ -212,7 +331,7 @@ update, deletion and non-fast-forward requirements throughout.
    not establish target job-name evaluation. Exercise valid pass, deliberate invalid block and repair
    pass, including attempted consumer skip, executable config and application input.
 6. Qualify source recovery through a checked human-reviewed corrective or revert
-   PR and human merge into main, recording the new exact commit and affected valid
+   PR and protected merge into main, recording the new exact commit and affected valid
    pass and known-invalid block outcomes. Failed, cancelled, skipped or unexecuted
    runs are not recovery. Keep main as the active selector; do not repin a historical
    source or move a tag. If the initial consumer settings transition fails, restore
@@ -280,7 +399,7 @@ interfaces. Source qualification alone does not authorize a hosted change.
    required common baseline that refuses stale dual-producer heads, even if either CI
    passes. Keep strict current-base protection and required product CI throughout.
 5. Before retirement, recovery restores the captured qualified configuration. After
-   retirement, restoring the caller additionally requires its reviewed human-merged
+   retirement, restoring the caller additionally requires its reviewed and merged
    source change and observed valid-pass/invalid-block behavior. A settings revert or
    failed/cancelled/skipped/missing restored run is not recovery. Reconcile unknown
    effects before retrying.
