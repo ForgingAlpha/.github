@@ -78,7 +78,14 @@ test('missing or mismatched consumer tool installations cannot substitute an npm
   assert.doesNotThrow(() => lockedTool(root, name));
 });
 
-test('required projects cannot pass through empty, skipped or expected-to-fail journeys', () => {
+test('required projects cannot pass through empty, skipped or expected-to-fail journeys', (t) => {
+  const completion = path.join(fixture(t), 'completed');
+  const previous = process.env.SITE_BROWSER_COMPLETION;
+  process.env.SITE_BROWSER_COMPLETION = completion;
+  t.after(() => {
+    if (previous === undefined) delete process.env.SITE_BROWSER_COMPLETION;
+    else process.env.SITE_BROWSER_COMPLETION = previous;
+  });
   const reporter = new RequiredProjects();
   const project = { name: 'smoke-webkit' };
   function disposition(tests) {
@@ -88,5 +95,33 @@ test('required projects cannot pass through empty, skipped or expected-to-fail j
   const fact = (expectedStatus, status) => ({ expectedStatus, parent: { project: () => project }, results: [{ status }] });
   assert.deepEqual(disposition([]), { status: 'failed' });
   assert.deepEqual(disposition([fact('skipped', 'skipped'), fact('failed', 'failed')]), { status: 'failed' });
+  assert.equal(fs.existsSync(completion), false);
   assert.equal(disposition([fact('passed', 'passed')]), undefined);
+  assert.equal(fs.readFileSync(completion, 'utf8'), 'passed');
+});
+
+test('a successful CLI exit alone cannot certify the required browser projects', (t) => {
+  const root = fixture(t);
+  const deps = { '@playwright/test': '1.0.0', '@axe-core/playwright': '1.0.0' };
+  const packages = { '': { devDependencies: deps } };
+  for (const [name, version] of Object.entries(deps)) {
+    const dir = path.join(root, 'node_modules', name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name, version, exports: { './cli': './cli.cjs' } }));
+    packages[`node_modules/${name}`] = { version, integrity: 'fixture' };
+  }
+  fs.writeFileSync(path.join(root, 'node_modules/@playwright/test/cli.cjs'), 'process.exit(0)');
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ devDependencies: deps, scripts: { preview: 'fixture' } }));
+  fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ packages }));
+  fs.writeFileSync(path.join(root, 'site-browser.json'), JSON.stringify({
+    baseURL: 'http://127.0.0.1:4321/', serve: 'preview', testDir: 'journeys',
+  }));
+  fs.mkdirSync(path.join(root, 'journeys'));
+  fs.mkdirSync(path.join(root, 'dist'));
+  fs.writeFileSync(path.join(root, 'dist/index.html'), '<p>Fixture</p>');
+  const run = require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '../run.cjs'), 'release'], {
+    cwd: root, encoding: 'utf8',
+  });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /did not confirm a passing test in every required browser project/);
 });

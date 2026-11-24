@@ -109,6 +109,7 @@ async function invoke(kind, args) {
       inventory = await builtSite(root, baseURL);
       temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'website-browser-'));
       env.SITE_BROWSER_INVENTORY = path.join(temporary, 'pages.json');
+      env.SITE_BROWSER_COMPLETION = path.join(temporary, 'completed');
       fs.writeFileSync(env.SITE_BROWSER_INVENTORY, JSON.stringify(inventory.pages), { mode: 0o400 });
       command = ['test', '--config', path.join(__dirname, 'playwright.config.cjs')];
     }
@@ -118,8 +119,13 @@ async function invoke(kind, args) {
       env,
     });
     if (child.error) throw child.error;
-    if (child.status === 0 && inventory && JSON.stringify(inventory.files) !== JSON.stringify((await builtSite(root, baseURL)).files)) {
-      throw Error('The built site changed during browser testing. Serve the original build and keep its output intact.');
+    if (child.status === 0 && inventory) {
+      if (!fs.existsSync(env.SITE_BROWSER_COMPLETION)) {
+        throw Error('Playwright did not confirm a passing test in every required browser project.');
+      }
+      if (JSON.stringify(inventory.files) !== JSON.stringify((await builtSite(root, baseURL)).files)) {
+        throw Error('The built site changed during browser testing. Serve the original build and keep its output intact.');
+      }
     }
     process.exitCode = child.status ?? 1;
   } catch (error) {
