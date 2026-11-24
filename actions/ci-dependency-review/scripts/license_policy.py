@@ -21,6 +21,7 @@ APPROVED_SPDX = (
     "LGPL-3.0-or-later",
     "MIT",
     "MIT-0",
+    "MPL-2.0",
     "OFL-1.1",
     "PostgreSQL",
     "PSF-2.0",  # https://spdx.org/licenses/PSF-2.0.html
