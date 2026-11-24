@@ -84,10 +84,11 @@ automation without copying workflow logic between repositories.
 - External automation dependencies are immutable and integrity-verifiable.
 - Required CI supplies technical evidence; it does not grant merge authority.
 - Every introduced or updated third-party package has license evidence approved
-  by central policy: an approved SPDX allowlist covering permissive licenses and
-  `LGPL-3.0-or-later`, or a reviewed exception for one repository and immutable
-  artifact. License eligibility and actual-use compliance are separate: product
-  release owners address applicable notice, source and distribution obligations.
+  by central policy: an approved SPDX allowlist covering permissive licenses,
+  `LGPL-3.0-or-later`, and the SIL Open Font License (`OFL-1.1`), or a
+  reviewed exception for one immutable artifact in one repository. Product
+  release owners address the notice, source and distribution obligations of
+  their actual use.
   Fixed first-party actions have governed ownership and release provenance;
   unknown evidence fails closed.
 
@@ -632,9 +633,9 @@ Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
 approved SPDX allowlist; callers SHALL NOT disable the review, substitute a
 denylist, or exempt individual packages. The standard allowlist SHALL preserve
-its existing permissive license identifiers and add `LGPL-3.0-or-later`. This
-identifier permits selection of LGPL version 3; its inclusion SHALL NOT imply
-blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
+its existing permissive license identifiers and include `OFL-1.1` and
+`LGPL-3.0-or-later`. The LGPL identifier permits selection of version 3; its
+inclusion SHALL NOT imply blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
 custom or unknown licenses. Those require a separate reviewed central policy
 decision unless an applicable existing artifact exception already covers them.
 For a compound SPDX expression, every obligation in the selected licensing
@@ -691,7 +692,11 @@ updates SHALL require a new reviewed central policy change.
 
 Standard license eligibility SHALL NOT establish compliance for a particular use.
 The accountable product release owner SHALL assess the actual use and contents
-being delivered. For LGPL-covered library modifications, linked/combined works
+being delivered. When distributing OFL-covered fonts, the owner SHALL preserve
+the copyright notice and license, retain the OFL for the font, and respect any
+Reserved Font Names when distributing a modified version. The
+[SIL Open Font License 1.1](https://openfontlicense.org/open-font-license-official-text/) gives the full terms.
+For LGPL-covered library modifications, linked/combined works
 or redistribution, the owner SHALL identify and satisfy applicable copyright and
 license notices, license-copy, corresponding-source, replacement/relinking,
 reverse-engineering and installation-information conditions before delivery.
@@ -728,10 +733,10 @@ including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
-The enforcing release must demonstrate that an approved LGPL expression passes
-eligibility, while mixed expressions with an unapproved mandatory license and
-standalone GPL/AGPL or unknown/custom evidence fail without an applicable central
-exception. Product release verification checks the owner's assessment against the
+The enforcing release must demonstrate that `OFL-1.1` and an approved LGPL
+expression pass eligibility. Expressions with an unapproved mandatory license,
+standalone GPL/AGPL, and unknown/custom evidence must fail without an applicable
+central exception. Product release verification checks the owner's assessment against the
 actual use, delivered contents and applicable terms, including covered generated
 content, library redistribution and changed distribution. Missing required evidence
 or unresolved applicable obligations refuse delivery; CI eligibility alone cannot
@@ -1442,8 +1447,10 @@ there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
 low-or-higher vulnerabilities and licenses outside a centrally owned approved
 SPDX allowlist, subject to the central artifact admission below. The shared-CI
-owner must implement the standard policy's existing permissive identifiers and
-`LGPL-3.0-or-later`. Released enforcement must evaluate compound SPDX expressions
+owner includes the exact `OFL-1.1` and `LGPL-3.0-or-later` identifiers alongside
+the existing permissive licenses. The gate evaluates the reported license
+expression. Product owners verify the terms against the font files they ship.
+Released enforcement must evaluate compound SPDX expressions
 under REQ-023: all mandatory terms in an approved alternative must be eligible.
 The owner verifies that behavior through the actual pinned official action and
 mandatory evidence guard before release; this architecture specifies required
