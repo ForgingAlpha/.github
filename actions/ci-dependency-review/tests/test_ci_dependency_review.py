@@ -484,7 +484,7 @@ class CiDependencyReviewTest(unittest.TestCase):
         outputs = dict(line.split("=", 1) for line in policy_result.stdout.splitlines())
         self.assertEqual(outputs["allow_dependencies_licenses"], "")
         allowlist = outputs["allow_licenses"].split(",")
-        for expected in ("MIT", "Apache-2.0", "BSD-3-Clause", "ISC"):
+        for expected in ("MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "OFL-1.1"):
             self.assertIn(expected, allowlist)
 
     def test_non_pull_request_skip_is_explanatory(self):
@@ -630,6 +630,7 @@ class CiDependencyReviewTest(unittest.TestCase):
 
     def test_real_astro_licenses_and_complete_approved_alternatives_pass(self):
         expressions = (
+            "OFL-1.1", "MIT AND OFL-1.1", "OFL-1.1 OR GPL-3.0-only",
             "LGPL-3.0-or-later",
             "Apache-2.0 AND LGPL-3.0-or-later",
             "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
@@ -658,6 +659,8 @@ class CiDependencyReviewTest(unittest.TestCase):
         expressions = (
             "LGPL-3.0-only", "LGPL-2.1-or-later", "LGPL-2.1-only",
             "GPL-3.0-only", "AGPL-3.0-only", "MPL-2.0",
+            "OFL-1.0", "OFL-1.1+", "OFL-1.1-RFN", "OFL-1.1-no-RFN",
+            "OFL-1.1 AND GPL-3.0-only",
             "MIT AND GPL-3.0-only", "Apache-2.0 WITH LLVM-exception",
             "MIT WITH LLVM-exception AND Apache-2.0",
             "NOASSERTION", "LicenseRef-unknown",
