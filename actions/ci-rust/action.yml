@@ -176,7 +176,7 @@ runs:
     - name: Setup Rust (${{ inputs.toolchain }})
       # Pinned to the SHA currently on dtolnay/rust-toolchain@stable at pin-time.
       # Dependabot (see dependabot.yml) opens PRs when upstream advances.
-      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       with:
         toolchain: ${{ inputs.toolchain }}
         components: clippy, rustfmt
@@ -189,7 +189,7 @@ runs:
       run: bash "$GITHUB_ACTION_PATH/scripts/check_rust.sh" public verify-lock "$CARGO_LOCKED"
 
     - name: Cache Rust
-      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       with:
         workspaces: ${{ inputs.working-directory }} -> target
 

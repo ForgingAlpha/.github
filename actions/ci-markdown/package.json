@@ -2,11 +2,11 @@
   "name": "@forgingalpha/ci-markdown",
   "private": true,
   "dependencies": {
-    "markdownlint-cli2": "0.24.0"
+    "markdownlint-cli2": "0.24.2"
   },
   "overrides": {
-    "markdownlint@0.42.0": {
-      "re2js": "2.8.7"
+    "markdownlint@0.42.2": {
+      "re2js": "2.10.0"
     }
   }
 }
