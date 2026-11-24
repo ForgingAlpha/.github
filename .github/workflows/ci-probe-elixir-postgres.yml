@@ -186,7 +186,7 @@ jobs:
           fetch-depth: 1
 
       - name: Install exact locked runtime
-        uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
           working_directory: consumer
           version: 2026.8.3
@@ -264,7 +264,7 @@ jobs:
 
       - name: Upload diagnostic packet
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-probe-${{ steps.guard.outputs.out_label }}
           path: consumer/${{ steps.guard.outputs.artifact_path }}

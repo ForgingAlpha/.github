@@ -51,6 +51,18 @@ class CiMarkdownTest(unittest.TestCase):
     def git(self, *args):
         return subprocess.run(["git", "--literal-pathspecs", *args], cwd=self.repo, check=True, capture_output=True)
 
+    def test_re2js_override_reaches_the_installed_linter(self):
+        manifest = json.loads((self.install / "package.json").read_text())
+        result = subprocess.run(
+            ["npm", "ls", "--json", "--all", "re2js"],
+            cwd=self.install, env=self.base_env, capture_output=True, text=True, check=True,
+        )
+        cli = json.loads(result.stdout)["dependencies"]["markdownlint-cli2"]
+        linter = cli["dependencies"]["markdownlint"]
+        selector = f"markdownlint@{linter['version']}"
+        self.assertIn(selector, manifest["overrides"])
+        self.assertEqual(linter["dependencies"]["re2js"]["version"], manifest["overrides"][selector]["re2js"])
+
     def configure(self, **options):
         (self.repo / self.config).write_text(
             json.dumps({"config": {"default": False, "MD001": True}, **options}), encoding="utf-8"
