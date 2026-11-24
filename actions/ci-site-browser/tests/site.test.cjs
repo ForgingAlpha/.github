@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { modeFrom, lockedTool, siteSettings, builtPages } = require('../site.cjs');
+const { modeFrom, lockedTool, siteSettings, builtSite } = require('../site.cjs');
 const RequiredProjects = require('../required-projects.cjs');
 
 function fixture(t) {
@@ -14,7 +14,7 @@ function fixture(t) {
   return root;
 }
 
-test('public URLs include the base path, encode filenames and preserve distinct HTML pages', (t) => {
+test('public URLs include the base path, encode filenames and preserve distinct HTML pages', async (t) => {
   const root = fixture(t);
   const files = ['index.html', 'about/index.html', '404.html', 'a #.html', 'static/logo.svg'];
   for (const name of files) {
@@ -22,19 +22,25 @@ test('public URLs include the base path, encode filenames and preserve distinct 
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, name);
   }
-  const pages = builtPages(root, 'http://127.0.0.1:4041/prefix/');
+  const { files: original, pages } = await builtSite(root, 'http://127.0.0.1:4041/prefix/');
   assert.deepEqual(Object.fromEntries(pages.map((page) => [page.relative, new URL(page.url).pathname])), {
     'index.html': '/prefix/', 'about/index.html': '/prefix/about/', '404.html': '/prefix/404.html', 'a #.html': '/prefix/a%20%23.html',
   });
+  assert.deepEqual(original.map((file) => file.relative).sort(), [...files].sort());
+  const asset = path.join(root, 'dist', 'static/logo.svg');
+  fs.writeFileSync(asset, 'different SVG');
+  const changed = await builtSite(root, 'http://127.0.0.1:4041/prefix/');
+  assert.deepEqual(changed.pages, pages);
+  assert.notDeepEqual(changed.files, original);
 });
 
-test('absent or empty builds and links in output fail closed', (t) => {
+test('absent or empty builds and links in output fail closed', async (t) => {
   const root = fixture(t);
-  assert.throws(() => builtPages(root, 'http://localhost/'), /ENOENT/);
+  await assert.rejects(() => builtSite(root, 'http://localhost/'), /ENOENT/);
   fs.mkdirSync(path.join(root, 'dist'));
-  assert.throws(() => builtPages(root, 'http://localhost/'), /No public HTML/);
+  await assert.rejects(() => builtSite(root, 'http://localhost/'), /No public HTML/);
   fs.symlinkSync(root, path.join(root, 'dist', 'other'));
-  assert.throws(() => builtPages(root, 'http://localhost/'), /Unexpected link/);
+  await assert.rejects(() => builtSite(root, 'http://localhost/'), /Unexpected link/);
 });
 
 test('only explicit modes and existing inside-site journeys with a valid server are admitted', (t) => {

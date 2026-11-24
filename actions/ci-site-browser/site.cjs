@@ -6,6 +6,7 @@ const { createHash } = require('node:crypto');
 const path = require('node:path');
 const { createRequire } = require('node:module');
 const { spawnSync } = require('node:child_process');
+const { pipeline } = require('node:stream/promises');
 
 const readJSON = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
@@ -57,29 +58,37 @@ function digest(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function builtPages(root, baseURL) {
+async function builtSite(root, baseURL) {
   const artifact = path.join(root, 'dist');
   if (!fs.lstatSync(artifact).isDirectory()) throw Error('dist must be a built directory.');
+  const files = [];
   const pages = [];
-  function walk(dir, prefix) {
+  async function walk(dir, prefix) {
     const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'));
     for (const entry of entries) {
       const file = path.join(dir, entry.name);
       const relative = prefix + entry.name;
-      if (entry.isSymbolicLink()) throw Error(`Unexpected link in built output: ${relative}`);
-      if (entry.isDirectory()) walk(file, relative + '/');
-      else if (entry.isFile() && /\.html$/i.test(entry.name)) {
+      if (entry.isDirectory()) {
+        await walk(file, relative + '/');
+        continue;
+      }
+      if (!entry.isFile()) throw Error(`Unexpected link or special file in built output: ${relative}`);
+      const hash = createHash('sha256');
+      await pipeline(fs.createReadStream(file), hash);
+      const sha256 = hash.digest('hex');
+      files.push({ relative, sha256 });
+      if (/\.html$/i.test(entry.name)) {
         const route = relative.split('/').map(encodeURIComponent).join('/').replace(/(^|\/)index\.html$/, '$1');
-        pages.push({ relative, url: new URL(route, baseURL).href, sha256: digest(fs.readFileSync(file)) });
+        pages.push({ relative, url: new URL(route, baseURL).href, sha256 });
       }
     }
   }
-  walk(artifact, '');
+  await walk(artifact, '');
   if (!pages.length) throw Error('No public HTML found in dist. Run the production build first.');
-  return pages;
+  return { files, pages };
 }
 
-function invoke(kind, args) {
+async function invoke(kind, args) {
   let temporary;
   try {
     const mode = modeFrom(args);
@@ -97,10 +106,10 @@ function invoke(kind, args) {
     } else {
       lockedTool(root, '@axe-core/playwright');
       ({ baseURL } = siteSettings(root));
-      inventory = JSON.stringify(builtPages(root, baseURL));
+      inventory = await builtSite(root, baseURL);
       temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'website-browser-'));
       env.SITE_BROWSER_INVENTORY = path.join(temporary, 'pages.json');
-      fs.writeFileSync(env.SITE_BROWSER_INVENTORY, inventory, { mode: 0o400 });
+      fs.writeFileSync(env.SITE_BROWSER_INVENTORY, JSON.stringify(inventory.pages), { mode: 0o400 });
       command = ['test', '--config', path.join(__dirname, 'playwright.config.cjs')];
     }
     const child = spawnSync(process.execPath, [cli, ...command], {
@@ -109,8 +118,8 @@ function invoke(kind, args) {
       env,
     });
     if (child.error) throw child.error;
-    if (child.status === 0 && inventory && inventory !== JSON.stringify(builtPages(root, baseURL))) {
-      throw Error('Public HTML changed during browser testing. Serve the original build and keep its output intact.');
+    if (child.status === 0 && inventory && JSON.stringify(inventory.files) !== JSON.stringify((await builtSite(root, baseURL)).files)) {
+      throw Error('The built site changed during browser testing. Serve the original build and keep its output intact.');
     }
     process.exitCode = child.status ?? 1;
   } catch (error) {
@@ -121,4 +130,4 @@ function invoke(kind, args) {
   }
 }
 
-module.exports = { readJSON, digest, modeFrom, lockedTool, siteSettings, builtPages, invoke };
+module.exports = { readJSON, digest, modeFrom, lockedTool, siteSettings, builtSite, invoke };

@@ -46,8 +46,8 @@ At each width, the shared suite enumerates every HTML file in `dist`, follows th
 site base path, checks that the response contains that file's bytes, and runs
 axe. Directory indexes use their public directory URL. A built `404.html` or
 `404/index.html` may return HTTP 404 with its own body. Symbolic links and empty
-HTML inventories fail. The runner snapshots the HTML before starting the server
-and verifies it again after the tests. The shared page scan blocks cross-origin requests.
+HTML inventories fail. The runner hashes every file in the built site before starting the server and
+verifies the complete inventory again after the tests, including scripts and styles. The shared page scan blocks cross-origin requests.
 
 Keep navigation, keyboard/focus and interactive-state assertions in the
 site's regular Playwright specs under `testDir`. Mark at least one essential
