@@ -579,7 +579,13 @@ def application_catalog(data):
         for component in components:
             require(isinstance(component, dict), "invalid component")
             kind = component.get("kind")
-            shape(component, "kind root tests" + (" static_scripts" if kind == "astro" else ""), "component")
+            fields = "kind root tests"
+            if kind == "astro":
+                fields += " static_scripts"
+                if "website_browser" in component:
+                    fields += " website_browser"
+                    require(component["website_browser"] == "playwright-axe", "unsupported website browser check")
+            shape(component, fields, "component")
             require(kind in ("rust", "astro"), "unsupported component kind")
             roots.append(safe_path(component["root"], True))
             kinds.add(kind)
@@ -723,6 +729,11 @@ def classify(root, inventory, entry):
                 require(isinstance(value, dict), "invalid npm dependencies")
                 dependencies.update(value)
             require(all(tool in dependencies for tool in ("astro", "eslint", "prettier")), "missing locked Astro tools")
+            if "website_browser" in c:
+                dev_dependencies = package.get("devDependencies", {})
+                require(all(tool in dev_dependencies for tool in ("@playwright/test", "@axe-core/playwright")),
+                        "missing website browser development dependencies")
+                tracked_bytes(root, inventory, root_file(c, "site-browser.json"))
             require(all(isinstance(v, str) and not v.startswith(("file:", "link:", "workspace:")) for v in dependencies.values()), "unsupported local npm dependency")
             scripts = package.get("scripts")
             required_ids = ["build"] + c["static_scripts"] + (c["tests"]["scripts"] if c["tests"]["kind"] == "required" else [])
@@ -1034,6 +1045,7 @@ def execute_products(root, plan, phase):
         env = clean_env() | {"CARGO_AUDIT_VERSION": values["audit_version"]}
         def run_step(step, *args):
             checked(["mise", "exec", "--", "bash", str(helper), "central", step, *args], cwd, env, timeout=1200)
+        website_result = {}
         if phase == "static":
             if c["kind"] == "rust":
                 for step in ("fmt", "clippy", "check", "install-audit", "audit"):
@@ -1041,6 +1053,13 @@ def execute_products(root, plan, phase):
             else:
                 for step in ("install", "format", "lint", "types", "build"):
                     run_step(step)
+                if "website_browser" in c:
+                    # The later owner-selected scripts may intentionally rebuild another variant.
+                    mode = "release" if plan["branch"] == "main" else "pr"
+                    browser = SOURCE / "actions/ci-site-browser"
+                    for script in ("install.cjs", "run.cjs"):
+                        checked(["mise", "exec", "--", "node", str(browser / script), mode], cwd, env, timeout=1200)
+                    website_result = {"website_browser": mode}
                 for script in c["static_scripts"]:
                     run_step("script", script)
         elif c["kind"] == "rust":
@@ -1049,7 +1068,7 @@ def execute_products(root, plan, phase):
             run_step("install")
             for script in c["tests"]["scripts"]:
                 run_step("script", script)
-        results.append({"index": index, "kind": c["kind"], "root": c["root"], "result": "no-tests" if phase == "tests" and c["kind"] == "astro" and c["tests"]["kind"] == "owner-declared-none" else "success"})
+        results.append({"index": index, "kind": c["kind"], "root": c["root"], "result": "no-tests" if phase == "tests" and c["kind"] == "astro" and c["tests"]["kind"] == "owner-declared-none" else "success", **website_result})
     return {"schema_version": 1, "phase": phase, "plan_sha256": plan_digest(plan), "components": results}
 
 
@@ -1084,6 +1103,10 @@ def aggregate(plan, needs):
         shape(receipt, "schema_version phase plan_sha256 components", "component receipt")
         require(type(receipt["schema_version"]) is int and receipt["schema_version"] == 1 and receipt["phase"] == phase and receipt["plan_sha256"] == plan_digest(plan), "component receipt identity mismatch")
         expected = [{"index": i, "kind": c["kind"], "root": c["root"], "result": "no-tests" if phase == "tests" and c["kind"] == "astro" and c["tests"]["kind"] == "owner-declared-none" else "success"} for i, c in enumerate(plan["components"])]
+        if phase == "static":
+            for component, row in zip(plan["components"], expected):
+                if "website_browser" in component:
+                    row["website_browser"] = "release" if plan["branch"] == "main" else "pr"
         require(isinstance(receipt["components"], list) and all(isinstance(row, dict) and type(row.get("index")) is int for row in receipt["components"]), "invalid typed component result")
         require(receipt["components"] == expected, "missing/mismatched/failed component result")
 

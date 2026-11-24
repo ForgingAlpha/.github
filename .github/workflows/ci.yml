@@ -169,6 +169,9 @@ jobs:
           python3 -m unittest discover -s actions/ci-rust/tests
           python3 -m unittest discover -s actions/ci-astro/tests
 
+      - name: Test the website browser runner
+        run: node --test actions/ci-site-browser/tests/*.test.cjs
+
       - name: Test Elixir CI profiles
         run: |
           set -euo pipefail

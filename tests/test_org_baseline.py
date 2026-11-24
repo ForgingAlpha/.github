@@ -644,6 +644,57 @@ class ApplicationTests(unittest.TestCase):
         self.directory = Path(self.temp.name)
         self.f = ApplicationFixture(self.directory / 'consumer')
 
+    def test_website_browser_requires_reviewed_selection_and_tracked_site_inputs(self):
+        self.f.entry['components'][0]['website_browser'] = False
+        with self.assertRaisesRegex(ValueError, 'unsupported website browser'):
+            self.f.plan()
+        self.f.entry['components'][0]['website_browser'] = 'playwright-axe'
+        with self.assertRaisesRegex(ValueError, 'browser development dependencies'):
+            self.f.plan()
+        package = json.loads((self.f.root / 'package.json').read_text())
+        package['devDependencies'].update({'@axe-core/playwright': '4.14.0', '@playwright/test': '1.64.1'})
+        self.f.write('package.json', json.dumps(package))
+        self.f.commit()
+        with self.assertRaisesRegex(ValueError, 'missing tracked regular input: site-browser.json'):
+            self.f.plan()
+        self.f.write('site-browser.json', json.dumps({
+            'baseURL': 'http://127.0.0.1:4321/', 'serve': 'preview', 'testDir': 'tests/e2e',
+        }))
+        self.f.commit()
+        self.assertEqual(self.f.plan()['components'][0]['website_browser'], 'playwright-axe')
+
+    def test_website_browser_checks_the_original_build_and_is_required_by_final_ci(self):
+        plan = self.f.plan()
+        plan['components'][0]['website_browser'] = 'playwright-axe'
+        for branch, mode in [('dev', 'pr'), ('main', 'release')]:
+            plan['branch'] = branch
+            calls = []
+            def command(argv, cwd, env=None, **kwargs):
+                if '--version' in argv:
+                    return b'v24.18.0\n'
+                calls.append([Path(arg).name for arg in argv])
+            with patch.object(baseline, 'checked', side_effect=command):
+                static = baseline.execute_products(self.f.root, plan, 'static')
+                tests = baseline.execute_products(self.f.root, plan, 'tests')
+            self.assertEqual([args[-1] for args in calls],
+                             ['install', 'format', 'lint', 'types', 'build', mode, mode, 'extra', 'install', 'test'])
+            self.assertEqual([args[-2] for args in calls if args[-1] == mode], ['install.cjs', 'run.cjs'])
+            self.assertEqual(static['components'][0]['website_browser'], mode)
+            needs = successful_needs(plan, static=json.dumps(static), tests=json.dumps(tests))
+            baseline.aggregate(plan, needs)
+            del static['components'][0]['website_browser']
+            needs['static']['outputs']['receipt'] = json.dumps(static)
+            with self.assertRaisesRegex(ValueError, 'missing/mismatched/failed component result'):
+                baseline.aggregate(plan, needs)
+
+        def fail_browser(argv, *args, **kwargs):
+            if '--version' in argv:
+                return b'v24.18.0\n'
+            if Path(argv[-2]).name == 'run.cjs':
+                raise ValueError('browser failure')
+        with patch.object(baseline, 'checked', side_effect=fail_browser), self.assertRaisesRegex(ValueError, 'browser failure'):
+            baseline.execute_products(self.f.root, plan, 'static')
+
     def test_approved_readme_uses_selected_route_and_preserves_product_checks(self):
         f = self.f
         fixture = four_section_fixture
