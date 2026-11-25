@@ -92,9 +92,7 @@ def verify_rule(rules):
                      "designated team lacks an unambiguous canonical all-files requirement")
 
 
-def main():
-    source_sha = os.environ["DEFINING_SHA"]
-    baseline.source_identity(source_sha)
+def current_review():
     kind = os.environ.get("GITHUB_EVENT_NAME")
     baseline.require(kind in ("pull_request", "push") and os.environ["GITHUB_SERVER_URL"] == "https://github.com"
                      and os.environ["GITHUB_API_URL"] == "https://api.github.com", "unsupported event or GitHub host")
@@ -110,9 +108,17 @@ def main():
     live = api.get(f"/repos/{name}/branches/{branch}")
     baseline.require(live.get("name") == branch and live.get("protected") is True
                      and live.get("commit", {}).get("sha") == tip, "protected branch identity or tip changed")
-    verify_rule(api.rules(name, branch))
-    print(json.dumps({"source_sha": source_sha, "repository": name, "repository_id": identity,
-                      "branch": branch, kind: receipt, "ruleset_id": HUMAN_REVIEW_RULE, **baseline.ORGANIZATION_HUMAN_REVIEW}))
+    rules = api.rules(name, branch)
+    verify_rule(rules)
+    return ({"repository": name, "repository_id": identity, "branch": branch, kind: receipt,
+             "ruleset_id": HUMAN_REVIEW_RULE, **baseline.ORGANIZATION_HUMAN_REVIEW}, rules)
+
+
+def main():
+    source_sha = os.environ["DEFINING_SHA"]
+    baseline.source_identity(source_sha)
+    receipt, _ = current_review()
+    print(json.dumps({"source_sha": source_sha, **receipt}))
 
 
 def diagnostic(reason):
