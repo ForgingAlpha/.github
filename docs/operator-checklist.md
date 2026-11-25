@@ -353,15 +353,20 @@ update, deletion and non-fast-forward requirements throughout.
    inherited controls. Stop on stale or unknown state; read back an outcome-unknown
    save before any retry. Verify the full saved rule and effective dev/main rules.
    Future protected main merges do not require selector repins or source activation.
-2. Select only repository and branch identities explicitly enrolled by the qualified
-   central source and the task's authorized target scope recorded under this
-   procedure. The source catalog
-   selects repository ID `1420939261` (`ForgingAlpha/layaslearninglab-site`) and
-   branches `dev` and `main`. Preserve the existing qualified `dev` selector while
-   completing the profile's required pilot cases. Select the additional `main`
-   target only from a checked, human-approved source on protected main, and qualify its actual target
-   context before reliance. Other repositories or branches need separately approved
-   source enrollment and qualification. Exclude the
+2. Select only repositories and branches covered by both the approved source
+   enrollment and the operator task’s authorized target scope.
+   The current catalog selects repository ID `1420939261`
+   (`ForgingAlpha/layaslearninglab-site`) on `dev` alone. Keep its qualified
+   `dev` selector. Before selecting `main` for a first documentation-only promotion,
+   verify the site's exact converted `dev`, empty sole-root `main`, approved
+   dual-branch README scopes, direct route and reviewed dual-branch enrollment
+   in protected shared source. Qualify the effective team review on target `main`,
+   current-base CI, scanning and the required workflow producer. Qualify a personal
+   merge method that preserves the reviewed tree and permits the next ordinary
+   release. A merge with the empty `main` and reviewed `dev` as its two ordered
+   parents preserves both tree and ancestry. Record the permitted method, and
+   verify the actual parents and tree after the human merge. Other repositories
+   and branches need their own approved enrollment and qualification. Exclude the
    defining `.github` repository. Its skipped non-consumer
    job is not a pilot pass; all-skipped required-workflow semantics are unqualified.
    Distinguish workflow names from check-run names: the source workflow is named

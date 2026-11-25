@@ -203,6 +203,27 @@ def approved_readme_pointer(root, event, entry):
     pr = event["pull_request"]
     subject = standalone.Subject(entry["repository"], entry["repository_id"], pr["base"]["ref"],
                                  pr["base"]["sha"], pr["head"]["sha"])
+    if (entry["profile"] == "documentation-bootstrap" and subject.branch == "main"
+            and not git(root, "ls-tree", "-z", subject.base)):
+        # An empty main cannot supply a protected layout. Only the central schema-2
+        # enrollment can select the already-adopted dev README for this first release.
+        require(entry.get("producer") == "bootstrap" and entry["branches"] == ["dev", "main"]
+                and entry.get("review_policy", {}).get("kind") == "qualified-team"
+                and pr["head"].get("ref") == "dev" and merge_flow().assigned_route(subject.repository_id) == "direct",
+                "empty main requires enrolled schema-2 documentation bootstrap on the direct dev-to-main route")
+        require(git(root, "rev-parse", "--is-shallow-repository").strip() == b"false"
+                and git(root, "rev-list", "--max-parents=0", subject.head).decode().splitlines() == [subject.base],
+                "empty main must be the sole parentless root of the complete dev history")
+        required = {"dev": ["."], "main": ["."]}
+        _, selected, converted = standalone.layouts(root, subject.head, policy)
+        require(converted and selected == required, "first promotion requires the complete root README selection on dev and main")
+        standalone.check_site_snapshot(root, subject.head, policy, required)
+        pointer = standalone.four_reader().NATIVE_POINTER
+        document_inputs(root, subject.head, native_pointer=pointer)
+        require(git(root, "merge-tree", "--write-tree", subject.base, subject.head).strip()
+                == git(root, "rev-parse", f"{subject.head}^{{tree}}").strip(),
+                "first promotion integration must preserve the complete dev tree")
+        return pointer
     old = standalone.layouts(root, subject.base, policy)
     new = standalone.layouts(root, subject.head, policy)
     standalone.check_four_enrollment(root, subject, old, new, policy)
@@ -448,6 +469,8 @@ def run(root, event, entries, api):
     require(isinstance(repository, dict) and isinstance(pr, dict), "malformed consumer event")
     entry = select(entries, repository.get("full_name"), repository.get("id"), pr.get("base", {}).get("ref"))
     require(os.environ.get("GITHUB_REPOSITORY") == entry["repository"] and os.environ.get("GITHUB_REPOSITORY_ID") == str(entry["repository_id"]), "event/runtime repository identity mismatch")
+    require(entry["profile"] == "documentation-bootstrap", "document validation requires the enrolled documentation profile")
+    review = entry.get("review_policy", entry)
     branch, base, head = prove_pr(api, event, entry)
     origin = git(root, "remote", "get-url", "origin").decode().strip()
     require(origin in (f'https://github.com/{entry["repository"]}', f'https://github.com/{entry["repository"]}.git'), "consumer origin mismatch")
@@ -465,13 +488,13 @@ def run(root, event, entries, api):
                 "complete approved structural governing metadata required; definition-only fallback is unsupported")
         result = subprocess.run([sys.executable, "-I", "-B", str(SOURCE / "actions/ci-alphaapps-policy/scripts/validate_product_lifecycle_baseline.py")], cwd=root, env=safe, timeout=45, check=False)
         require(result.returncode == 0, "structural lifecycle validation failed")
-    team_configuration(api.rules(entry["repository"], branch), entry)
+    team_configuration(api.rules(entry["repository"], branch), review)
     try:
         lint_documents(root, strings)
     except Refused:
         raise Refused("central data-only Markdown validation failed") from None
     prove_pr(api, event, entry)
-    team_configuration(api.rules(entry["repository"], branch), entry)
+    team_configuration(api.rules(entry["repository"], branch), review)
     admit_tree(root, head, native_pointer=pointer)
     return public_receipt(root, event, entries, os.environ.get("BASELINE_SOURCE_SHA"))
 
@@ -604,13 +627,6 @@ def application_catalog(data):
         require(len(set(roots)) == len(roots) and roots == sorted(roots), "duplicate or unsorted component roots")
         require(kinds == ({"rust", "astro"} if entry["profile"] == "mixed" else {entry["profile"]}), "profile/component mismatch")
     return entries
-
-
-def bootstrap_entry(entry):
-    if "review_policy" not in entry:
-        return entry
-    return {key: entry[key] for key in ("repository", "repository_id", "branches", "profile")} | {
-        key: entry["review_policy"][key] for key in ("team_id", "minimum_approvals")}
 
 
 class StrictYaml(yaml.BaseLoader):
@@ -1217,7 +1233,7 @@ def make_plan(root, event, entry, source_sha):
                 "components": [], "required_jobs": ["baseline"]}
     pointer = approved_readme_pointer(root, event, entry)
     admit_tree(root, event["pull_request"]["head"]["sha"], native_pointer=pointer)
-    return {**public_receipt(root, event, [bootstrap_entry(entry)], source_sha), "producer": "bootstrap", "components": [], "required_jobs": ["baseline"]}
+    return {**public_receipt(root, event, [entry], source_sha), "producer": "bootstrap", "components": [], "required_jobs": ["baseline"]}
 
 
 def staged_main(args, root, event, entries, source_sha):
@@ -1237,7 +1253,7 @@ def staged_main(args, root, event, entries, source_sha):
             strings = admit_tree(root, plan["head"], definition_scopes=entry["registration"]["scopes"])
             lint_documents(root, strings)
         elif entry["profile"] == "documentation-bootstrap":
-            run(root, event, [bootstrap_entry(entry)], api)
+            run(root, event, [entry], api)
         else:
             application_common(root, event, entry, api, plan)
         current_checks(api, event, entry)
@@ -1253,7 +1269,7 @@ def staged_main(args, root, event, entries, source_sha):
             print(json.dumps({"producer": plan["producer"], "head": plan["head"], "base": plan["base"],
                               "source_sha": source_sha, "plan_sha256": plan_digest(plan), "result": "success"}))
             return
-        print(json.dumps(public_receipt(root, event, [bootstrap_entry(entry)], source_sha) if entry["profile"] == "documentation-bootstrap" else
+        print(json.dumps(public_receipt(root, event, [entry], source_sha) if entry["profile"] == "documentation-bootstrap" else
                          {"schema_version": 2, "plan_sha256": plan_digest(plan), "consumer": plan["consumer"], "head": plan["head"], "base": plan["base"], "source_sha": source_sha, "producer": plan["producer"], "checking_fingerprints": plan["checking_fingerprints"],
                           "required_results": {job: "success" for job in plan["required_jobs"]}, "result": "success"}))
     else:

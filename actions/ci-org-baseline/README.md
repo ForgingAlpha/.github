@@ -390,6 +390,30 @@ policy, new credentials, security enrollment or migration is introduced. Consume
 whose security pipeline is bound to local CI remain excluded from central-product
 activation even though this admission carveout is preserved in source.
 
+### First documentation-only promotion to an empty main
+
+A schema-2 documentation bootstrap may use the approved root README on protected
+`dev` for its first promotion when its reviewed enrollment selects both `dev` and
+`main` with a qualified team. The canonical route table must assign the same
+repository ID to the direct route. The documentation entry keeps its
+`release_route` field set to `{"kind":"not-applicable"}`.
+
+The central checker uses the exact consumer PR head in a separate checkout from
+its defining workflow revision. The target must be a parentless, empty-tree
+`main` commit and the sole root of the entire proposed `dev` history. Both
+selection records on `dev` must specify exactly the root for both branches.
+The checker verifies the complete README governing inventory and source bindings,
+native instruction pointers, data-only tree and tracked Markdown. It computes the
+integration tree from the exact commits and compares its ID with the checked
+`dev` tree ID. Admission and finalization read the live PR, both protected tips
+and effective review rules for the target `main`. A populated target supplies
+its own governing selection on subsequent releases.
+
+The standalone Analyzing Alpha exception has its own inspected, nonempty base and
+validates GitHub's test merge. Human review, scanning, qualification of the
+personal merge method and observation of the actual release remain with the
+protection and release owners. [Protected promotion procedure](../../docs/operator-checklist.md#organization-required-documentation-pilot)
+
 ## Plan, result identities and exact aggregation
 
 A trusted admission job derives a bounded JSON plan from validated enrollment and
