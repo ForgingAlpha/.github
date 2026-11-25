@@ -205,6 +205,15 @@ identical to that head. The checker SHALL verify the complete governing inventor
 approved metadata and source bindings. Later main changes use main's adopted
 selection. Existing branch admission and human approvals apply throughout.
 
+For a first documentation-only promotion enrolled under REQ-026, the central
+workflow MAY use the approved four-section README on protected `dev` as its
+governing baseline. The direct release PR SHALL propose the exact current
+protected `dev` tip to protected `main` in that same repository. The current
+`main` tip SHALL be a parentless commit with an empty tree and the sole root
+of the proposed head's history. The intended integration SHALL preserve the
+complete checked `dev` tree. Once `main` is populated, its own adopted selection
+governs subsequent changes.
+
 **Fit:** Missing, provisional, or malformed source truth produces actionable
 failure output while a definition-only change can repair it. The exact canonical
 `ForgingAlpha/control-plane` source follows its owning source-adoption rules and
@@ -864,6 +873,21 @@ central source, validate its governing documents and tracked Markdown, and admit
 only its declared non-executable inputs. Application profiles SHALL fail when
 their expected manifests or commands are missing rather than select bootstrap.
 
+Each repository using the first documentation-only promotion in REQ-002
+requires a separately reviewed schema-2 `documentation-bootstrap` enrollment
+in the trusted central source. Its exact repository name and ID, both `dev` and
+`main`, and the qualified review team SHALL match that enrollment. The canonical
+release route assignment for the same ID SHALL be direct.
+The complete `readme_four_section_scopes` selection in
+both the root manifest and its Requirements metadata SHALL be
+`{"dev":["."],"main":["."]}`. The entire proposed tree SHALL satisfy the
+data-only bootstrap checks, including approved README
+source metadata, exact source identities, digests and upstream bindings, the
+native README instruction pointers and lint of all tracked Markdown. Competing
+governing sources and executable or application inputs SHALL fail admission.
+The existing qualified-team review, exact-head human approval, required CI and
+scanning protections apply throughout.
+
 For a private repository's first definitions, the protection operator MAY enroll
 one open same-repository PR against its README-only initial `dev` commit. The
 enrollment SHALL bind the exact head, governing scopes and required human team.
@@ -1192,6 +1216,17 @@ The shared-CI owner will expose the same metadata-only verification to
 repositories that produce their own product `CI`. The trusted source selects
 the team and rule criteria. These repositories keep CODEOWNERS validation
 until the standalone check and their hosted protections have been qualified.
+
+The standalone Analyzing Alpha policy verifies the provider's test merge.
+For an enrolled first documentation-only promotion to an empty root under
+REQ-002 and REQ-026, the central workflow checks out the exact consumer PR
+head separately from its trusted checking source.
+It verifies the empty base and sole-root ancestry in Git, computes the integration
+tree from the exact base and head, and requires its tree ID to equal the checked
+head's tree ID. At admission and again before final success, the workflow verifies
+both checkout identities and reads the live PR, both protected branch tips and
+effective team-review rules from GitHub. Missing proof or disagreement with the
+checked repository name and ID, refs, commits or qualified team fails the check.
 
 Here CI enrollment means the centrally reviewed validation configuration for a
 consumer, not an unattended-authority Repository Enrollment or an Operational

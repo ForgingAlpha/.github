@@ -10,7 +10,7 @@
     {
       "id": "README.md#requirements",
       "path": "README.md#requirements",
-      "sha256": "51ef7393f94991bf70acf3b776d081df7a40f2f80fe36f1f92bbc4f4a0c2a023",
+      "sha256": "a4ae3d041cc8bff76a958c9027f638e54cfdb172460dfb71ad604080119a7307",
       "upstream": [
         {
           "path": "README.md#intent",
@@ -21,7 +21,7 @@
     {
       "id": "README.md#architecture",
       "path": "README.md#architecture",
-      "sha256": "92c55eb5a38fd4d15005b83a1e44acfc9ad712150af84d1352e62027a3e3d67b",
+      "sha256": "ef6fa41857563889bc05088c8018d3148c4280c425fd01fe02e58d806410d4b6",
       "upstream": [
         {
           "path": "README.md#intent",
@@ -29,7 +29,7 @@
         },
         {
           "path": "README.md#requirements",
-          "sha256": "51ef7393f94991bf70acf3b776d081df7a40f2f80fe36f1f92bbc4f4a0c2a023"
+          "sha256": "a4ae3d041cc8bff76a958c9027f638e54cfdb172460dfb71ad604080119a7307"
         }
       ]
     }
