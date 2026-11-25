@@ -1,0 +1,25 @@
+name: CI Website Browser
+description: Check the built website with the site's locked Playwright and axe dependencies
+inputs:
+  mode:
+    description: Browser coverage (pr or release)
+    required: true
+  working-directory:
+    description: Website package root containing the completed production build
+    required: false
+    default: "."
+runs:
+  using: composite
+  steps:
+    - name: Install matching browser binaries
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SITE_MODE: ${{ inputs.mode }}
+      run: node "$GITHUB_ACTION_PATH/install.cjs" "$SITE_MODE"
+    - name: Run website browser tests
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SITE_MODE: ${{ inputs.mode }}
+      run: node "$GITHUB_ACTION_PATH/run.cjs" "$SITE_MODE"

@@ -1438,6 +1438,19 @@ REQ-004 and REQ-010:
   and each static surface run once; product test lanes do not repeat static work.
   No Rust component or runtime is inferred for an Astro-only consumer.
 
+Public-facing Astro websites use a shared website-quality check after the
+production build. The same Playwright runner serves the freshly built site
+locally and in CI. Chromium covers desktop and phone layouts, site-owned
+journeys, and axe checks on public HTML and relevant interactive states.
+Release PRs to `main` also run the essential journeys in Firefox and WebKit.
+Each site owns its routes, local preview or Worker, expected behavior, and
+manual accessibility checks. The [website browser runner](actions/ci-site-browser/README.md)
+uses locked test dependencies from the site. The shared Astro build continues
+to run once. An enrolled component checks the existing output in that job
+before an owner-selected script can replace it. A repository with its own CI
+producer calls the same runner after its build. Adoption requires verifying
+equivalent coverage before retiring earlier browser checks.
+
 `ci-elixir` exposes `full`, `static`, and `test` profiles. `full` runs all
 cross-cutting/static work and the caller test command. `static` runs the same
 cross-cutting/static work without tests. `test` performs only locked runtime and
@@ -2100,6 +2113,7 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
 | `ci-rust` | Format, Clippy, dead code, tests, and audit |
 | `ci-astro` | Format, lint, Astro type checking, and build |
+| `ci-site-browser` | Site-owned journeys and accessibility checks against the completed website build |
 | `ci-typescript` | Format, lint, type checking, and tests |
 | `ci-shell` | ShellCheck at style severity and Bash syntax |
 | `security-patch-classification` | Dependabot-safe preflight and trusted exact-source classification |
