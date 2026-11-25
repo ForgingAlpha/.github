@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -77,16 +78,14 @@ def validate_policy(policy: dict[str, Any]) -> tuple[str, str, str | None]:
 
 
 def validate_renovate(config: dict[str, Any], base: str) -> None:
-    weekly = config.get("extends") == [WEEKLY_PRESET]
-    allowed = ALLOWED_RENOVATE_KEYS | {"packageRules"} if weekly else ALLOWED_RENOVATE_KEYS
-    unexpected = set(config) - allowed
+    unexpected = set(config) - ALLOWED_RENOVATE_KEYS - {"packageRules"}
     if unexpected:
         raise OwnershipError(f"repository Renovate config contains forbidden policy overrides: {', '.join(sorted(unexpected))}")
-    if not weekly and config.get("extends") != [CENTRAL_PRESET]:
+    if config.get("extends") not in ([CENTRAL_PRESET], [WEEKLY_PRESET]):
         raise OwnershipError(f"repository Renovate config must extend only {CENTRAL_PRESET} or {WEEKLY_PRESET}")
     if "packageRules" in config:
         validate_independent_updates(config["packageRules"])
-    if config.get("baseBranchPatterns") != [base]:
+    if "baseBranchPatterns" in config and config["baseBranchPatterns"] != [base]:
         raise OwnershipError(f"repository Renovate baseBranchPatterns must be exactly [{base!r}]")
 
 
@@ -218,20 +217,13 @@ def validate_central_preset(config: dict[str, Any]) -> None:
     }
     admitted_rules.update({
         "mise": {"matchManagers": ["mise"], "enabled": False},
-        "linting group": {
-            "matchManagers": ["npm"],
-            "matchUpdateTypes": ["minor", "patch"],
-            "matchPackageNames": [
-                "@eslint/js", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser",
-                "astro-eslint-parser", "eslint", "eslint-plugin-astro", "globals", "typescript-eslint",
-            ],
-            "groupName": "linting",
-        },
-        "formatting group": {
-            "matchManagers": ["npm"],
-            "matchUpdateTypes": ["minor", "patch"],
-            "matchPackageNames": ["prettier", "prettier-plugin-astro"],
-            "groupName": "formatting",
+        "separate majors": {"matchUpdateTypes": ["major"], "groupName": None},
+        "weekly batch": {
+            "matchUpdateTypes": ROUTINE_TYPES,
+            "groupName": "weekly dependencies",
+            "groupSlug": "weekly-dependencies",
+            "schedule": ["* 0-5 * * 2"],
+            "updateNotScheduled": False,
         },
         "Node engine": {
             "matchManagers": ["npm"],
@@ -254,10 +246,10 @@ def validate_central_preset(config: dict[str, Any]) -> None:
         policy = {key: value for key, value in rule.items() if key != "description"}
         matches = [
             name for name, expected in admitted_rules.items()
-            if policy == expected and ("enabled" not in policy or policy["enabled"] is False)
+            if policy == expected and all(type(policy[key]) is type(value) for key, value in expected.items())
         ]
         if not matches:
-            raise OwnershipError(f"central package rule {index} is not an admitted cooldown, related group, or ownership exclusion")
+            raise OwnershipError(f"central package rule {index} is not an admitted cooldown, batch rule, or ownership exclusion")
         name = matches[0]
         if name in observed:
             raise OwnershipError(f"central Renovate preset repeats the {name} rule")
@@ -272,27 +264,25 @@ def validate_central_preset(config: dict[str, Any]) -> None:
 
 
 def validate_weekly_preset(config: dict[str, Any]) -> None:
-    allowed = {"$schema", "description", "extends", "packageRules"}
-    if set(config) - allowed or config.get("extends") != [CENTRAL_PRESET]:
-        raise OwnershipError("weekly Renovate preset must extend the existing policy without other overrides")
-    expected = [
-        {"matchUpdateTypes": ["major"], "groupName": None},
-        {"matchUpdateTypes": ROUTINE_TYPES, "groupName": "weekly dependencies",
-         "groupSlug": "weekly-dependencies", "schedule": ["* * * * 2"], "updateNotScheduled": False},
-    ]
+    if set(config) - {"$schema", "description", "extends"} or config.get("extends") != [CENTRAL_PRESET]:
+        raise OwnershipError("renovate-weekly must extend only the canonical preset without overrides")
     for field in ("$schema", "description"):
         if field in config and not isinstance(config[field], str):
             raise OwnershipError(f"weekly Renovate preset {field} must be a string")
-    rules = config.get("packageRules")
-    if not isinstance(rules, list) or len(rules) != len(expected):
-        raise OwnershipError("weekly Renovate preset requires the major and Tuesday batch rules")
-    for rule, contract in zip(rules, expected):
-        if not isinstance(rule, dict) or {k: v for k, v in rule.items() if k != "description"} != contract:
-            raise OwnershipError("weekly Renovate grouping, schedule or bounds differ from policy")
-        if "description" in rule and not isinstance(rule["description"], str):
-            raise OwnershipError("weekly Renovate package rule description must be a string")
-        if "updateNotScheduled" in rule and rule["updateNotScheduled"] is not False:
-            raise OwnershipError("weekly Renovate automatic refresh outside Tuesday must be disabled")
+
+
+def validate_policy_file(path: Path, default_branch: str) -> None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        # The verified root preset selects Renovate, whose native target is the hosted default.
+        return
+    except OSError as error:
+        raise OwnershipError(f"could not inspect {path}: {error}") from error
+    if not stat.S_ISREG(mode):
+        raise OwnershipError(f"{path} must be a regular file when supplied")
+    _owner, base, _profile = validate_policy(load_json(path))
+    validate_default_branch(base, default_branch)
 
 
 def parse_args() -> argparse.Namespace:
@@ -322,11 +312,11 @@ def main() -> int:
             raise OwnershipError(
                 "repository-root, default-branch, policy, renovate, and dependabot paths are required for consumer validation"
             )
-        _owner, base, _profile = validate_policy(load_json(args.policy))
-        validate_default_branch(base, args.default_branch)
+        base = args.default_branch
+        validate_policy_file(args.repository_root / args.policy, base)
         validate_config_files(args.repository_root, args.renovate)
-        validate_renovate(load_json(args.renovate), base)
-        validate_security_only_dependabot(load_yaml(args.dependabot))
+        validate_renovate(load_json(args.repository_root / args.renovate), base)
+        validate_security_only_dependabot(load_yaml(args.repository_root / args.dependabot))
         print(f"✓ Update ownership validation passed (Renovate normal updates; Dependabot security only; base {base})")
         return 0
     except OwnershipError as error:
