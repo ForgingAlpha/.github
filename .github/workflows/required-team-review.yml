@@ -1,0 +1,10 @@
+name: Required team review
+'on': pull_request
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  team-review:
+    uses: ForgingAlpha/.github/.github/workflows/verify-team-review.yml@main

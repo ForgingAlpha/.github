@@ -23,6 +23,38 @@ an effect. Source on protected main is active at merge. Product deployment and h
 - Keep private keys in their scoped secret source and protected environment.
   Agents receive no operator SSH key, personal token or human credential.
 
+### Team review for repository-owned CI
+
+The shared policy action reads the [central enrollment](../actions/ci-alphaapps-policy/team-review-repositories.json)
+from its own release. The list starts empty. Each entry has a canonical
+`repository`, its numeric `repository_id` and the destination `branches`
+(`dev`, `staging` or `main`). Unlisted repositories and branches use the existing
+CODEOWNERS check. Consider disclosure before adding a private repository to this public list.
+
+1. Keep CODEOWNERS in place. The settings owner requires the independent
+   [review workflow](../.github/workflows/required-team-review.yml) from this
+   repository's protected main on each selected destination. Verify the effective
+   organization workflow rule reports its exact repository ID, path and
+   `refs/heads/main` with no fixed SHA. If GitHub returns another representation,
+   retain the existing check until the binding is qualified.
+2. Qualify a real PR with the product CI and the required workflow. Verify the
+   intended human team, write access, all-file coverage and bypass settings. Prove
+   an eligible approval allows the current head and an absent or ineligible approval
+   blocks it. Repeat after a changed commit, an empty commit, a base merge and an
+   identical-tree rebase. Each new head must require fresh approval. Hold enrollment
+   if any case fails. Verify removing or replacing the product caller cannot satisfy
+   the independently required workflow. Check the existing job token can read
+   contents, PR metadata and effective branch rules.
+3. Enroll only the qualified branches via a human-reviewed change here. Verify a
+   current PR and protected-branch push, then remove the consumer file in its own PR.
+   Check every branch that uses that file before promoting its removal. For an
+   enrolled branch, unsupported events and unavailable review evidence stop CI.
+   The product action verifies configuration in the caller's job. The separate
+   required workflow binds its own source commit, and GitHub enforces human approval.
+4. To reverse enrollment, restore and verify the canonical CODEOWNERS file and its
+   enforcement first, remove the central entry second, and retire the required
+   workflow rule last.
+
 ### Native auto-merge enrollment
 
 The target repository’s owner selects its ordinary paths and security-source policy.
