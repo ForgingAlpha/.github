@@ -1976,12 +1976,17 @@ when applicable, the independently attested exact security patch.
 
 The organization-required entrypoint is
 [org-baseline.yml](.github/workflows/org-baseline.yml). Its trusted
-[enrollment](actions/ci-org-baseline/enrollment.json) selects only
-`ForgingAlpha/layaslearninglab-site`, repository ID `1420939261`, on `dev` and `main`.
-Its current profile is `astro` with the `central-product` producer. The documentation
-bootstrap described in this section is the earlier qualification profile, not that
-consumer's current enrollment. Bootstrap rejects unknown identities and application
-content; missing manifests never select bootstrap.
+[enrollment](actions/ci-org-baseline/enrollment.json) selects the documentation
+bootstrap for `ForgingAlpha/layaslearninglab-site` (repository ID `1420939261`)
+on `dev`. It checks the complete document tree and requires the qualified review
+team. An application file causes the bootstrap check to fail. The site's Astro
+runtime assignment remains available for its application enrollment.
+
+Keep the first promotion to `main` on hold until its README source on protected
+`dev` and its main-targeted checks are qualified. Before admitting the website
+implementation, restore the full Astro product checks against the adopted README
+release instructions. Each transition needs verified results on the affected
+branch and the existing human review.
 The defining `.github` repository is outside this consumer pilot. Its baseline
 workflow excludes source-repository jobs, whose names remain distinct from `CI`
 even when skipped. Actual target result naming requires hosted qualification. The existing required `CI`
