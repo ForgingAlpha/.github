@@ -109,7 +109,7 @@ class TeamReviewTests(unittest.TestCase):
         self.assertNotIn(TOKEN, diagnostic)
 
     def test_workflow_binding_and_isolation(self):
-        self.assertEqual(self.job["on"], {"workflow_call": None})
+        self.assertEqual(self.job["on"], {"workflow_call": None, "pull_request": {"branches-ignore": ["**"]}})
         self.assertEqual(self.job["permissions"], {"contents": "read", "pull-requests": "read"})
         self.assertEqual(list(self.job["jobs"]), ["verify"])
         job = self.job["jobs"]["verify"]
@@ -301,12 +301,7 @@ class TeamReviewTests(unittest.TestCase):
         self.assertEqual(command[:3], ["python3", "-I", "-B"])
         self.env.update(POLICY_ACTION_REPOSITORY="ForgingAlpha/.github", POLICY_ACTION_REF="main")
         self.env.pop("DEFINING_SHA")
-        path = ".github/workflows/required-team-review.yml"
-        wrapper = yaml.safe_load((ROOT / path).read_text())
-        self.assertEqual(wrapper["on"], "pull_request")
-        self.assertEqual(wrapper["permissions"], self.job["permissions"])
-        self.assertEqual(wrapper["jobs"], {"team-review": {"uses": "ForgingAlpha/.github/" + WORKFLOW + "@main"}})
-        selector = {"path": path, "repository_id": 1137664016, "ref": "refs/heads/main"}
+        selector = {"path": WORKFLOW, "repository_id": 1137664016, "ref": "refs/heads/main"}
         rule = {"type": "workflows", "ruleset_source_type": "Organization", "ruleset_source": "ForgingAlpha",
                 "ruleset_id": 123, "parameters": {"workflows": [selector]}}
         page2 = self.rules_path[:-1] + "2"
@@ -320,7 +315,7 @@ class TeamReviewTests(unittest.TestCase):
         # A valid legacy file on the subject cannot rescue a refused team check.
         (self.workspace / ".github").mkdir()
         (self.workspace / ".github/CODEOWNERS").write_text("/.github/ @leosmigel")
-        for obj, key, value in ((selector, "repository_id", ID), (selector, "path", WORKFLOW),
+        for obj, key, value in ((selector, "repository_id", ID), (selector, "path", ".github/workflows/other.yml"),
                                 (selector, "ref", "main"), (selector, "sha", HEAD),
                                 (rule, "ruleset_source", "other"), (rule, "ruleset_source_type", "Repository"),
                                 (self.responses, page2, []), (self.rule["parameters"], "dismiss_stale_reviews_on_push", False),

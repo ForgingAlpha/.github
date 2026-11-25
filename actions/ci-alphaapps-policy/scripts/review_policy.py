@@ -8,7 +8,7 @@ import sys
 
 ACTION = Path(__file__).resolve().parents[1]
 REGISTRY = ACTION / "team-review-repositories.json"
-WORKFLOW = ".github/workflows/required-team-review.yml"
+WORKFLOW = ".github/workflows/verify-team-review.yml"
 SHARED_REPOSITORY_ID = 1137664016
 
 

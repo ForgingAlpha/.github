@@ -32,8 +32,12 @@ from its own release. The list starts empty. Each entry has a canonical
 CODEOWNERS check. Consider disclosure before adding a private repository to this public list.
 
 1. Keep CODEOWNERS in place. The settings owner requires the independent
-   [review workflow](../.github/workflows/required-team-review.yml) from this
-   repository's protected main on each selected destination. Verify the effective
+   [review workflow](../.github/workflows/verify-team-review.yml) from this
+   repository's protected main on each selected destination. The verifier also
+   supports existing reusable callers. Its PR branch filter suppresses ordinary
+   source PR runs from a proposed ref. GitHub ignores that filter for ruleset runs.
+   [GitHub ruleset workflow event handling](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/troubleshooting-rules#supported-ruleset-workflow-events)
+   Verify the effective
    organization workflow rule reports its exact repository ID, path and
    `refs/heads/main` with no fixed SHA. If GitHub returns another representation,
    retain the existing check until the binding is qualified.
