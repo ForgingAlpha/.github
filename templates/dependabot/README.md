@@ -1,16 +1,17 @@
 # Dependabot Templates
 
-Use these security-only templates after Renovate enrollment is verified through
-the [operator checklist](../../docs/operator-checklist.md#dependency-proposal-enrollment).
-For each new repository with a managed dependency, add the thin root
-`renovate.json` and matching `.github/update-policy.json` with its governed
-ordinary target. Use [this repository's Renovate config](../../renovate.json)
-and [owner declaration](../../.github/update-policy.json) as examples.
-Use `ci-update-ownership` and `ci-dependabot-coverage` in required CI.
+Use these security-only templates when enrolling a repository through the
+[operator checklist](../../docs/operator-checklist.md#dependency-proposal-enrollment).
+For a new repository with a managed dependency, review the root `renovate.json`
+that extends the [organization's weekly preset](../../renovate-config.json).
+The [consumer configuration in this repository](../../renovate.json) uses GitHub's actual default branch.
+Keep `.github/update-policy.json` when it carries a runtime profile assignment.
+Include any missing ecosystem blocks or coverage exceptions in the enrollment
+PR so required `ci-update-ownership` and `ci-dependabot-coverage` can check them.
 
 Copy the closest template into `.github/dependabot.yml`, then delete update
-blocks for ecosystems that are not present. Keep normal-update capacity at zero;
-Renovate owns normal updates. The shared
+blocks for ecosystems that are not present. Set `open-pull-requests-limit: 0`
+and omit `target-branch` in every retained block. Renovate owns normal updates. The shared
 `ci-dependabot-coverage` action validates that obvious dependency surfaces are
 covered or explicitly documented as unmanaged.
 
