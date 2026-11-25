@@ -86,14 +86,16 @@ class TeamReviewTests(unittest.TestCase):
         response.headers = {"Link": self.links.get(path, "")}
         return response
 
-    def run_entry(self):
+    def run_entry(self, entry=None, args=()):
         # Patch only the HTTP transport. Execute the workflow entry as __main__,
         # including its isolated source checks, JSON parsing, pagination and exit handling.
         Path(self.env["GITHUB_EVENT_PATH"]).write_text(json.dumps(self.event))
         with patch.dict(os.environ, self.env, clear=True), patch("urllib.request.OpenerDirector.open", self.open_response), \
                 patch.object(sys, "path", sys.path.copy()), patch.dict(sys.modules), redirect_stdout(io.StringIO()) as output:
             sys.modules.pop("baseline", None)
-            runpy.run_path(str(self.entry), run_name="__main__")
+            sys.modules.pop("verify_team_review", None)
+            with patch.object(sys, "argv", [str(entry or self.entry), *args]):
+                runpy.run_path(str(entry or self.entry), run_name="__main__")
         result = output.getvalue()
         self.assertNotIn(TOKEN, result)
         return json.loads(result)
@@ -107,7 +109,7 @@ class TeamReviewTests(unittest.TestCase):
         self.assertNotIn(TOKEN, diagnostic)
 
     def test_workflow_binding_and_isolation(self):
-        self.assertEqual(self.job["on"], {"workflow_call": None})
+        self.assertEqual(self.job["on"], {"workflow_call": None, "pull_request": {"branches-ignore": ["**"]}})
         self.assertEqual(self.job["permissions"], {"contents": "read", "pull-requests": "read"})
         self.assertEqual(list(self.job["jobs"]), ["verify"])
         job = self.job["jobs"]["verify"]
@@ -233,3 +235,105 @@ class TeamReviewTests(unittest.TestCase):
                 self.refused()
         (self.source / "unexpected.txt").touch()
         self.refused()
+
+    def ownership_action(self):
+        action = self.source / "actions/ci-alphaapps-policy"
+        for filename in ("action.yml", "team-review-repositories.json", "scripts/review_policy.py",
+                         "scripts/validate_codeowners_contract.py"):
+            shutil.copyfile(ROOT / action.relative_to(self.source) / filename, action / filename)
+        select, legacy, check = yaml.safe_load((action / "action.yml").read_text())["runs"]["steps"][-3:]
+        self.assertEqual(select["env"], {"POLICY_REPOSITORY": "${{ github.repository }}",
+                                        "POLICY_REPOSITORY_ID": "${{ github.repository_id }}",
+                                        "POLICY_BRANCH": "${{ github.base_ref || github.ref_name }}"})
+        self.assertEqual(select["id"], "ownership")
+        self.assertEqual(legacy["if"], "steps.ownership.outputs.mode == 'codeowners'")
+        self.assertEqual(check["if"], "steps.ownership.outputs.mode != 'codeowners'")
+        self.assertNotIn("env", legacy)
+        self.assertEqual(check["env"], {"GITHUB_TOKEN": "${{ github.token }}",
+                                       "POLICY_ACTION_REPOSITORY": "${{ github.action_repository }}",
+                                       "POLICY_ACTION_REF": "${{ github.action_ref }}"})
+        return action, select, legacy, check
+
+    def test_policy_routes_the_legacy_file_check_offline(self):
+        action, select, legacy, _ = self.ownership_action()
+        consumer = self.workspace / "consumer"
+        subprocess.run(["git", "init", "-q", str(consumer)], check=True)
+        owners = consumer / ".github/CODEOWNERS"
+        owners.parent.mkdir()
+        registry = action / "team-review-repositories.json"
+        out = self.workspace / "out"
+        env = {"PATH": os.defpath, "GITHUB_ACTION_PATH": str(action), "GITHUB_OUTPUT": str(out),
+               "POLICY_REPOSITORY": NAME, "POLICY_REPOSITORY_ID": str(ID), "POLICY_BRANCH": "dev"}
+        def step(spec):
+            return subprocess.run(["bash", "-e", "-c", spec["run"]], cwd=consumer, env=env,
+                                  text=True, capture_output=True)
+        entry = {"repository": NAME, "repository_id": ID, "branches": ["dev"]}
+        # The consumer can create a lookalike registry and set plausible inputs.
+        (consumer / registry.name).write_text(json.dumps([entry]))
+        env["INPUT_OWNERSHIP_MODE"] = "team"
+        self.assertEqual(step(select).returncode, 0)
+        self.assertEqual(out.read_text(), "mode=codeowners\n")
+        for content, message in ((None, "is missing"), ("/.github/ @example", "non-authorized"),
+                                 ("/.github/ @leosmigel", "validation passed")):
+            with self.subTest(content=content):
+                if content:
+                    owners.write_text(content)
+                result = step(legacy)
+                self.assertEqual(result.returncode == 0, message == "validation passed")
+                self.assertIn(message, result.stdout + result.stderr)
+        registry.write_text(json.dumps([entry]))
+        for change, expected in (({}, "team"), ({"POLICY_BRANCH": "main"}, "codeowners"),
+                                 ({"POLICY_REPOSITORY_ID": "543"}, None), ({"POLICY_REPOSITORY": NAME + "x"}, None)):
+            with self.subTest(change=change), patch.dict(env, change):
+                out.write_text("")
+                self.assertEqual(step(select).returncode == 0, expected is not None)
+                self.assertEqual(out.read_text(), f"mode={expected}\n" if expected else "")
+        for records in ([entry, entry], [{**entry, "branches": ["feature"]}], [{**entry, "repository_id": True}]):
+            registry.write_text(json.dumps(records))
+            self.assertNotEqual(step(select).returncode, 0)
+
+    def test_enrolled_action_requires_both_live_organization_rules(self):
+        action, _, _, check = self.ownership_action()
+        registry = action / "team-review-repositories.json"
+        record = {"repository": NAME, "repository_id": ID, "branches": ["dev"]}
+        registry.write_text(json.dumps([record]))
+        command = shlex.split(check["run"].replace("$GITHUB_ACTION_PATH", str(action)))
+        self.assertEqual(command[:3], ["python3", "-I", "-B"])
+        self.env.update(POLICY_ACTION_REPOSITORY="ForgingAlpha/.github", POLICY_ACTION_REF="main")
+        self.env.pop("DEFINING_SHA")
+        selector = {"path": WORKFLOW, "repository_id": 1137664016, "ref": "refs/heads/main"}
+        rule = {"type": "workflows", "ruleset_source_type": "Organization", "ruleset_source": "ForgingAlpha",
+                "ruleset_id": 123, "parameters": {"workflows": [selector]}}
+        page2 = self.rules_path[:-1] + "2"
+        self.links[self.rules_path] = f'<https://api.github.com{page2}>; rel="next"'
+        self.responses[page2] = [rule]
+        def run():
+            return self.run_entry(command[3], command[4:])
+        isolated = subprocess.run(command, cwd=self.workspace, env={**self.env, "GITHUB_EVENT_NAME": "schedule"},
+                                  capture_output=True, text=True)
+        self.assertNotEqual(isolated.returncode, 0)
+        self.assertIn("unsupported event or GitHub host", isolated.stderr)
+        self.assertNotIn(TOKEN, isolated.stderr)
+        receipt = run()
+        self.assertEqual(receipt["required_workflow_ruleset_id"], 123)
+        self.assertNotIn("source_sha", receipt)
+        # A valid legacy file on the subject cannot rescue a refused team check.
+        (self.workspace / ".github").mkdir()
+        (self.workspace / ".github/CODEOWNERS").write_text("/.github/ @leosmigel")
+        for obj, key, value in ((selector, "repository_id", ID), (selector, "path", ".github/workflows/other.yml"),
+                                (selector, "ref", "main"), (selector, "sha", HEAD),
+                                (rule, "ruleset_source", "other"), (rule, "ruleset_source_type", "Repository"),
+                                (self.responses, page2, []), (self.rule["parameters"], "dismiss_stale_reviews_on_push", False),
+                                (self.env, "POLICY_ACTION_REF", "task"), (self.env, "POLICY_ACTION_REPOSITORY", NAME),
+                                (self.env, "GITHUB_EVENT_NAME", "workflow_dispatch"),
+                                (self.env, "GITHUB_EVENT_NAME", "merge_group"), (self.env, "GITHUB_EVENT_NAME", "schedule"),
+                                (self.env, "GITHUB_REF", "refs/tags/dev"), (self.live_pr["head"], "sha", BASE)):
+            with self.subTest(key=key, value=value), patch.dict(obj, {key: value}):
+                with self.assertRaisesRegex(SystemExit, "WHAT:"):
+                    run()
+        self.event = {"repository": REPO, "ref": "refs/heads/dev", "after": BASE, "before": HEAD, "deleted": False}
+        self.env.update(GITHUB_EVENT_NAME="push", GITHUB_SHA=BASE, GITHUB_REF="refs/heads/dev")
+        self.assertEqual(run()["push"], {"before": HEAD, "after": BASE})
+        registry.write_text(json.dumps([{**record, "branches": ["main"]}]))
+        with self.assertRaisesRegex(SystemExit, "outside central enrollment"):
+            run()
