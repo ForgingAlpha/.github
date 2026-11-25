@@ -1,6 +1,10 @@
 name: Verify team review
 'on':
   workflow_call:
+  # The organization ruleset starts this job from protected main and ignores event
+  # filters. Ordinary PRs in the source repository would run the PR's workflow ref.
+  pull_request:
+    branches-ignore: ['**']
 
 permissions:
   contents: read

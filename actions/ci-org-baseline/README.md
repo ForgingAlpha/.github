@@ -66,7 +66,8 @@ keys:
 | `components` | Docs: empty array. Application: 1–16 unique component records, sorted by root and kind; exact schema below. |
 
 A Rust component has exactly `{kind:'rust',root:PATH,tests:['cargo-all']}`. An Astro
-component has exactly `{kind:'astro',root:PATH,tests:TEST_SELECTION,static_scripts:[SCRIPT_ID,...]}`. `PATH` is `.` or
+component has `{kind:'astro',root:PATH,tests:TEST_SELECTION,static_scripts:[SCRIPT_ID,...]}`
+and can additionally select `"website_browser": "playwright-axe"`. `PATH` is `.` or
 a normalized relative POSIX path: no absolute path, empty segment, `.`/`..` segment,
 backslash, control character, leading option or linked ancestor. SCRIPT_ID matches
 `[A-Za-z0-9][A-Za-z0-9:_-]{0,63}`; the list is nonempty, unique, ordered and at most
@@ -86,6 +87,15 @@ Repo-owned architecture/custom Markdown/publication validation belongs here when
 product owner requires it. A missing selected script fails. Additional publication
 checks, if required by the owner, are selected validation-only script IDs;
 this does not permit publication or deploy effects during CI.
+
+For a website that selects the browser check, admission requires tracked
+`site-browser.json` and the site's Playwright and axe development dependencies.
+The site-quality runner uses the build in the current workspace before any
+extra scripts can rebuild it. A PR to `main` runs the release browser suite.
+Other admitted branches run the PR suite. The final required result verifies
+the selected mode in the component receipt. The existing registration keeps
+its current checks until its owner verifies the shared runner on the candidate.
+See the [website browser runner](../ci-site-browser/README.md).
 
 No schema-2 field can select a catalog, checkout, script path, shell command, runtime
 version, exclusion glob, CI job name, token or opt-out. Unknown is an error;

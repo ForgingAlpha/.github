@@ -60,13 +60,13 @@ class CatalogTests(unittest.TestCase):
         identity = 1420939261
         entries = baseline.catalog(baseline.decode((ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))
         runtime = baseline.decode((ROOT / "runtime-profiles/catalog.json").read_bytes())["assignments"]
-        for branch in ("dev", "main"):
-            site = baseline.select(entries, current, identity, branch)
-            self.assertEqual((site["profile"], site["producer"]), ("astro", "central-product"))
-            self.assertEqual(runtime[site["repository"]], {"profile": "node-24-astro-7", "status": "active"})
-            for name, repo_id in ((previous, identity), (current, identity + 1)):
-                with self.subTest(name=name, repo_id=repo_id), self.assertRaises(ValueError):
-                    baseline.select(entries, name, repo_id, branch)
+        site = baseline.select(entries, current, identity, "dev")
+        self.assertEqual((site["profile"], site["producer"]), ("documentation-bootstrap", "bootstrap"))
+        self.assertEqual(site["review_policy"], {"kind": "qualified-team", "team_id": 20299307, "minimum_approvals": 1})
+        self.assertEqual(runtime[current], {"profile": "node-24-astro-7", "status": "active"})
+        for name, repo_id, branch in ((current, identity, "main"), (previous, identity, "dev"), (current, identity + 1, "dev")):
+            with self.subTest(name=name, repo_id=repo_id, branch=branch), self.assertRaises(ValueError):
+                baseline.select(entries, name, repo_id, branch)
         self.assertNotIn(previous, runtime)
 
 
@@ -146,6 +146,17 @@ class AdmissionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.fixture = Fixture(Path(self.temp.name) / "consumer")
+
+    def test_shipped_dev_profile_admits_documents_and_refuses_application_files(self):
+        entries = baseline.catalog(baseline.decode((ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))
+        entry = baseline.select(entries, ENTRY["repository"], ENTRY["repository_id"], "dev")
+        plan = baseline.make_plan(self.fixture.root, self.fixture.event(), entry, "d" * 40)
+        self.assertEqual((plan["producer"], plan["required_jobs"]), ("bootstrap", ["baseline"]))
+
+        self.fixture.write("package.json", '{"name": "site"}')
+        self.fixture.commit()
+        with self.assertRaisesRegex(ValueError, "undeclared executable/config/application input"):
+            baseline.make_plan(self.fixture.root, self.fixture.event(), entry, "d" * 40)
 
     def test_real_git_docs_and_verified_projection_aliases(self):
         texts = baseline.admit_tree(self.fixture.root, self.fixture.head)
@@ -644,6 +655,57 @@ class ApplicationTests(unittest.TestCase):
         self.directory = Path(self.temp.name)
         self.f = ApplicationFixture(self.directory / 'consumer')
 
+    def test_website_browser_requires_reviewed_selection_and_tracked_site_inputs(self):
+        self.f.entry['components'][0]['website_browser'] = False
+        with self.assertRaisesRegex(ValueError, 'unsupported website browser'):
+            self.f.plan()
+        self.f.entry['components'][0]['website_browser'] = 'playwright-axe'
+        with self.assertRaisesRegex(ValueError, 'browser development dependencies'):
+            self.f.plan()
+        package = json.loads((self.f.root / 'package.json').read_text())
+        package['devDependencies'].update({'@axe-core/playwright': '4.14.0', '@playwright/test': '1.64.1'})
+        self.f.write('package.json', json.dumps(package))
+        self.f.commit()
+        with self.assertRaisesRegex(ValueError, 'missing tracked regular input: site-browser.json'):
+            self.f.plan()
+        self.f.write('site-browser.json', json.dumps({
+            'baseURL': 'http://127.0.0.1:4321/', 'serve': 'preview', 'testDir': 'tests/e2e',
+        }))
+        self.f.commit()
+        self.assertEqual(self.f.plan()['components'][0]['website_browser'], 'playwright-axe')
+
+    def test_website_browser_checks_the_original_build_and_is_required_by_final_ci(self):
+        plan = self.f.plan()
+        plan['components'][0]['website_browser'] = 'playwright-axe'
+        for branch, mode in [('dev', 'pr'), ('main', 'release')]:
+            plan['branch'] = branch
+            calls = []
+            def command(argv, cwd, env=None, **kwargs):
+                if '--version' in argv:
+                    return b'v24.18.0\n'
+                calls.append([Path(arg).name for arg in argv])
+            with patch.object(baseline, 'checked', side_effect=command):
+                static = baseline.execute_products(self.f.root, plan, 'static')
+                tests = baseline.execute_products(self.f.root, plan, 'tests')
+            self.assertEqual([args[-1] for args in calls],
+                             ['install', 'format', 'lint', 'types', 'build', mode, mode, 'extra', 'install', 'test'])
+            self.assertEqual([args[-2] for args in calls if args[-1] == mode], ['install.cjs', 'run.cjs'])
+            self.assertEqual(static['components'][0]['website_browser'], mode)
+            needs = successful_needs(plan, static=json.dumps(static), tests=json.dumps(tests))
+            baseline.aggregate(plan, needs)
+            del static['components'][0]['website_browser']
+            needs['static']['outputs']['receipt'] = json.dumps(static)
+            with self.assertRaisesRegex(ValueError, 'missing/mismatched/failed component result'):
+                baseline.aggregate(plan, needs)
+
+        def fail_browser(argv, *args, **kwargs):
+            if '--version' in argv:
+                return b'v24.18.0\n'
+            if Path(argv[-2]).name == 'run.cjs':
+                raise ValueError('browser failure')
+        with patch.object(baseline, 'checked', side_effect=fail_browser), self.assertRaisesRegex(ValueError, 'browser failure'):
+            baseline.execute_products(self.f.root, plan, 'static')
+
     def test_approved_readme_uses_selected_route_and_preserves_product_checks(self):
         f = self.f
         fixture = four_section_fixture
@@ -767,21 +829,17 @@ class ApplicationTests(unittest.TestCase):
         self.f.write('package.json', json.dumps(original)); self.f.commit()
         self.f.plan()
 
-    def test_enrolled_application_team_review_and_required_result_composition(self):
+    def test_astro_team_review_and_required_result_composition(self):
         from types import SimpleNamespace
-        entry = copy.deepcopy(baseline.catalog(baseline.decode(
-            (ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))[0])
-        self.assertEqual((entry["profile"], entry["producer"], entry["review_policy"]["kind"]),
-                         ("astro", "central-product", "qualified-team"))
-        self.f.entry = entry
-        package = json.loads((self.f.root / "package.json").read_text())
+        entry = self.f.entry
+        entry["review_policy"] = {"kind": "qualified-team", "team_id": ENTRY["team_id"], "minimum_approvals": 1}
         component = entry["components"][0]
+        component["static_scripts"] = ["ci:browser", "test:root-build"]
+        component["tests"] = {"kind": "required", "scripts": ["test", "test:publication", "test:dev"]}
+        package = json.loads((self.f.root / "package.json").read_text())
         for script in component["static_scripts"] + component["tests"]["scripts"]:
             package["scripts"][script] = "echo synthetic product command"
         self.f.write("package.json", json.dumps(package))
-        declaration = entry["release_route"]["declarations"][0]
-        self.f.write(declaration["path"], "# Project\n\n" + declaration["start"] + "\n" +
-                     declaration["text"] + declaration["end"] + "\n")
         self.f.commit()
         self.f.base = self.f.head
         self.f.git("update-ref", "refs/remotes/origin/dev", self.f.base)

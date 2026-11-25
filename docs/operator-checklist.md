@@ -23,6 +23,48 @@ an effect. Source on protected main is active at merge. Product deployment and h
 - Keep private keys in their scoped secret source and protected environment.
   Agents receive no operator SSH key, personal token or human credential.
 
+### Team review for repository-owned CI
+
+The shared policy action reads the [central enrollment](../actions/ci-alphaapps-policy/team-review-repositories.json)
+from its own release. This list selects the ownership check in repository-owned CI.
+The [organization baseline catalog](../actions/ci-org-baseline/enrollment.json)
+separately selects centrally produced CI. Each ownership entry has a canonical
+`repository`, its numeric `repository_id` and the destination `branches`
+(`dev`, `staging` or `main`). Unlisted repositories and branches use the existing
+CODEOWNERS check. Consider disclosure before adding a private repository to this public list.
+
+1. Keep CODEOWNERS in place. The settings owner requires the independent
+   [review workflow](../.github/workflows/verify-team-review.yml) from this
+   repository's protected main on each selected destination. The verifier also
+   supports existing reusable callers. Its PR branch filter suppresses ordinary
+   source PR runs from a proposed ref. GitHub ignores that filter for ruleset runs.
+   [GitHub ruleset workflow event handling](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/troubleshooting-rules#supported-ruleset-workflow-events)
+   Verify the effective organization workflow rule reports its exact repository ID, path and
+   `refs/heads/main` with no fixed SHA. If GitHub returns another representation,
+   retain the existing check until the binding is qualified.
+2. Qualify a real PR with the product CI and the required workflow. Verify the
+   intended human team, write access, all-file coverage and bypass settings. Prove
+   an eligible approval allows the current head and an absent or ineligible approval
+   blocks it. Repeat after a changed commit, an empty commit, a base merge and an
+   identical-tree rebase. Each new head must require fresh approval. Hold enrollment
+   if any case fails. Verify removing or replacing the product caller cannot satisfy
+   the independently required workflow. Check the existing job token can read
+   contents, PR metadata and effective branch rules. Retarget an open PR between
+   protected branches and verify the newly targeted base requires current evidence.
+3. Enroll only the qualified branches via a human-reviewed change here. Verify a
+   current PR and protected-branch push, then remove the consumer file in its own PR.
+   Inventory the consumer's workflow triggers. Only PRs targeting selected branches
+   and pushes to those branches use team review. Feature pushes and PRs targeting
+   unselected branches still need the file. Unsupported events on a selected branch
+   refuse verification. If the head, base or push tip moves, qualify the new
+   integration or current push. Replaying an obsolete event cannot refresh it.
+   The product action verifies configuration in the caller's job. The separate
+   required workflow binds its own source commit, and GitHub enforces human approval.
+4. To reverse enrollment, restore and verify the canonical CODEOWNERS file and its
+   enforcement first, remove the central entry second, and retire the required
+   workflow rule last. Keep the published verifier available at its qualified path
+   until every rule requiring it has been retired or migrated.
+
 ### Native auto-merge enrollment
 
 The target repository’s owner selects its ordinary paths and security-source policy.
@@ -253,18 +295,29 @@ These additional steps apply only when the classified source merges into dev.
 - Confirm the ordinary updater target against REQ-027, the current default/update
   coupling and the separate security target. Reconcile conflicts through the
   owning qualified transition; this checklist chooses no new default branch.
-  Confirm required exact human review and protected merge gates.
-  Install the hosted Renovate App only in explicitly enrolled repositories.
-- Inspect onboarding for App access and manager discovery. Use the reviewed
-  canonical consumer config, extending only the central preset with its exact
-  base branch; avoid a competing generated config. Change sole update ownership
-  with no overlap or unmanaged interval.
-- Inspect the resolved preset and hosted run history. Compare evaluation frequency,
-  first batch, out-of-window behavior and a pending-age release with [REQ-012](../README.md#req-012---normal-update-cooldown).
-  Confirm proposal limits, runtime and first-party Action exclusions, and that
-  Renovate’s own `automerge` and `platformAutomerge` remain disabled.
-  Qualify a protected native request separately under REQ-024. Check major upgrades and initial pins stay outside the batch.
-  Reconcile existing updater PRs at cutover.
+  Confirm required exact human review and protected merge gates. Verify that the
+  organization's Mend Renovate App installation can access the repository.
+- Review the Mend onboarding PR against the observed default branch. Check the
+  root `renovate.json` against the [minimal consumer example](../README.md#dependency-and-security-flow).
+  Confirm enrollment through the reviewed config and check which managers Mend
+  discovers. An organization `renovate-config`
+  repository with a `default.json` can take precedence during discovery. Verify
+  which preset Mend actually selected. Existing consumers may retain the
+  `renovate-weekly` alias, an explicit matching base, and reviewed package splits.
+  Keep the local update-policy file for an assigned runtime profile. Reconcile
+  existing updater PRs at cutover so each dependency has one ordinary updater.
+- After the shared preset reaches protected `main`, inspect the effective config
+  and run history in Mend. Verify both preset names resolve to the same weekly
+  policy. Record the target, run times, pending-age decisions, batch branch and PRs
+  across two separate weekly windows on the rollout pilot. Compare the observed
+  behavior with [REQ-012](../README.md#req-012---normal-update-cooldown).
+  Verify eligible updates join the open batch during Tuesday 00:00–06:00 in
+  `America/New_York` and automatic batch updates wait outside that window.
+  Review the batch after 06:00. Merging earlier can lead to a second batch PR.
+  Check that majors and initial pins stay outside the group. Confirm proposal
+  limits, runtime and first-party Action exclusions, and disabled Renovate
+  `automerge` and `platformAutomerge`. Qualify a protected native merge request
+  separately under REQ-024.
 - For each new maintained repository at setup and each existing repository at
   cutover, verify in GitHub that the dependency graph, Dependabot alerts and
   security updates are enabled. Confirm required CI detects exactly one update
@@ -272,7 +325,9 @@ These additional steps apply only when the classified source merges into dev.
   configuration can apply these settings to selected existing repositories.
   Setting a default for newly created repositories is a separate administrator
   decision. Check supported manifests on the protected default branch, the
-  security PR target, routine PR suppression, and the production route.
+  security PR target and the production route. Each local Dependabot block
+  must set `open-pull-requests-limit: 0` and omit `target-branch`. Verify
+  coverage for each ecosystem and directory, including documented exceptions.
 - When a new repository gains a package, image or externally versioned Action,
   use the [enrollment templates](../templates/dependabot/README.md) to configure its ecosystems and manifest paths.
 - Runtime profile enrollment validates the exact central assignment and locked

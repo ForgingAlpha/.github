@@ -85,10 +85,10 @@ automation without copying workflow logic between repositories.
 - Required CI supplies technical evidence; it does not grant merge authority.
 - Every introduced or updated third-party package has license evidence approved
   by central policy: an approved SPDX allowlist covering permissive licenses,
-  `LGPL-3.0-or-later`, and the SIL Open Font License (`OFL-1.1`), or a
-  reviewed exception for one immutable artifact in one repository. Product
-  release owners address the notice, source and distribution obligations of
-  their actual use.
+  `LGPL-3.0-or-later`, the Mozilla Public License (`MPL-2.0`), and the SIL Open
+  Font License (`OFL-1.1`), or a reviewed exception for one immutable artifact
+  in one repository. Product release owners address the notice, source and
+  distribution obligations of their actual use.
   Fixed first-party actions have governed ownership and release provenance;
   unknown evidence fails closed.
 
@@ -204,6 +204,15 @@ exact protected `dev` head, with main as its ancestor and its checked merge tree
 identical to that head. The checker SHALL verify the complete governing inventory,
 approved metadata and source bindings. Later main changes use main's adopted
 selection. Existing branch admission and human approvals apply throughout.
+
+For a first documentation-only promotion enrolled under REQ-026, the central
+workflow MAY use the approved four-section README on protected `dev` as its
+governing baseline. The direct release PR SHALL propose the exact current
+protected `dev` tip to protected `main` in that same repository. The current
+`main` tip SHALL be a parentless commit with an empty tree and the sole root
+of the proposed head's history. The intended integration SHALL preserve the
+complete checked `dev` tree. Once `main` is populated, its own adopted selection
+governs subsequent changes.
 
 **Fit:** Missing, provisional, or malformed source truth produces actionable
 failure output while a definition-only change can repair it. The exact canonical
@@ -332,10 +341,12 @@ Renovate SHALL evaluate normal updates daily and use these minimum release ages.
 | Refresh of an existing digest | No semantic release cooldown | Weekly batch |
 | Major | 30 days | Separate PR per upgrade, eligible any day |
 
-For eligible updates marked “Weekly batch” above, Renovate SHALL create or
-refresh a single open batch per repository and ordinary target. Automatic creation and refresh
-SHALL run only on Tuesday in `America/New_York`. A human may request a refresh
-outside the window. An empty batch SHALL produce no PR. When a dependency needs
+Renovate SHALL group eligible weekly updates on one branch per repository and
+ordinary target. Automatic batch creation and refresh SHALL run only on Tuesday
+from 00:00 until 06:00 in `America/New_York`. Review the routine batch after the
+window closes so updates discovered on later runs in the window can join it.
+Merging early can produce another batch in the same window. A human may request
+a refresh outside the window. An empty batch SHALL produce no PR. When a dependency needs
 independent testing or rollback, the receiving repository’s change owner SHALL
 split it into a separate Renovate proposal under the same timing rules.
 Security proposal timing is governed by [REQ-013](#req-013---immediate-security-updates).
@@ -578,10 +589,12 @@ coverage and updater access before transferring ownership. The control-plane
 operator SHALL record the authorized repository identities in the rollout's
 change record. A shared preset change SHALL account for all current inheritors
 and preserve the existing policy outside that recorded scope. Required CI validates
-the central Renovate preset, security-only
-Dependabot configuration, repository coverage, and absence of overlapping
-update ownership. Each enrolled repository declares `renovate` as its sole
-normal-update owner; a change of ownership leaves no overlap or unmanaged interval.
+the central Renovate preset, security-only Dependabot configuration, repository
+coverage, and absence of overlapping update ownership. Each enrolled repository
+selects its sole normal-update owner through its reviewed root Renovate config.
+Any explicit owner SHALL be `renovate`. Any explicit base SHALL match GitHub's
+observed default branch under the current route. A change of ownership leaves
+no overlap or unmanaged interval.
 
 #### REQ-019 - Safe Generated-Lock Refresh
 
@@ -633,8 +646,8 @@ Every pull request that introduces or updates a dependency SHALL run dependency
 vulnerability and license review. License policy SHALL use one centrally owned
 approved SPDX allowlist; callers SHALL NOT disable the review, substitute a
 denylist, or exempt individual packages. The standard allowlist SHALL preserve
-its existing permissive license identifiers and include `OFL-1.1` and
-`LGPL-3.0-or-later`. The LGPL identifier permits selection of version 3; its
+its existing permissive license identifiers and include `OFL-1.1`, `MPL-2.0`,
+and `LGPL-3.0-or-later`. The LGPL identifier permits selection of version 3; its
 inclusion SHALL NOT imply blanket approval of later license texts or other LGPL, standalone GPL, AGPL,
 custom or unknown licenses. Those require a separate reviewed central policy
 decision unless an applicable existing artifact exception already covers them.
@@ -696,6 +709,13 @@ being delivered. When distributing OFL-covered fonts, the owner SHALL preserve
 the copyright notice and license, retain the OFL for the font, and respect any
 Reserved Font Names when distributing a modified version. The
 [SIL Open Font License 1.1](https://openfontlicense.org/open-font-license-official-text/) gives the full terms.
+When distributing MPL-covered code, including JavaScript served to a browser,
+the owner SHALL preserve applicable notices and make the covered source,
+including modifications to covered files, available to recipients under MPL-2.0.
+When distributing executable form, the owner SHALL tell recipients how to
+obtain that source. For tools used internally, the owner checks whether the
+delivered output includes covered code. See the
+[Mozilla Public License 2.0, sections 3.1–3.4](https://www.mozilla.org/en-US/MPL/2.0/#responsibilities).
 For LGPL-covered library modifications, linked/combined works
 or redistribution, the owner SHALL identify and satisfy applicable copyright and
 license notices, license-copy, corresponding-source, replacement/relinking,
@@ -733,8 +753,8 @@ including adversarial version, encoded-name, manifest, and integrity mismatches;
 unknown evidence classes fail with WHAT-WHY-HOW
 remediation; and non-pull-request events report that the diff-only check is not
 applicable.
-The enforcing release must demonstrate that `OFL-1.1` and an approved LGPL
-expression pass eligibility. Expressions with an unapproved mandatory license,
+The enforcing release must demonstrate that `OFL-1.1`, `MPL-2.0`, and an
+approved LGPL expression pass eligibility. Expressions with an unapproved mandatory license,
 standalone GPL/AGPL, and unknown/custom evidence must fail without an applicable
 central exception. Product release verification checks the owner's assessment against the
 actual use, delivered contents and applicable terms, including covered generated
@@ -852,6 +872,21 @@ An organization-required document-only bootstrap profile SHALL be explicitly enr
 central source, validate its governing documents and tracked Markdown, and admit
 only its declared non-executable inputs. Application profiles SHALL fail when
 their expected manifests or commands are missing rather than select bootstrap.
+
+Each repository using the first documentation-only promotion in REQ-002
+requires a separately reviewed schema-2 `documentation-bootstrap` enrollment
+in the trusted central source. Its exact repository name and ID, both `dev` and
+`main`, and the qualified review team SHALL match that enrollment. The canonical
+release route assignment for the same ID SHALL be direct.
+The complete `readme_four_section_scopes` selection in
+both the root manifest and its Requirements metadata SHALL be
+`{"dev":["."],"main":["."]}`. The entire proposed tree SHALL satisfy the
+data-only bootstrap checks, including approved README
+source metadata, exact source identities, digests and upstream bindings, the
+native README instruction pointers and lint of all tracked Markdown. Competing
+governing sources and executable or application inputs SHALL fail admission.
+The existing qualified-team review, exact-head human approval, required CI and
+scanning protections apply throughout.
 
 For a private repository's first definitions, the protection operator MAY enroll
 one open same-repository PR against its README-only initial `dev` commit. The
@@ -1182,6 +1217,17 @@ repositories that produce their own product `CI`. The trusted source selects
 the team and rule criteria. These repositories keep CODEOWNERS validation
 until the standalone check and their hosted protections have been qualified.
 
+The standalone Analyzing Alpha policy verifies the provider's test merge.
+For an enrolled first documentation-only promotion to an empty root under
+REQ-002 and REQ-026, the central workflow checks out the exact consumer PR
+head separately from its trusted checking source.
+It verifies the empty base and sole-root ancestry in Git, computes the integration
+tree from the exact base and head, and requires its tree ID to equal the checked
+head's tree ID. At admission and again before final success, the workflow verifies
+both checkout identities and reads the live PR, both protected branch tips and
+effective team-review rules from GitHub. Missing proof or disagreement with the
+checked repository name and ID, refs, commits or qualified team fails the check.
+
 Here CI enrollment means the centrally reviewed validation configuration for a
 consumer, not an unattended-authority Repository Enrollment or an Operational
 Profile. It grants no execution or merge authority and does not create a runtime
@@ -1431,6 +1477,19 @@ REQ-004 and REQ-010:
   and each static surface run once; product test lanes do not repeat static work.
   No Rust component or runtime is inferred for an Astro-only consumer.
 
+Public-facing Astro websites use a shared website-quality check after the
+production build. The same Playwright runner serves the freshly built site
+locally and in CI. Chromium covers desktop and phone layouts, site-owned
+journeys, and axe checks on public HTML and relevant interactive states.
+Release PRs to `main` also run the essential journeys in Firefox and WebKit.
+Each site owns its routes, local preview or Worker, expected behavior, and
+manual accessibility checks. The [website browser runner](actions/ci-site-browser/README.md)
+uses locked test dependencies from the site. The shared Astro build continues
+to run once. An enrolled component checks the existing output in that job
+before an owner-selected script can replace it. A repository with its own CI
+producer calls the same runner after its build. Adoption requires verifying
+equivalent coverage before retiring earlier browser checks.
+
 `ci-elixir` exposes `full`, `static`, and `test` profiles. `full` runs all
 cross-cutting/static work and the caller test command. `static` runs the same
 cross-cutting/static work without tests. `test` performs only locked runtime and
@@ -1447,9 +1506,9 @@ there is no changed-file mode. Dependency review is mandatory on consumer pull
 requests and has no caller disable switch. The SHA-pinned official action blocks
 low-or-higher vulnerabilities and licenses outside a centrally owned approved
 SPDX allowlist, subject to the central artifact admission below. The shared-CI
-owner includes the exact `OFL-1.1` and `LGPL-3.0-or-later` identifiers alongside
-the existing permissive licenses. The gate evaluates the reported license
-expression. Product owners verify the terms against the font files they ship.
+owner includes `OFL-1.1`, `MPL-2.0`, and `LGPL-3.0-or-later` alongside the
+existing permissive licenses. The gate evaluates the reported license expression.
+Product owners verify the license obligations for the files they distribute.
 Released enforcement must evaluate compound SPDX expressions
 under REQ-023: all mandatory terms in an approved alternative must be eligible.
 The owner verifies that behavior through the actual pinned official action and
@@ -1602,25 +1661,33 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 
 Normal updates and security remediation are separate, non-overlapping lanes.
 
-To provision a maintained repository, put the [weekly preset](renovate-weekly.json)
-in its root `renovate.json` and declare Renovate as the ordinary owner in
-`.github/update-policy.json`. Each repository supplies its ordinary
-target and package locations. For an existing repository, the control-plane
-operator verifies the approved repository identity, App access, manager
-discovery, required CI and target protections before switching its preset.
-Reconcile open routine proposals at transfer so coverage continues.
+Mend Renovate can discover the organization's [weekly preset](renovate-config.json)
+and propose a root `renovate.json` during onboarding. Review the onboarding PR
+against the repository's actual default branch. The root file needs only
+the preset selection when the ordinary target is the default.
 
-Required `CI` invokes `ci-update-ownership` with the ownership declaration,
-the repository's Renovate and Dependabot configurations, and GitHub's actual
-default branch. A consumer extends exactly one approved preset. The weekly
-preset inherits the [existing policy](renovate-config.json), which existing
-consumers can continue to select. Consumers assigned a central runtime also
-declare `runtime_profile` and validate their assignment and locked projection
-through the runtime-profile gate.
+```json
+{
+  "extends": ["local>ForgingAlpha/.github:renovate-config"]
+}
+```
 
-The organization Renovate preset lives in `.github`. The consumer's effective
-configuration selects it by its published name. Native
-managers own ordinary package manifests and locks, external
+The existing [renovate-weekly alias](renovate-weekly.json) extends the canonical
+preset and applies the same policy. Both names select Renovate as the sole
+ordinary updater. With either name, the default target is GitHub's observed
+default branch. An explicit `baseBranchPatterns` must name only that branch.
+An existing `.github/update-policy.json` can be omitted when it only repeats
+the owner and default branch. If present, its owner and base must agree.
+Consumers assigned a runtime profile retain that file, its `runtime_profile`
+declaration and the runtime-profile check of the assignment and locked projection.
+
+Required CI checks the consumer's root config and security-only Dependabot
+coverage with `ci-update-ownership` and `ci-dependabot-coverage`. At cutover the
+operator verifies repository identity, App access, the effective preset,
+manager discovery, target protections and required CI. Reconcile open routine
+proposals so coverage continues.
+
+Native managers own ordinary package manifests and locks, external
 Actions, and active non-runtime image references. The preset excludes
 `ForgingAlpha/.github` Actions so their internal `@main` references remain owned
 by protected, human-reviewed merges instead of being pinned to one release commit or
@@ -1630,10 +1697,11 @@ automation owns the derived consumer mise declaration and lock. Narrow
 annotated custom managers own irreducible version literals. Exact ranges and
 digests remain pinned. Renovate vulnerability remediation is disabled.
 
-The [weekly preset](renovate-weekly.json) implements [REQ-012](#req-012---normal-update-cooldown).
-Renovate groups eligible updates across managers on the stable
-`weekly-dependencies` branch. A weekly consumer can split one dependency for
-independent testing or rollback through a reviewed `packageRules` entry. Its
+The preset implements [REQ-012](#req-012---normal-update-cooldown).
+Renovate groups eligible patches, minors and digest refreshes across managers
+on the stable `weekly-dependencies` branch. Major updates remain independent
+and can be proposed any day once they reach 30 days. A consumer can split one
+dependency for independent testing or rollback through a reviewed `packageRules` entry. Its
 `description` records the reason, `matchManagers` and `matchPackageNames` each
 name one literal, `matchUpdateTypes` lists `minor`, `patch` and `digest`, and
 `groupName` is null. The split inherits the same schedule and release ages.
@@ -1945,12 +2013,17 @@ when applicable, the independently attested exact security patch.
 
 The organization-required entrypoint is
 [org-baseline.yml](.github/workflows/org-baseline.yml). Its trusted
-[enrollment](actions/ci-org-baseline/enrollment.json) selects only
-`ForgingAlpha/layaslearninglab-site`, repository ID `1420939261`, on `dev` and `main`.
-Its current profile is `astro` with the `central-product` producer. The documentation
-bootstrap described in this section is the earlier qualification profile, not that
-consumer's current enrollment. Bootstrap rejects unknown identities and application
-content; missing manifests never select bootstrap.
+[enrollment](actions/ci-org-baseline/enrollment.json) selects the documentation
+bootstrap for `ForgingAlpha/layaslearninglab-site` (repository ID `1420939261`)
+on `dev`. It checks the complete document tree and requires the qualified review
+team. An application file causes the bootstrap check to fail. The site's Astro
+runtime assignment remains available for its application enrollment.
+
+Keep the first promotion to `main` on hold until its README source on protected
+`dev` and its main-targeted checks are qualified. Before admitting the website
+implementation, restore the full Astro product checks against the adopted README
+release instructions. Each transition needs verified results on the affected
+branch and the existing human review.
 The defining `.github` repository is outside this consumer pilot. Its baseline
 workflow excludes source-repository jobs, whose names remain distinct from `CI`
 even when skipped. Actual target result naming requires hosted qualification. The existing required `CI`
@@ -2095,6 +2168,7 @@ jobs protect plan authority, not helper files after a consumer lifecycle script 
 | `ci-elixir` | Locked runtime, strict static analysis, and repo-owned tests |
 | `ci-rust` | Format, Clippy, dead code, tests, and audit |
 | `ci-astro` | Format, lint, Astro type checking, and build |
+| `ci-site-browser` | Site-owned journeys and accessibility checks against the completed website build |
 | `ci-typescript` | Format, lint, type checking, and tests |
 | `ci-shell` | ShellCheck at style severity and Bash syntax |
 | `security-patch-classification` | Dependabot-safe preflight and trusted exact-source classification |
