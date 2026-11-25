@@ -341,10 +341,12 @@ Renovate SHALL evaluate normal updates daily and use these minimum release ages.
 | Refresh of an existing digest | No semantic release cooldown | Weekly batch |
 | Major | 30 days | Separate PR per upgrade, eligible any day |
 
-For eligible updates marked “Weekly batch” above, Renovate SHALL create or
-refresh a single open batch per repository and ordinary target. Automatic creation and refresh
-SHALL run only on Tuesday in `America/New_York`. A human may request a refresh
-outside the window. An empty batch SHALL produce no PR. When a dependency needs
+Renovate SHALL group eligible weekly updates on one branch per repository and
+ordinary target. Automatic batch creation and refresh SHALL run only on Tuesday
+from 00:00 until 06:00 in `America/New_York`. Review the routine batch after the
+window closes so updates discovered on later runs in the window can join it.
+Merging early can produce another batch in the same window. A human may request
+a refresh outside the window. An empty batch SHALL produce no PR. When a dependency needs
 independent testing or rollback, the receiving repository’s change owner SHALL
 split it into a separate Renovate proposal under the same timing rules.
 Security proposal timing is governed by [REQ-013](#req-013---immediate-security-updates).
@@ -587,10 +589,12 @@ coverage and updater access before transferring ownership. The control-plane
 operator SHALL record the authorized repository identities in the rollout's
 change record. A shared preset change SHALL account for all current inheritors
 and preserve the existing policy outside that recorded scope. Required CI validates
-the central Renovate preset, security-only
-Dependabot configuration, repository coverage, and absence of overlapping
-update ownership. Each enrolled repository declares `renovate` as its sole
-normal-update owner; a change of ownership leaves no overlap or unmanaged interval.
+the central Renovate preset, security-only Dependabot configuration, repository
+coverage, and absence of overlapping update ownership. Each enrolled repository
+selects its sole normal-update owner through its reviewed root Renovate config.
+Any explicit owner SHALL be `renovate`. Any explicit base SHALL match GitHub's
+observed default branch under the current route. A change of ownership leaves
+no overlap or unmanaged interval.
 
 #### REQ-019 - Safe Generated-Lock Refresh
 
@@ -1657,25 +1661,33 @@ not restore artifacts across incompatible OTP/Elixir combinations.
 
 Normal updates and security remediation are separate, non-overlapping lanes.
 
-To provision a maintained repository, put the [weekly preset](renovate-weekly.json)
-in its root `renovate.json` and declare Renovate as the ordinary owner in
-`.github/update-policy.json`. Each repository supplies its ordinary
-target and package locations. For an existing repository, the control-plane
-operator verifies the approved repository identity, App access, manager
-discovery, required CI and target protections before switching its preset.
-Reconcile open routine proposals at transfer so coverage continues.
+Mend Renovate can discover the organization's [weekly preset](renovate-config.json)
+and propose a root `renovate.json` during onboarding. Review the onboarding PR
+against the repository's actual default branch. The root file needs only
+the preset selection when the ordinary target is the default.
 
-Required `CI` invokes `ci-update-ownership` with the ownership declaration,
-the repository's Renovate and Dependabot configurations, and GitHub's actual
-default branch. A consumer extends exactly one approved preset. The weekly
-preset inherits the [existing policy](renovate-config.json), which existing
-consumers can continue to select. Consumers assigned a central runtime also
-declare `runtime_profile` and validate their assignment and locked projection
-through the runtime-profile gate.
+```json
+{
+  "extends": ["local>ForgingAlpha/.github:renovate-config"]
+}
+```
 
-The organization Renovate preset lives in `.github`. The consumer's effective
-configuration selects it by its published name. Native
-managers own ordinary package manifests and locks, external
+The existing [renovate-weekly alias](renovate-weekly.json) extends the canonical
+preset and applies the same policy. Both names select Renovate as the sole
+ordinary updater. With either name, the default target is GitHub's observed
+default branch. An explicit `baseBranchPatterns` must name only that branch.
+An existing `.github/update-policy.json` can be omitted when it only repeats
+the owner and default branch. If present, its owner and base must agree.
+Consumers assigned a runtime profile retain that file, its `runtime_profile`
+declaration and the runtime-profile check of the assignment and locked projection.
+
+Required CI checks the consumer's root config and security-only Dependabot
+coverage with `ci-update-ownership` and `ci-dependabot-coverage`. At cutover the
+operator verifies repository identity, App access, the effective preset,
+manager discovery, target protections and required CI. Reconcile open routine
+proposals so coverage continues.
+
+Native managers own ordinary package manifests and locks, external
 Actions, and active non-runtime image references. The preset excludes
 `ForgingAlpha/.github` Actions so their internal `@main` references remain owned
 by protected, human-reviewed merges instead of being pinned to one release commit or
@@ -1685,10 +1697,11 @@ automation owns the derived consumer mise declaration and lock. Narrow
 annotated custom managers own irreducible version literals. Exact ranges and
 digests remain pinned. Renovate vulnerability remediation is disabled.
 
-The [weekly preset](renovate-weekly.json) implements [REQ-012](#req-012---normal-update-cooldown).
-Renovate groups eligible updates across managers on the stable
-`weekly-dependencies` branch. A weekly consumer can split one dependency for
-independent testing or rollback through a reviewed `packageRules` entry. Its
+The preset implements [REQ-012](#req-012---normal-update-cooldown).
+Renovate groups eligible patches, minors and digest refreshes across managers
+on the stable `weekly-dependencies` branch. Major updates remain independent
+and can be proposed any day once they reach 30 days. A consumer can split one
+dependency for independent testing or rollback through a reviewed `packageRules` entry. Its
 `description` records the reason, `matchManagers` and `matchPackageNames` each
 name one literal, `matchUpdateTypes` lists `minor`, `patch` and `digest`, and
 `groupName` is null. The split inherits the same schedule and release ages.

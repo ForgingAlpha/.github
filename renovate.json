@@ -1,5 +1,4 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>ForgingAlpha/.github:renovate-weekly"],
-  "baseBranchPatterns": ["main"]
+  "extends": ["local>ForgingAlpha/.github:renovate-config"]
 }
