@@ -247,7 +247,7 @@ class TeamReviewTests(unittest.TestCase):
                                         "POLICY_BRANCH": "${{ github.base_ref || github.ref_name }}"})
         self.assertEqual(select["id"], "ownership")
         self.assertEqual(legacy["if"], "steps.ownership.outputs.mode == 'codeowners'")
-        self.assertEqual(check["if"], "steps.ownership.outputs.mode == 'team'")
+        self.assertEqual(check["if"], "steps.ownership.outputs.mode != 'codeowners'")
         self.assertNotIn("env", legacy)
         self.assertEqual(check["env"], {"GITHUB_TOKEN": "${{ github.token }}",
                                        "POLICY_ACTION_REPOSITORY": "${{ github.action_repository }}",
@@ -309,6 +309,11 @@ class TeamReviewTests(unittest.TestCase):
         self.responses[page2] = [rule]
         def run():
             return self.run_entry(command[3], command[4:])
+        isolated = subprocess.run(command, cwd=self.workspace, env={**self.env, "GITHUB_EVENT_NAME": "schedule"},
+                                  capture_output=True, text=True)
+        self.assertNotEqual(isolated.returncode, 0)
+        self.assertIn("unsupported event or GitHub host", isolated.stderr)
+        self.assertNotIn(TOKEN, isolated.stderr)
         receipt = run()
         self.assertEqual(receipt["required_workflow_ruleset_id"], 123)
         self.assertNotIn("source_sha", receipt)

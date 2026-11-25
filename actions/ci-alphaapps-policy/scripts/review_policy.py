@@ -81,4 +81,4 @@ if __name__ == "__main__":
         reason = str(error) if isinstance(error, ValueError) else "required evidence unavailable or malformed"
         sys.exit(f"WHAT: Repository ownership check refused: {reason}.\n"
                  "WHY: The protected enrollment and current organization rules must identify the same subject.\n"
-                 "HOW: Check the shared enrollment, workflow selector and existing read access, then rerun current CI.")
+                 "HOW: Check the shared enrollment, workflow selector and existing read access, then run CI for the current PR integration or branch tip.")

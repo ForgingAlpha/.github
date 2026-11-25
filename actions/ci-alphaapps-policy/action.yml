@@ -89,7 +89,7 @@ runs:
       shell: bash
 
     - name: Verify the required organization team review
-      if: steps.ownership.outputs.mode == 'team'
+      if: steps.ownership.outputs.mode != 'codeowners'
       env:
         POLICY_ACTION_REPOSITORY: ${{ github.action_repository }}
         POLICY_ACTION_REF: ${{ github.action_ref }}

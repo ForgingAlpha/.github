@@ -26,7 +26,9 @@ an effect. Source on protected main is active at merge. Product deployment and h
 ### Team review for repository-owned CI
 
 The shared policy action reads the [central enrollment](../actions/ci-alphaapps-policy/team-review-repositories.json)
-from its own release. The list starts empty. Each entry has a canonical
+from its own release. This list selects the ownership check in repository-owned CI.
+The [organization baseline catalog](../actions/ci-org-baseline/enrollment.json)
+separately selects centrally produced CI. Each ownership entry has a canonical
 `repository`, its numeric `repository_id` and the destination `branches`
 (`dev`, `staging` or `main`). Unlisted repositories and branches use the existing
 CODEOWNERS check. Consider disclosure before adding a private repository to this public list.
@@ -36,9 +38,8 @@ CODEOWNERS check. Consider disclosure before adding a private repository to this
    repository's protected main on each selected destination. The verifier also
    supports existing reusable callers. Its PR branch filter suppresses ordinary
    source PR runs from a proposed ref. GitHub ignores that filter for ruleset runs.
-   [GitHub ruleset workflow event handling](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/troubleshooting-rules#supported-ruleset-workflow-events)
-   Verify the effective
-   organization workflow rule reports its exact repository ID, path and
+   [GitHub ruleset workflow event handling](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/troubleshooting-rules#supported-ruleset-workflow-events)
+   Verify the effective organization workflow rule reports its exact repository ID, path and
    `refs/heads/main` with no fixed SHA. If GitHub returns another representation,
    retain the existing check until the binding is qualified.
 2. Qualify a real PR with the product CI and the required workflow. Verify the
@@ -48,16 +49,21 @@ CODEOWNERS check. Consider disclosure before adding a private repository to this
    identical-tree rebase. Each new head must require fresh approval. Hold enrollment
    if any case fails. Verify removing or replacing the product caller cannot satisfy
    the independently required workflow. Check the existing job token can read
-   contents, PR metadata and effective branch rules.
+   contents, PR metadata and effective branch rules. Retarget an open PR between
+   protected branches and verify the newly targeted base requires current evidence.
 3. Enroll only the qualified branches via a human-reviewed change here. Verify a
    current PR and protected-branch push, then remove the consumer file in its own PR.
-   Check every branch that uses that file before promoting its removal. For an
-   enrolled branch, unsupported events and unavailable review evidence stop CI.
+   Inventory the consumer's workflow triggers. Only PRs targeting selected branches
+   and pushes to those branches use team review. Feature pushes and PRs targeting
+   unselected branches still need the file. Unsupported events on a selected branch
+   refuse verification. If the head, base or push tip moves, qualify the new
+   integration or current push. Replaying an obsolete event cannot refresh it.
    The product action verifies configuration in the caller's job. The separate
    required workflow binds its own source commit, and GitHub enforces human approval.
 4. To reverse enrollment, restore and verify the canonical CODEOWNERS file and its
    enforcement first, remove the central entry second, and retire the required
-   workflow rule last.
+   workflow rule last. Keep the published verifier available at its qualified path
+   until every rule requiring it has been retired or migrated.
 
 ### Native auto-merge enrollment
 
