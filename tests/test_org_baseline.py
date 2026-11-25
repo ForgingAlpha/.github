@@ -60,13 +60,13 @@ class CatalogTests(unittest.TestCase):
         identity = 1420939261
         entries = baseline.catalog(baseline.decode((ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))
         runtime = baseline.decode((ROOT / "runtime-profiles/catalog.json").read_bytes())["assignments"]
-        for branch in ("dev", "main"):
-            site = baseline.select(entries, current, identity, branch)
-            self.assertEqual((site["profile"], site["producer"]), ("astro", "central-product"))
-            self.assertEqual(runtime[site["repository"]], {"profile": "node-24-astro-7", "status": "active"})
-            for name, repo_id in ((previous, identity), (current, identity + 1)):
-                with self.subTest(name=name, repo_id=repo_id), self.assertRaises(ValueError):
-                    baseline.select(entries, name, repo_id, branch)
+        site = baseline.select(entries, current, identity, "dev")
+        self.assertEqual((site["profile"], site["producer"]), ("documentation-bootstrap", "bootstrap"))
+        self.assertEqual(site["review_policy"], {"kind": "qualified-team", "team_id": 20299307, "minimum_approvals": 1})
+        self.assertEqual(runtime[current], {"profile": "node-24-astro-7", "status": "active"})
+        for name, repo_id, branch in ((current, identity, "main"), (previous, identity, "dev"), (current, identity + 1, "dev")):
+            with self.subTest(name=name, repo_id=repo_id, branch=branch), self.assertRaises(ValueError):
+                baseline.select(entries, name, repo_id, branch)
         self.assertNotIn(previous, runtime)
 
 
@@ -146,6 +146,17 @@ class AdmissionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.fixture = Fixture(Path(self.temp.name) / "consumer")
+
+    def test_shipped_dev_profile_admits_documents_and_refuses_application_files(self):
+        entries = baseline.catalog(baseline.decode((ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))
+        entry = baseline.select(entries, ENTRY["repository"], ENTRY["repository_id"], "dev")
+        plan = baseline.make_plan(self.fixture.root, self.fixture.event(), entry, "d" * 40)
+        self.assertEqual((plan["producer"], plan["required_jobs"]), ("bootstrap", ["baseline"]))
+
+        self.fixture.write("package.json", '{"name": "site"}')
+        self.fixture.commit()
+        with self.assertRaisesRegex(ValueError, "undeclared executable/config/application input"):
+            baseline.make_plan(self.fixture.root, self.fixture.event(), entry, "d" * 40)
 
     def test_real_git_docs_and_verified_projection_aliases(self):
         texts = baseline.admit_tree(self.fixture.root, self.fixture.head)
@@ -767,21 +778,17 @@ class ApplicationTests(unittest.TestCase):
         self.f.write('package.json', json.dumps(original)); self.f.commit()
         self.f.plan()
 
-    def test_enrolled_application_team_review_and_required_result_composition(self):
+    def test_astro_team_review_and_required_result_composition(self):
         from types import SimpleNamespace
-        entry = copy.deepcopy(baseline.catalog(baseline.decode(
-            (ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))[0])
-        self.assertEqual((entry["profile"], entry["producer"], entry["review_policy"]["kind"]),
-                         ("astro", "central-product", "qualified-team"))
-        self.f.entry = entry
-        package = json.loads((self.f.root / "package.json").read_text())
+        entry = self.f.entry
+        entry["review_policy"] = {"kind": "qualified-team", "team_id": ENTRY["team_id"], "minimum_approvals": 1}
         component = entry["components"][0]
+        component["static_scripts"] = ["ci:browser", "test:root-build"]
+        component["tests"] = {"kind": "required", "scripts": ["test", "test:publication", "test:dev"]}
+        package = json.loads((self.f.root / "package.json").read_text())
         for script in component["static_scripts"] + component["tests"]["scripts"]:
             package["scripts"][script] = "echo synthetic product command"
         self.f.write("package.json", json.dumps(package))
-        declaration = entry["release_route"]["declarations"][0]
-        self.f.write(declaration["path"], "# Project\n\n" + declaration["start"] + "\n" +
-                     declaration["text"] + declaration["end"] + "\n")
         self.f.commit()
         self.f.base = self.f.head
         self.f.git("update-ref", "refs/remotes/origin/dev", self.f.base)
