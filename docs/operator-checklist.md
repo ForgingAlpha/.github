@@ -427,9 +427,13 @@ The profile admits JSON only at `docs/governing-source-bindings.json`,
 `docs/changes/site-foundation/production-preparation/governing-source.json`, and
 `docs/changes/site-foundation/production-preparation/retained-inputs.json`. These
 are parsed data, not grants or instructions to retrieve their referenced material.
-Required inputs are `PROJECT.md`, `AGENTS.md`, `CLAUDE.md` and the governing trio.
-The two root instruction links must point literally to the tracked regular
-`PROJECT.md`; other links and executable modes are refused. Every input must match
+The legacy layout requires the standalone governing trio, tracked `PROJECT.md`
+and the two root instruction links to `PROJECT.md`. Both links must point
+literally to that tracked regular file. The converted layout requires the four-section root README, its
+source manifest and both native instruction entries. The regular `AGENTS.md`
+must contain the approved README pointer. `CLAUDE.md` may contain that same
+pointer or link literally to `AGENTS.md`. Competing `PROJECT.md`, other links and
+executable modes fail admission for the converted layout. Every input must match
 the selected Git blob, and untracked inputs, including ignored files, fail.
 
 ## Full Application Profile Entry and Recovery

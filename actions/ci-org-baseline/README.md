@@ -42,11 +42,11 @@ reconciliation. Current legacy wrappers retain their existing repository-config 
 
 ## Enrollment successor and totality
 
-Schema 1 remains readable with exactly its existing keys and constraints; its only
-profile remains `documentation-bootstrap`. Normalization explicitly derives bootstrap
-producer, qualified-team policy and empty component list from that historical
-schema contract. Schema-1 application records are refused. Its historic release-route non-applicability
-and result behavior stay unchanged; schema-2 route decisions cannot be backfilled into it.
+Schema 1 accepts only the historical `documentation-bootstrap` record.
+Its bootstrap plan has no components and uses the team's ID and minimum approval
+count directly from that record. The schema-2 `producer` and `review_policy`
+fields are absent. A schema-1 record cannot authorize a first promotion to empty
+`main`. Its existing development and populated-main checks continue to apply.
 The live catalog explicitly selects its admitted profile; synthetic source fixtures
 exercise the other supported schema-2 shapes. No public fixture ID represents an admitted real consumer.
 
