@@ -395,7 +395,10 @@ update, deletion and non-fast-forward requirements throughout.
    pass, including attempted consumer skip, executable config and application input.
 6. Qualify source recovery through a checked human-reviewed corrective or revert
    PR and protected merge into main, recording the new exact commit and affected valid
-   pass and known-invalid block outcomes. Failed, cancelled, skipped or unexecuted
+   pass and known-invalid block outcomes. If restoring a checker that lacks the
+   first-promotion guard, restore dev-only enrollment before or in the same
+   protected merge. Verify that the recovered checker and catalog together admit
+   valid development documents and refuse the legacy first promotion. Failed, cancelled, skipped or unexecuted
    runs are not recovery. Keep main as the active selector; do not repin a historical
    source or move a tag. If the initial consumer settings transition fails, restore
    its exact captured pre-transition configuration through the separately authorized

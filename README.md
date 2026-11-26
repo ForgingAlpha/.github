@@ -2031,15 +2031,18 @@ workflow continues to validate this repository.
 
 The final `result` job reports `CI`, and `baseline` reports `Organization Baseline`.
 The retained Q6 run used source `97a8a94c884f43c039278d117d0d9313d1465ec9`,
-where `baseline` reported `CI`. Its results apply to that earlier source. Protected main is active at the protected merge. Any consumer
-transition must reconcile both check identities and recovery, then qualify its exact
-target before reliance. No live selector or Q6 binding changes with this source proposal.
+where `baseline` reported `CI`. The current producer requires fresh target
+evidence. Protected main is active at the protected merge. Any consumer transition
+must reconcile both check identities and recovery, then qualify its exact target
+before reliance. No live selector or Q6 binding changes with this source proposal.
 
 The job checks out the defining workflow commit separately from the exact consumer
-PR head. It admits tracked, non-executable Markdown, `.gitignore`, three enumerated
-JSON data paths, and the two verified root instruction projections to `PROJECT.md`.
-It checks governing metadata, fresh exact-base team-review configuration and every
-canonical Markdown input. The data-only runner uses the existing locked tool,
+PR head. It admits tracked, non-executable Markdown, `.gitignore` and three
+enumerated JSON data paths. The legacy layout uses two root instruction links to
+`PROJECT.md`. The converted layout used for a first promotion requires `AGENTS.md`
+to point to the governing README. `CLAUDE.md` carries that same pointer or links
+to `AGENTS.md`. The job checks governing metadata, fresh exact-base team-review
+configuration and every canonical Markdown input. The data-only runner uses the existing locked tool,
 central rules and no consumer plugins, formatters, configuration discovery or inline
 rule suppression. A document's metadata is not proof of approval or Currentness.
 
