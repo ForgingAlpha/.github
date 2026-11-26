@@ -353,15 +353,20 @@ update, deletion and non-fast-forward requirements throughout.
    inherited controls. Stop on stale or unknown state; read back an outcome-unknown
    save before any retry. Verify the full saved rule and effective dev/main rules.
    Future protected main merges do not require selector repins or source activation.
-2. Select only repository and branch identities explicitly enrolled by the qualified
-   central source and the task's authorized target scope recorded under this
-   procedure. The source catalog
-   selects repository ID `1420939261` (`ForgingAlpha/layaslearninglab-site`) and
-   branches `dev` and `main`. Preserve the existing qualified `dev` selector while
-   completing the profile's required pilot cases. Select the additional `main`
-   target only from a checked, human-approved source on protected main, and qualify its actual target
-   context before reliance. Other repositories or branches need separately approved
-   source enrollment and qualification. Exclude the
+2. Select only repositories and branches covered by both the approved source
+   enrollment and the operator task’s authorized target scope.
+   The current catalog selects repository ID `1420939261`
+   (`ForgingAlpha/layaslearninglab-site`) on `dev` alone. Keep its qualified
+   `dev` selector. Before selecting `main` for a first documentation-only promotion,
+   verify the site's exact converted `dev`, empty sole-root `main`, approved
+   dual-branch README scopes, direct route and reviewed dual-branch enrollment
+   in protected shared source. Qualify the effective team review on target `main`,
+   current-base CI, scanning and the required workflow producer. Qualify a personal
+   merge method that preserves the reviewed tree and permits the next ordinary
+   release. A merge with the empty `main` and reviewed `dev` as its two ordered
+   parents preserves both tree and ancestry. Record the permitted method, and
+   verify the actual parents and tree after the human merge. Other repositories
+   and branches need their own approved enrollment and qualification. Exclude the
    defining `.github` repository. Its skipped non-consumer
    job is not a pilot pass; all-skipped required-workflow semantics are unqualified.
    Distinguish workflow names from check-run names: the source workflow is named
@@ -422,9 +427,13 @@ The profile admits JSON only at `docs/governing-source-bindings.json`,
 `docs/changes/site-foundation/production-preparation/governing-source.json`, and
 `docs/changes/site-foundation/production-preparation/retained-inputs.json`. These
 are parsed data, not grants or instructions to retrieve their referenced material.
-Required inputs are `PROJECT.md`, `AGENTS.md`, `CLAUDE.md` and the governing trio.
-The two root instruction links must point literally to the tracked regular
-`PROJECT.md`; other links and executable modes are refused. Every input must match
+The legacy layout requires the standalone governing trio, tracked `PROJECT.md`
+and the two root instruction links to `PROJECT.md`. Both links must point
+literally to that tracked regular file. The converted layout requires the four-section root README, its
+source manifest and both native instruction entries. The regular `AGENTS.md`
+must contain the approved README pointer. `CLAUDE.md` may contain that same
+pointer or link literally to `AGENTS.md`. Competing `PROJECT.md`, other links and
+executable modes fail admission for the converted layout. Every input must match
 the selected Git blob, and untracked inputs, including ignored files, fail.
 
 ## Full Application Profile Entry and Recovery

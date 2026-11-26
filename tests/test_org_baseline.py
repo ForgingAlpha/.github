@@ -78,13 +78,16 @@ def rules():
 
 
 class Fixture:
-    def __init__(self, root, branch="dev"):
+    def __init__(self, root, branch="dev", *, empty_main=False):
         self.root = root
         self.branch = branch
         root.mkdir()
         self.git("init", "-q", "-b", branch)
         self.git("remote", "add", "origin", "https://github.com/" + ENTRY["repository"])
-        self.git("commit", "-q", "--allow-empty", "-m", "empty base")
+        if branch == "main" and not empty_main:
+            self.write("README.md", "# Populated main\n")
+            self.git("add", "README.md")
+        self.git("commit", "-q", "--allow-empty", "-m", "fixture base")
         self.base = self.git("rev-parse", "HEAD").strip()
         self.git("update-ref", f"refs/remotes/origin/{branch}", self.base)
         for name in baseline.REQUIRED - baseline.ALIASES:
