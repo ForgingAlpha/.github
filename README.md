@@ -2013,25 +2013,25 @@ The organization-required entrypoint is
 [org-baseline.yml](.github/workflows/org-baseline.yml). Its trusted
 [enrollment](actions/ci-org-baseline/enrollment.json) selects the documentation
 bootstrap for `ForgingAlpha/layaslearninglab-site` (repository ID `1420939261`)
-on `dev`. It checks the complete document tree and requires the qualified review
-team. An application file causes the bootstrap check to fail. The site's Astro
-runtime assignment remains available for its application enrollment.
+on `dev` and `main`. It checks the complete document tree and requires the
+qualified review team. An application file causes the bootstrap check to fail.
+The site's Astro runtime assignment remains available for its application enrollment.
 
-Keep the first promotion to `main` on hold until its README source on protected
-`dev` and its main-targeted checks are qualified. Before admitting the website
-implementation, restore the full Astro product checks against the adopted README
-release instructions. Each transition needs verified results on the affected
-branch and the existing human review.
+Qualify the exact combined checker and enrollment in a nonenforcing evaluation
+before merging the enrollment into shared `main`. A workflow already following
+shared `main` uses the enrolled source as soon as it merges. Keep the first
+promotion on hold until the protected `dev` README and target-`main` checks are
+qualified. Before admitting the website implementation, restore the full Astro
+product checks against the adopted README release instructions. Each transition
+needs verified results on the affected branch and the existing human review.
 The defining `.github` repository is outside this consumer pilot. Its baseline
 workflow excludes source-repository jobs, whose names remain distinct from `CI`
 even when skipped. Actual target result naming requires hosted qualification. The existing required `CI`
 workflow continues to validate this repository.
 
-This candidate changes the bootstrap check topology: `CI` moves from the `baseline`
-job to the final `result` job, and `baseline` reports `Organization Baseline`.
-The retained live Q6 source B is still adopted source
-`97a8a94c884f43c039278d117d0d9313d1465ec9`, with the old topology. Its results do not
-qualify this candidate. Protected main is active at the protected merge. Any consumer
+The final `result` job reports `CI`, and `baseline` reports `Organization Baseline`.
+The retained Q6 run used source `97a8a94c884f43c039278d117d0d9313d1465ec9`,
+where `baseline` reported `CI`. Its results apply to that earlier source. Protected main is active at the protected merge. Any consumer
 transition must reconcile both check identities and recovery, then qualify its exact
 target before reliance. No live selector or Q6 binding changes with this source proposal.
 
