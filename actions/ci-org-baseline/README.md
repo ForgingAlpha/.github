@@ -140,6 +140,29 @@ After merge, remove that repository's temporary workflow assignment and clear
 its property. Product changes need their applicable CI.
 [Ruleset workflow behavior](https://docs.github.com/en/enterprise-cloud%40latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
 
+## Preview an enrollment
+
+From a clean, reviewed shared-CI checkout with Python and PyYAML, prepare a unified diff for the existing schema-2 enrollment file. The caller verifies the consumer repository identity and its protected base using the scoped GitHub connection. Supply the physical root of its trusted local clone or bare object store and the two exact commits. The tool reads committed inputs only. Run the preview for each intended target branch with its actual base commit.
+
+```sh
+python3 -I -B actions/ci-org-baseline/scripts/prepare_enrollment.py \
+  --consumer "$consumer_clone" --repository "$qualified_repo" --repository-id "$qualified_id" \
+  --branch dev --base "$protected_base" --head "$candidate_head" \
+  --owner-fields "$reviewed_fields" > "$private_task/enrollment.patch"
+```
+
+For a new consumer, the owner-fields JSON supplies the central row’s existing `repository`, `repository_id`, `branches`, `producer`, `qualification_subject`, `release_route` and `review_policy` values. Its `astro_checks` object maps each Astro component root to the product owner's approved `static_scripts` and `tests`. Include `"website_browser": "playwright-axe"` in the same object when the owner selects the shared browser checks. For example, a site with one required publication suite could select that suite with this field.
+
+```json
+{"astro_checks": {".": {"static_scripts": [], "tests": {"kind": "required", "scripts": ["test:publication"]}}}}
+```
+
+Use an empty `astro_checks` object when there are no Astro roots. Obtain scope, producer and review settings from the protection owner, route declarations and suites from their product owners, and runtime assignments from the runtime owner. Supply only fields cleared for publication to this public repository, including the literal text of any proposed route declaration. Keep the owner file outside the consumer. Existing consumers reuse the current row when the owner file is omitted. A root removal, conflicting identity or reduction in accepted obligations needs a separately reviewed transition.
+
+The preview classifies supported independent Astro and standalone Rust components and their combination. Rust workspaces and unsupported ecosystems need additional qualification. Documentation bootstrap requires a positively validated document tree. A successful preview prints only the patch on stdout and its scope, commits and shared source on stderr. A matching row emits an empty patch with an explicit `unchanged` result. A refusal exits nonzero and emits no patch. Review any proposed diff against the same enrollment revision before applying it.
+
+The local preview prepares source. The protection operator still verifies repository identity, actual branch tips, review settings, and the workflow selected by the ruleset. Complete target CI, runtime and native Rust workspace qualification remain separate requirements. An enrollment preview grants no hosted settings, release or merge authority.
+
 ## Complete manifest classification
 
 Inventory comes from the exact committed tree, including all tracked `Cargo.toml`,

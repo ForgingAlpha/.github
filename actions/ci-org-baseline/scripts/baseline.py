@@ -32,6 +32,7 @@ DATA_PATHS = {
     "docs/changes/site-foundation/production-preparation/governing-source.json",
     "docs/changes/site-foundation/production-preparation/retained-inputs.json",
 }
+UNSUPPORTED_MANIFESTS = {"yarn.lock", "pnpm-lock.yaml", "mix.exs", "pyproject.toml", "requirements.txt", "go.mod", "Gemfile", "composer.json", "Pipfile"}
 ALIASES = {"AGENTS.md", "CLAUDE.md"}
 README_REQUIRED = ALIASES | {"README.md", "docs/governing-source-bindings.json"}
 COMPILER_SELECTORS = {"RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "RUSTUP_TOOLCHAIN",
@@ -657,13 +658,8 @@ def yaml_data(data):
     return value
 
 
-def clean_inventory(root, head, *, native_pointer=None):
-    require(root == root.resolve() and git(root, "rev-parse", "--show-toplevel").decode().strip() == str(root), "explicit physical consumer root required")
-    require(isinstance(head, str) and SHA.fullmatch(head) and git(root, "rev-parse", "HEAD").decode().strip() == head, "consumer checkout differs from PR head")
-    require(git(root, "rev-parse", "--show-object-format").strip() == b"sha1", "unsupported Git object format")
-    require(not git(root, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "HEAD", "--") and
-            not git(root, "ls-files", "--others", "-z", limit=16 * 1024 * 1024), "modified or untracked consumer inputs")
-    raw = git(root, "ls-tree", "-rz", "--full-tree", head, limit=32 * 1024 * 1024)
+def tree_inventory(root, revision):
+    raw = git(root, "ls-tree", "-rz", "--full-tree", revision, limit=32 * 1024 * 1024)
     require(raw.endswith(b"\0"), "empty/incomplete tree")
     records = raw[:-1].split(b"\0")
     require(len(records) <= 100000, "tracked tree exceeds limit")
@@ -673,6 +669,18 @@ def clean_inventory(root, head, *, native_pointer=None):
         mode, kind, oid = meta.decode().split()
         name = safe_path(name.decode("utf-8"))
         require(name not in inventory and kind == "blob" and mode in ("100644", "100755", "120000"), "duplicate/unsupported tracked entry")
+        inventory[name] = (mode, oid)
+    return inventory
+
+
+def clean_inventory(root, head, *, native_pointer=None):
+    require(root == root.resolve() and git(root, "rev-parse", "--show-toplevel").decode().strip() == str(root), "explicit physical consumer root required")
+    require(isinstance(head, str) and SHA.fullmatch(head) and git(root, "rev-parse", "HEAD").decode().strip() == head, "consumer checkout differs from PR head")
+    require(git(root, "rev-parse", "--show-object-format").strip() == b"sha1", "unsupported Git object format")
+    require(not git(root, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "HEAD", "--") and
+            not git(root, "ls-files", "--others", "-z", limit=16 * 1024 * 1024), "modified or untracked consumer inputs")
+    inventory = tree_inventory(root, head)
+    for name, (mode, _) in inventory.items():
         target = root / name
         for parent in target.parents:
             if parent == root:
@@ -684,7 +692,6 @@ def clean_inventory(root, head, *, native_pointer=None):
                     "unsupported linked application input")
         else:
             require(stat.S_ISREG(target.lstat().st_mode), "nonregular application input")
-        inventory[name] = (mode, oid)
     require((README_REQUIRED if native_pointer else REQUIRED) <= set(inventory), "missing required governing/project input")
     if native_pointer:
         require("PROJECT.md" not in inventory, "competing native project instructions")
@@ -716,12 +723,12 @@ def refuse_compiler_selectors(config, cargo=False):
         require(isinstance(build, dict) and not {"rustc", "rustc-wrapper", "rustc-workspace-wrapper"}.intersection(build), "alternative Cargo compiler selector")
 
 
-def classify(root, inventory, entry):
+def classify(root, inventory, entry, *, read=tracked_bytes):
     manifests = {name for name in inventory if PurePosixPath(name).name in ("Cargo.toml", "package.json")}
     require(len(manifests) <= 256, "manifest inventory exceeds limit")
     parsed, size = {}, 0
     for name in sorted(manifests):
-        data = tracked_bytes(root, inventory, name)
+        data = read(root, inventory, name)
         size += len(data)
         require(size <= 8 * 1024 * 1024, "manifest bytes exceed limit")
         parsed[name] = decode(data) if name.endswith(".json") else tomllib.loads(data.decode())
@@ -735,7 +742,7 @@ def classify(root, inventory, entry):
     for c in entry["components"]:
         lock = root_file(c, "Cargo.lock" if c["kind"] == "rust" else "package-lock.json")
         expected_locks.add(lock)
-        data = tracked_bytes(root, inventory, lock, 64 * 1024 * 1024)
+        data = read(root, inventory, lock, 64 * 1024 * 1024)
         if c["kind"] == "astro":
             package = parsed[root_file(c, "package.json")]
             require("workspaces" not in package, "npm workspaces unsupported")
@@ -749,7 +756,7 @@ def classify(root, inventory, entry):
                 dev_dependencies = package.get("devDependencies", {})
                 require(all(tool in dev_dependencies for tool in ("@playwright/test", "@axe-core/playwright")),
                         "missing website browser development dependencies")
-                tracked_bytes(root, inventory, root_file(c, "site-browser.json"))
+                read(root, inventory, root_file(c, "site-browser.json"))
             require(all(isinstance(v, str) and not v.startswith(("file:", "link:", "workspace:")) for v in dependencies.values()), "unsupported local npm dependency")
             scripts = package.get("scripts")
             required_ids = ["build"] + c["static_scripts"] + (c["tests"]["scripts"] if c["tests"]["kind"] == "required" else [])
@@ -759,18 +766,17 @@ def classify(root, inventory, entry):
             require(bool(data.strip()), "empty Cargo lock")
     actual_locks = {n for n in inventory if PurePosixPath(n).name in ("Cargo.lock", "package-lock.json")}
     require(actual_locks == expected_locks, "undeclared/orphan lock")
-    unsupported = {"yarn.lock", "pnpm-lock.yaml", "mix.exs", "pyproject.toml", "requirements.txt", "go.mod", "Gemfile", "composer.json", "Pipfile"}
-    require(not any(PurePosixPath(n).name in unsupported for n in inventory), "unsupported ecosystem/workspace input")
+    require(not any(PurePosixPath(n).name in UNSUPPORTED_MANIFESTS for n in inventory), "unsupported ecosystem/workspace input")
     for name in inventory:
         leaf = PurePosixPath(name).name
         if PurePosixPath(name).parent.name == ".cargo" and leaf in ("config", "config.toml"):
-            refuse_compiler_selectors(tomllib.loads(tracked_bytes(root, inventory, name).decode()), cargo=True)
+            refuse_compiler_selectors(tomllib.loads(read(root, inventory, name).decode()), cargo=True)
         require(leaf not in ("rust-toolchain", "rust-toolchain.toml", ".tool-versions", ".node-version", ".nvmrc") and
                 (not ((leaf.startswith(("mise.", ".mise.")) and leaf.endswith(".toml")) or leaf == "mise.lock" or "/mise/" in name or name.startswith(".mise/")) or name in ("mise.toml", "mise.lock")), "unsupported runtime override")
     return sorted(manifests)
 
 
-def producer_check(root, inventory, entry, branch):
+def producer_check(root, inventory, entry, branch, *, read=tracked_bytes):
     qualification = entry["qualification_subject"]
     legacy = qualification.get("legacy_workflow") if entry["producer"] == "qualification" else None
     if legacy:
@@ -779,7 +785,7 @@ def producer_check(root, inventory, entry, branch):
     for name in sorted(inventory):
         if not re.fullmatch(r"\.github/workflows/[^/]+\.ya?ml", name):
             continue
-        workflow = yaml_data(tracked_bytes(root, inventory, name))
+        workflow = yaml_data(read(root, inventory, name))
         triggers = workflow.get("on")
         require(isinstance(triggers, (str, list, dict)), "unknown workflow triggers")
         events = [triggers] if isinstance(triggers, str) else list(triggers)
@@ -832,15 +838,15 @@ def declared_route(root, entry, base, head):
     return "staged" if any(declarations[i]["kind"] == "staged" for i in matches) else "direct"
 
 
-def application_integrity(root, inventory, entry, runtime_data=None):
+def application_integrity(root, inventory, entry, runtime_data=None, *, read=tracked_bytes):
     runtime = load_checking_module("org_runtime", "actions/ci-runtime-profile/scripts/validate_runtime_profile.py")
     data = runtime_data if runtime_data is not None else decode((SOURCE / "runtime-profiles/catalog.json").read_bytes())
     runtime.validate_catalog(data)
-    policy_data = decode(tracked_bytes(root, inventory, ".github/update-policy.json"))
+    policy_data = decode(read(root, inventory, ".github/update-policy.json"))
     runtime.validate_policy_assignment(data, entry["repository"], policy_data)
-    config = tomllib.loads(tracked_bytes(root, inventory, "mise.toml").decode())
+    config = tomllib.loads(read(root, inventory, "mise.toml").decode())
     refuse_compiler_selectors(config)
-    lock = tomllib.loads(tracked_bytes(root, inventory, "mise.lock").decode())
+    lock = tomllib.loads(read(root, inventory, "mise.lock").decode())
     tuple_id = runtime.validate_projection(data, entry["repository"], config, lock)
     tools = runtime.current_tuple(data, entry["repository"])["tools"]
     required_tools = {"node" if c["kind"] == "astro" else "rust" for c in entry["components"]}

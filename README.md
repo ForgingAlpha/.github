@@ -1978,6 +1978,8 @@ the full composite and their existing producer. An explicitly qualified central
 application profile can instead select the organization workflow as that producer,
 with a separately required `Organization Baseline` result.
 
+To prepare an organization CI enrollment change, preview the catalog diff against the consumer’s committed inputs and its owners’ selected checks. [Enrollment preview](actions/ci-org-baseline/README.md#preview-an-enrollment)
+
 ```yaml
 name: CI
 on:
