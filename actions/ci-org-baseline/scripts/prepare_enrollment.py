@@ -59,9 +59,12 @@ def discover(root, inventory):
 
 
 def owner_fields(entry):
+    astro_checks = {
+        component["root"]: {key: value for key, value in component.items() if key not in ("kind", "root")}
+        for component in entry["components"] if component["kind"] == "astro"
+    }
     return {k: entry[k] for k in OWNER_FIELDS | {"repository", "repository_id"}} | {
-        "astro_checks": {c["root"]: {"static_scripts": c["static_scripts"], "tests": c["tests"]}
-                         for c in entry["components"] if c["kind"] == "astro"}
+        "astro_checks": astro_checks
     }
 
 
@@ -82,8 +85,10 @@ def make_entry(repository, repository_id, roots, fields):
     for path, kind in sorted(roots.items()):
         obligations = {"tests": ["cargo-all"]}
         if kind == "astro":
-            ci.shape(checks[path], "static_scripts tests", "product-owner Astro checks at " + path)
             obligations = checks[path]
+            ci.require(isinstance(obligations, dict) and
+                       set(obligations) - {"website_browser"} == {"static_scripts", "tests"},
+                       "invalid product-owner Astro checks at " + path)
         components.append({"kind": kind, "root": path, **obligations})
     kinds = set(roots.values())
     profile = "mixed" if len(kinds) > 1 else next(iter(kinds), "documentation-bootstrap")
@@ -131,19 +136,20 @@ def preview(root, base, head, repository, repository_id, catalog, fields, runtim
             fields = owner_fields(old)
     inventory = ci.tree_inventory(root, head)
     roots = discover(root, inventory)
+    previous = {}
     # A newly enrolled consumer also has a past: deleting a manifest must not
     # weaken its first proposal simply because the central catalog has no row yet.
     if ci.git(root, "ls-tree", "--name-only", base, limit=32 * 1024 * 1024):
         previous = ci.tree_inventory(root, base)
         lost = discover(root, previous).items() - roots.items()
         ci.require(not lost, "product owner must reconcile removed or moved components: " + repr(sorted(lost)))
-        if not roots and set(previous) != {"README.md"}:
-            event = {"pull_request": {"base": {"ref": branch, "sha": base}, "head": {"sha": base}}}
-            pointer = ci.approved_readme_pointer(root, event, {"repository": repository, "repository_id": repository_id})
-            ci.document_inputs(root, base, native_pointer=pointer)
     entry = make_entry(repository, repository_id, roots, fields)
     updated = dict(catalog, repositories=[entry if item is old else item for item in entries] + ([] if old else [entry]))
     ci.catalog(updated)
+    if previous and not roots and set(previous) != {"README.md"}:
+        event = {"pull_request": {"base": {"ref": branch, "sha": base}, "head": {"sha": base}}}
+        pointer = ci.approved_readme_pointer(root, event, entry)
+        ci.document_inputs(root, base, native_pointer=pointer)
     if old:
         ci.require(entry["branches"] == old["branches"] and entry["review_policy"] == old["review_policy"],
                    "protection owner must reconcile changed branches or review policy separately")

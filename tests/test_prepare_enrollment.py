@@ -48,6 +48,32 @@ class PreviewTests(unittest.TestCase):
         self.catalog = expected
         self.assertEqual(expected, self.result())
 
+    def test_browser_selection_uses_committed_inputs_and_survives_replay(self):
+        f = self.f
+        browser = self.fields["astro_checks"]["."]
+        browser["website_browser"] = "unknown"
+        with self.assertRaisesRegex(ValueError, "unsupported website browser check"):
+            self.result(self.fields)
+        browser["website_browser"] = "playwright-axe"
+        with self.assertRaisesRegex(ValueError, "missing website browser development dependencies"):
+            self.result(self.fields)
+        package = json.loads((f.root / "package.json").read_text())
+        package["devDependencies"].update({"@axe-core/playwright": "4.14.0", "@playwright/test": "1.64.1"})
+        f.write("package.json", json.dumps(package))
+        f.commit()
+        f.write("site-browser.json", "{}")
+        with self.assertRaisesRegex(ValueError, "missing tracked regular input: site-browser.json"):
+            self.result(self.fields)
+        f.commit()
+        (f.root / "site-browser.json").unlink()
+        self.catalog = self.result(self.fields)
+        component = self.catalog["repositories"][-1]["components"][0]
+        self.assertEqual(component, dict(f.entry["components"][0], website_browser="playwright-axe"))
+        self.assertEqual(self.result(), self.catalog)
+        del browser["website_browser"]
+        with self.assertRaisesRegex(ValueError, "reconcile changed obligations"):
+            self.result(self.fields)
+
     def test_reads_commit_not_working_tree_and_never_executes_scripts(self):
         f = self.f
         marker = self.directory / "executed"
@@ -121,7 +147,11 @@ class PreviewTests(unittest.TestCase):
         repo, rid = self.f.entry["repository"], self.f.entry["repository_id"]
         fields.update(repository=repo, repository_id=rid)
         args = [f.root, f.base, f.head, repo, rid, self.catalog, fields, None]
-        self.assertEqual(preview.preview(*args, branch="dev")["repositories"][-1]["profile"], "documentation-bootstrap")
+        enrolled = preview.preview(*args, branch="dev")
+        self.assertEqual(enrolled["repositories"][-1]["profile"], "documentation-bootstrap")
+        args[1] = f.head
+        args[5:7] = [enrolled, None]
+        self.assertEqual(preview.preview(*args, branch="dev"), enrolled)
         f.write("src/app.js", "export default 1")
         f.commit()
         args[2] = f.head

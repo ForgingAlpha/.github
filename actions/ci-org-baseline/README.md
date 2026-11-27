@@ -151,7 +151,7 @@ python3 -I -B actions/ci-org-baseline/scripts/prepare_enrollment.py \
   --owner-fields "$reviewed_fields" > "$private_task/enrollment.patch"
 ```
 
-For a new consumer, the owner-fields JSON supplies the central row’s existing `repository`, `repository_id`, `branches`, `producer`, `qualification_subject`, `release_route` and `review_policy` values. Its `astro_checks` object maps each Astro component root to the product owner's approved `static_scripts` and `tests`. For example, a site with one required publication suite could select that suite with this field.
+For a new consumer, the owner-fields JSON supplies the central row’s existing `repository`, `repository_id`, `branches`, `producer`, `qualification_subject`, `release_route` and `review_policy` values. Its `astro_checks` object maps each Astro component root to the product owner's approved `static_scripts` and `tests`. Include `"website_browser": "playwright-axe"` in the same object when the owner selects the shared browser checks. For example, a site with one required publication suite could select that suite with this field.
 
 ```json
 {"astro_checks": {".": {"static_scripts": [], "tests": {"kind": "required", "scripts": ["test:publication"]}}}}

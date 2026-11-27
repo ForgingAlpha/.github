@@ -756,7 +756,7 @@ def classify(root, inventory, entry, *, read=tracked_bytes):
                 dev_dependencies = package.get("devDependencies", {})
                 require(all(tool in dev_dependencies for tool in ("@playwright/test", "@axe-core/playwright")),
                         "missing website browser development dependencies")
-                tracked_bytes(root, inventory, root_file(c, "site-browser.json"))
+                read(root, inventory, root_file(c, "site-browser.json"))
             require(all(isinstance(v, str) and not v.startswith(("file:", "link:", "workspace:")) for v in dependencies.values()), "unsupported local npm dependency")
             scripts = package.get("scripts")
             required_ids = ["build"] + c["static_scripts"] + (c["tests"]["scripts"] if c["tests"]["kind"] == "required" else [])
