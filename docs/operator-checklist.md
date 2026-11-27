@@ -355,12 +355,15 @@ update, deletion and non-fast-forward requirements throughout.
    Future protected main merges do not require selector repins or source activation.
 2. Select only repositories and branches covered by both the approved source
    enrollment and the operator task’s authorized target scope.
-   The current catalog selects repository ID `1420939261`
-   (`ForgingAlpha/layaslearninglab-site`) on `dev` alone. Keep its qualified
-   `dev` selector. Before selecting `main` for a first documentation-only promotion,
-   verify the site's exact converted `dev`, empty sole-root `main`, approved
-   dual-branch README scopes, direct route and reviewed dual-branch enrollment
-   in protected shared source. Qualify the effective team review on target `main`,
+   The catalog selects documentation on `dev` and `main` for
+   `ForgingAlpha/layaslearninglab-site` (repository ID `1420939261`). Before
+   adopting this enrollment, retain existing enforcement and run a separately
+   authorized, nonenforcing evaluation pinned to the exact checker and catalog
+   commit. A workflow already following shared `main` uses the new enrollment at
+   the protected merge. For the first documentation-only promotion, verify the
+   site's exact converted `dev`, empty sole-root `main`, approved dual-branch
+   README scopes and direct route. Verify the reviewed enrollment on protected
+   shared `main` before relying on it. Qualify the effective team review on target `main`,
    current-base CI, scanning and the required workflow producer. Qualify a personal
    merge method that preserves the reviewed tree and permits the next ordinary
    release. A merge with the empty `main` and reviewed `dev` as its two ordered
@@ -392,7 +395,10 @@ update, deletion and non-fast-forward requirements throughout.
    pass, including attempted consumer skip, executable config and application input.
 6. Qualify source recovery through a checked human-reviewed corrective or revert
    PR and protected merge into main, recording the new exact commit and affected valid
-   pass and known-invalid block outcomes. Failed, cancelled, skipped or unexecuted
+   pass and known-invalid block outcomes. If restoring a checker that lacks the
+   first-promotion guard, restore dev-only enrollment before or in the same
+   protected merge. Verify that the recovered checker and catalog together admit
+   valid development documents and refuse the legacy first promotion. Failed, cancelled, skipped or unexecuted
    runs are not recovery. Keep main as the active selector; do not repin a historical
    source or move a tag. If the initial consumer settings transition fails, restore
    its exact captured pre-transition configuration through the separately authorized

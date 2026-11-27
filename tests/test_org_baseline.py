@@ -61,12 +61,17 @@ class CatalogTests(unittest.TestCase):
         entries = baseline.catalog(baseline.decode((ROOT / "actions/ci-org-baseline/enrollment.json").read_bytes()))
         runtime = baseline.decode((ROOT / "runtime-profiles/catalog.json").read_bytes())["assignments"]
         site = baseline.select(entries, current, identity, "dev")
+        self.assertEqual(site["branches"], ["dev", "main"])
+        self.assertEqual(baseline.select(entries, current, identity, "main"), site)
         self.assertEqual((site["profile"], site["producer"]), ("documentation-bootstrap", "bootstrap"))
         self.assertEqual(site["review_policy"], {"kind": "qualified-team", "team_id": 20299307, "minimum_approvals": 1})
         self.assertEqual(runtime[current], {"profile": "node-24-astro-7", "status": "active"})
-        for name, repo_id, branch in ((current, identity, "main"), (previous, identity, "dev"), (current, identity + 1, "dev")):
-            with self.subTest(name=name, repo_id=repo_id, branch=branch), self.assertRaises(ValueError):
-                baseline.select(entries, name, repo_id, branch)
+        with self.assertRaises(ValueError):
+            baseline.select(entries, current, identity, "staging")
+        for branch in site["branches"]:
+            for name, repo_id in ((previous, identity), (current, identity + 1)):
+                with self.subTest(name=name, repo_id=repo_id, branch=branch), self.assertRaises(ValueError):
+                    baseline.select(entries, name, repo_id, branch)
         self.assertNotIn(previous, runtime)
 
 
