@@ -6,6 +6,7 @@ import difflib
 import importlib.util
 import json
 import sys
+import tempfile
 import tomllib
 from pathlib import Path, PurePosixPath
 
@@ -97,10 +98,26 @@ def make_entry(repository, repository_id, roots, fields):
             "release_route": fields["release_route"], "review_policy": fields["review_policy"], "components": components}
 
 
-def validate_candidate(root, branch, base, head, inventory, entry, runtime):
-    ci.require(branch in entry["branches"], "selected branch is outside the approved enrollment")
+def checked_governing_layout(root, branch, base, head, inventory, entry):
     event = {"pull_request": {"base": {"ref": branch, "sha": base}, "head": {"sha": head}}}
     pointer = ci.approved_readme_pointer(root, event, entry)
+    if pointer is None:
+        # The legacy policy reads files. Give it only the three committed sources
+        # so it sees the same bytes in a bare repo or a modified consumer checkout.
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory)
+            for name in ci.policy.BASELINE_SOURCE_TRUTH_FILES:
+                target = snapshot / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(blob(root, inventory, name))
+            ci.require(not ci.policy.incomplete_baseline(ci.policy.baseline_statuses(snapshot)),
+                       "complete approved structural governing metadata required")
+    return pointer
+
+
+def validate_candidate(root, branch, base, head, inventory, entry, runtime):
+    ci.require(branch in entry["branches"], "selected branch is outside the approved enrollment")
+    pointer = checked_governing_layout(root, branch, base, head, inventory, entry)
     if entry["profile"] == "documentation-bootstrap":
         ci.document_inputs(root, head, native_pointer=pointer)
         return
@@ -147,8 +164,7 @@ def preview(root, base, head, repository, repository_id, catalog, fields, runtim
     updated = dict(catalog, repositories=[entry if item is old else item for item in entries] + ([] if old else [entry]))
     ci.catalog(updated)
     if previous and not roots and set(previous) != {"README.md"}:
-        event = {"pull_request": {"base": {"ref": branch, "sha": base}, "head": {"sha": base}}}
-        pointer = ci.approved_readme_pointer(root, event, entry)
+        pointer = checked_governing_layout(root, branch, base, base, previous, entry)
         ci.document_inputs(root, base, native_pointer=pointer)
     if old:
         ci.require(entry["branches"] == old["branches"] and entry["review_policy"] == old["review_policy"],

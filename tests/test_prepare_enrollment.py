@@ -158,6 +158,21 @@ class PreviewTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "undeclared executable/config/application input"):
             preview.preview(*args, branch="dev")
 
+    def test_legacy_document_status_uses_committed_base_and_candidate(self):
+        f = Fixture(self.directory / "docs")
+        entry = dict(EXISTING, repository=self.f.entry["repository"], repository_id=self.f.entry["repository_id"])
+        catalog = {"schema_version": 2, "repositories": [entry]}
+        path = "docs/requirements.md"
+        approved = (f.root / path).read_text()
+        approved_head = f.head
+        f.write(path, approved.replace("status: approved", "status: provisional"))
+        f.commit()
+        provisional_head = f.head
+        f.write(path, approved)
+        for base, head in ((approved_head, provisional_head), (provisional_head, approved_head)):
+            with self.subTest(base=base), self.assertRaisesRegex(ValueError, "complete approved structural governing"):
+                preview.preview(f.root, base, head, entry["repository"], entry["repository_id"],
+                                catalog, None, None, branch="dev")
 
     def test_supported_standalone_rust_and_mixed_shapes(self):
         for components in ((("rust", "."),), (("astro", "site"), ("rust", "service"))):
