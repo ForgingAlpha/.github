@@ -322,7 +322,7 @@ def admit_tree(root, expected_head, *, definition_scopes=None, native_pointer=No
     return texts
 
 
-def team_configuration(rules, entry):
+def team_configuration(rules, entry, *, canonical_patterns=False):
     require(isinstance(rules, list) and rules, "effective branch-rule evidence unavailable")
     matched = False
     for rule in rules:
@@ -339,8 +339,9 @@ def team_configuration(rules, entry):
             # GitHub uses zero for visibility-only reviewers. Only the enrolled team's threshold counts below.
             require(type(minimum) is int and minimum >= 0 and isinstance(patterns, list)
                     and all(isinstance(p, str) for p in patterns), "malformed reviewer policy")
+            all_files = patterns == ["*"] if canonical_patterns else "*" in patterns
             if (identity.get("type") == "Team" and type(identity.get("id")) is int and identity["id"] == entry["team_id"] and
-                    minimum >= entry["minimum_approvals"] and count >= entry["minimum_approvals"] and stale and "*" in patterns):
+                    minimum >= entry["minimum_approvals"] and count >= entry["minimum_approvals"] and stale and all_files):
                 matched = True
     require(matched, "trusted team review configuration absent or weaker than enrollment")
 
@@ -436,7 +437,7 @@ def prove_pr(api, event, entry):
     branch = api.get(f'/repos/{entry["repository"]}/branches/{quote(pr["base"]["ref"], safe="")}')
     require(isinstance(branch, dict) and branch.get("commit", {}).get("sha") == pr["base"]["sha"], "base branch moved since event")
     if entry.get("producer") in {"first-definition", "repo-docs"}:
-        require(branch.get("name") == "dev" and branch.get("protected") is True, "first definition requires protected dev")
+        merge_flow().verify_tip(branch, pr["base"]["ref"], pr["base"]["sha"])
         require(head_ref not in merge_flow().PERSISTENT, "definition changes require a task branch")
     else:
         # The source ID assignment also governs documentation bootstrap. No checkout
@@ -1156,10 +1157,12 @@ def event_subject(root, event, entries, *, allow_first_definition=False, repo_do
     if known or not (allow_first_definition or repo_docs):
         entry = select(entries, name, identity, base.get("ref"))
     else:
+        branch = base.get("ref")
         require(re.fullmatch(r"ForgingAlpha/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}", name)
                 and name.casefold() != SOURCE_REPOSITORY.casefold()
                 and repo.get("private") is True and repo.get("html_url") == "https://github.com/" + name
-                and base.get("ref") == "dev", "first definition requires a private same-org dev subject")
+                and branch in (("dev",) if repo_docs else ("dev", "main")),
+                "first definition requires a private same-org subject on a supported target")
         number, head = event.get("number"), pr.get("head")
         require(positive(number) and positive(pr.get("number")) and pr["number"] == number
                 and pr.get("state") == "open" and isinstance(head, dict)
@@ -1168,13 +1171,13 @@ def event_subject(root, event, entries, *, allow_first_definition=False, repo_do
                 and os.environ.get("GITHUB_SERVER_URL") == "https://github.com"
                 and os.environ.get("GITHUB_API_URL") == "https://api.github.com"
                 and os.environ.get("GITHUB_REF") == f"refs/pull/{number}/merge"
-                and os.environ.get("GITHUB_HEAD_REF") == head["ref"] and os.environ.get("GITHUB_BASE_REF") == "dev",
+                and os.environ.get("GITHUB_HEAD_REF") == head["ref"] and os.environ.get("GITHUB_BASE_REF") == branch,
                 "native first-definition PR identity disagrees with runner")
         git(root, "check-ref-format", "refs/heads/" + head["ref"])
         for side in (base, head):
             require(isinstance(side.get("repo"), dict) and side["repo"].get("private") is True
                     and side["repo"].get("html_url") == repo["html_url"], "private same-repository PR required")
-        entry = {"repository": name, "repository_id": identity, "branches": ["dev"],
+        entry = {"repository": name, "repository_id": identity, "branches": [branch],
                  "profile": "documentation-bootstrap", "producer": "repo-docs" if repo_docs else "first-definition"}
     require(os.environ.get("GITHUB_REPOSITORY") == name and os.environ.get("GITHUB_REPOSITORY_ID") == str(identity),
             "event/runtime identity mismatch")
@@ -1196,14 +1199,16 @@ def verify_seed(root, base, head):
     require(base != head and git(root, "rev-parse", "--is-shallow-repository").strip() == b"false",
             "complete first-definition ancestry required")
     require(git(root, "rev-list", "--max-parents=0", head).decode().splitlines() == [base],
-            "protected dev must be the candidate's sole ancestor root")
+            "protected seed must be the candidate's sole ancestor root")
     seed = git(root, "ls-tree", "-z", "--full-tree", base)
-    require(re.fullmatch(rb"100644 blob [a-f0-9]{40}\tREADME\.md\x00", seed), "dev seed must contain only regular README.md")
+    require(re.fullmatch(rb"100644 blob [a-f0-9]{40}\tREADME\.md\x00", seed), "seed must contain only regular README.md")
 
 
 def registered_definition(api, event, entry):
     evidence = api.get(f'/repos/{entry["repository"]}/properties/values')
-    return first_definition.registration(evidence, event["number"], event["pull_request"]["head"]["sha"])
+    pr = event["pull_request"]
+    return first_definition.registration(evidence, event["number"], pr["head"]["sha"], branch=pr["base"]["ref"],
+                                         repository_id=entry["repository_id"], base=pr["base"]["sha"])
 
 
 def current_checks(api, event, entry):
@@ -1212,12 +1217,39 @@ def current_checks(api, event, entry):
         require(registered_definition(api, event, entry) == entry["registration"],
                 "first-definition registration changed")
         rules = api.rules(entry["repository"], branch)
-        team_configuration(rules, {"team_id": entry["registration"]["team_id"], "minimum_approvals": 1})
-        first_definition.required_ci(rules)
+        main_only = branch == "main"
+        team_configuration(rules, {"team_id": entry["registration"]["team_id"], "minimum_approvals": 1},
+                           canonical_patterns=main_only)
+        first_definition.required_ci(rules, strict=main_only)
+        if main_only:
+            first_definition.required_codeql(rules)
         return
     review = entry.get("review_policy", {"kind": "qualified-team", **entry})
     if review["kind"] == "qualified-team":
         team_configuration(api.rules(entry["repository"], branch), review)
+
+
+def definition_documents(root, pr, scopes):
+    head = pr["head"]["sha"]
+    if pr["base"]["ref"] == "dev":
+        return admit_tree(root, head, definition_scopes=scopes)
+
+    # Include tree entries so even an extra empty Git tree is visible.
+    inventory = git(root, "ls-tree", "-rtz", "--full-tree", "--format=%(objectmode) %(objecttype) %(path)", head)
+    permitted = [b"100644 blob " + path.encode() for path in README_REQUIRED] + [b"040000 tree docs"]
+    require(sorted(inventory.split(b"\0")) == sorted([*permitted, b""]), "main definition requires exactly four regular files")
+    standalone = readme_route()
+    four = standalone.four_reader()
+    texts = admit_tree(root, head, native_pointer=four.NATIVE_POINTER)
+    first_definition.governing_lines(texts["README.md"], policy)
+    _, selected, converted = standalone.layouts(root, head, policy)
+    require(converted and selected == {"main": ["."]}, "main definition requires root-only main enrollment")
+    snapshot = four.snapshot(policy, lambda path: standalone.blob(root, head, path), "")
+    requirements = snapshot.metadata[four.TRIO[1]]
+    require(requirements.get(four.ENROLLMENT) == selected and requirements.get(standalone.SELECTION, selected) == selected,
+            "Requirements must select only the root on main")
+    require(not snapshot.details, "main definition must bind only the root README sections")
+    return texts
 
 
 def make_plan(root, event, entry, source_sha):
@@ -1227,9 +1259,9 @@ def make_plan(root, event, entry, source_sha):
         definition = entry["registration"]
         pr = event["pull_request"]
         verify_seed(root, pr["base"]["sha"], pr["head"]["sha"])
-        admit_tree(root, pr["head"]["sha"], definition_scopes=definition["scopes"])
+        definition_documents(root, pr, definition["scopes"])
         return {**public_receipt(root, event, [entry], source_sha), "producer": "first-definition",
-                "pr": event["number"], "branch": "dev", "registration": definition,
+                "pr": event["number"], "branch": pr["base"]["ref"], "registration": definition,
                 "components": [], "required_jobs": ["baseline"]}
     pointer = approved_readme_pointer(root, event, entry)
     admit_tree(root, event["pull_request"]["head"]["sha"], native_pointer=pointer)
@@ -1250,7 +1282,7 @@ def staged_main(args, root, event, entries, source_sha):
         current_checks(api, event, entry)
     if args.stage == "admit":
         if definition:
-            strings = admit_tree(root, plan["head"], definition_scopes=entry["registration"]["scopes"])
+            strings = definition_documents(root, event["pull_request"], entry["registration"]["scopes"])
             lint_documents(root, strings)
         elif entry["profile"] == "documentation-bootstrap":
             run(root, event, [entry], api)

@@ -19,23 +19,28 @@ def document(values, body):
 
 
 class FirstDefinition(Fixture):
+    branch = "dev"
+
     def __init__(self, root):
         self.root = root
         root.mkdir()
         self.repo = {"id": 123, "full_name": "ForgingAlpha/example-definition", "private": True,
                      "html_url": "https://github.com/ForgingAlpha/example-definition"}
-        self.git("init", "-q", "-b", "dev")
+        self.git("init", "-q", "-b", self.branch)
         self.git("remote", "add", "origin", self.repo["html_url"])
         self.write("README.md", "# Example\n")
         self.commit()
         self.base = self.head
-        self.git("update-ref", "refs/remotes/origin/dev", self.base)
+        self.git("update-ref", "refs/remotes/origin/" + self.branch, self.base)
+        self.write_candidate()
+        self.commit()
+
+    def write_candidate(self):
         self.write_scope(".", prose=True)
         self.write_scope("engine", prose=False)
         self.write("engine/docs/facts/units.json", '{"units":["seconds"]}\n')
         self.write("PROJECT.md", "# Project\n")
-        (root / "AGENTS.md").symlink_to("PROJECT.md")
-        self.commit()
+        (self.root / "AGENTS.md").symlink_to("PROJECT.md")
 
     def write_scope(self, scope, *, prose):
         prefix = "" if scope == "." else scope + "/"
@@ -67,14 +72,14 @@ class FirstDefinition(Fixture):
         return {"number": 7, "repository": self.repo.copy(), "pull_request": {
             "number": 7, "state": "open",
             "head": {"ref": "feature/definition", "repo": self.repo.copy(), "sha": self.head},
-            "base": {"ref": "dev", "repo": self.repo.copy(), "sha": self.base}}}
+            "base": {"ref": self.branch, "repo": self.repo.copy(), "sha": self.base}}}
 
 
 class PropertyApi:
     def __init__(self, fixture):
         self.fixture = fixture
         self.value = f"v1:7:{fixture.head}:41:.,engine"
-        self.branch = {"name": "dev", "protected": True, "commit": {"sha": fixture.base}}
+        self.branch = {"name": fixture.branch, "protected": True, "commit": {"sha": fixture.base}}
         self.live = fixture.event()["pull_request"]
         self.effective = [{"type": "pull_request", "parameters": {
             "required_approving_review_count": 1, "dismiss_stale_reviews_on_push": True,
@@ -87,12 +92,12 @@ class PropertyApi:
             return [{"property_name": "first_definition", "value": self.value}]
         if path == base + "/pulls/7":
             return copy.deepcopy(self.live)
-        if path == base + "/branches/dev":
+        if path == base + "/branches/" + self.fixture.branch:
             return copy.deepcopy(self.branch)
         raise AssertionError("unexpected API target")
 
     def rules(self, repository, branch):
-        assert (repository, branch) == (self.fixture.repo["full_name"], "dev")
+        assert (repository, branch) == (self.fixture.repo["full_name"], self.fixture.branch)
         return copy.deepcopy(self.effective)
 
 
