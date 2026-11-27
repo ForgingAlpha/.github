@@ -1190,9 +1190,14 @@ Neither a task branch name nor a matching dev SHA proves an active release
 claim. The current check verifies snapshot and branch identities. No consumer
 is assigned a live staged release. Until a qualified release-owner evidence
 reader exists, CI refuses ordinary promotions into or out of staging and
-staging repairs. Existing first-definition registrations remain
-scoped to their governed development targets. REQ-013/014 own the separate
-security proof and ordinary proposals cannot claim it by choosing a branch name.
+staging repairs. For first governing documents, the trusted organization
+workflow accepts a development registration on protected `dev` or a separate
+operator registration for one private tooling PR on protected `main`. The main
+registration binds the repository, seed, PR, head, root scope and human review
+team. The workflow validates the four governing files and rechecks the live
+subject, registration and branch protections before issuing final `CI`.
+REQ-013/014 own the separate security proof and ordinary proposals cannot
+claim it by choosing a branch name.
 
 #### Organization-required baseline pilot
 

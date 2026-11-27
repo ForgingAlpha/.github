@@ -140,6 +140,37 @@ After merge, remove that repository's temporary workflow assignment and clear
 its property. Product changes need their applicable CI.
 [Ruleset workflow behavior](https://docs.github.com/en/enterprise-cloud%40latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
 
+## First governing definitions on protected main
+
+Use this route for a previously unenrolled private shared-tooling repository
+whose owner selected a main-only release route. Verify the open task PR, its
+head, the immutable repository ID, the protected `main` seed and the required
+human team. The seed must be the sole parentless commit and contain only a
+regular `README.md`. The candidate must contain exactly four regular files:
+`README.md`, `docs/governing-source-bindings.json`, `AGENTS.md` and `CLAUDE.md`.
+
+From the trusted shared source revision, compute the registration locally using
+the verified GitHub IDs and full commit SHAs.
+
+```sh
+python3 actions/ci-org-baseline/scripts/first_definition.py main-registration \
+  --repository-id "$repository_id" --base "$main_sha" --head "$head_sha" \
+  --pr "$pr_number" --team-id "$team_id"
+```
+
+The command prints the `v2` value for the existing `first_definition` property.
+The digest binds the root scope and `main` along with the supplied identities.
+Verify the property has no default and only organization actors can set it.
+Set the value on the selected repository and read it back. Select the trusted
+organization workflow for that repository and branch. For an already open PR,
+use the existing close and reopen procedure to obtain a fresh run. Verify its
+source revision, required `CI` result, CodeQL protection and qualified-team
+review on the exact head before merge.
+
+On adoption or withdrawal, clear the registration and remove any workflow
+assignment made solely for this PR. Read back the property and effective
+rules. The permanent product or tooling workflow owns subsequent changes.
+
 ## Complete manifest classification
 
 Inventory comes from the exact committed tree, including all tracked `Cargo.toml`,

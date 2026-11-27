@@ -1,6 +1,9 @@
 """Data-only checks for an explicitly registered first definition."""
 
+import argparse
+import base64
 import hashlib
+import json
 import re
 
 import yaml
@@ -11,15 +14,39 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def registration(properties, number, head):
+def main_registration(repository_id, base, head, number, team_id):
+    """Encode the operator's complete subject in one bounded repository property."""
+    require(all(type(value) is int and value > 0 for value in (repository_id, number, team_id)),
+            "positive repository, PR and team identities required")
+    require(all(isinstance(sha, str) and re.fullmatch(r"[a-f0-9]{40}", sha) for sha in (base, head))
+            and base != head, "distinct base and head commit identities required")
+    subject = ["v2", repository_id, "main", base, head, number, ".", team_id]
+    data = json.dumps(subject, separators=(",", ":")).encode("ascii")
+    digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode("ascii")
+    value = f"v2:{team_id}:{digest}"
+    require(len(value) <= 75, "registration exceeds the repository property limit")
+    return value
+
+
+def registration(properties, number, head, *, branch="dev", repository_id=None, base=None):
     require(isinstance(properties, list) and all(isinstance(row, dict) for row in properties),
             "repository property evidence unavailable")
     values = [row.get("value") for row in properties if row.get("property_name") == "first_definition"]
     require(len(values) == 1 and isinstance(values[0], str) and len(values[0]) <= 75 and values[0].isascii(),
             "missing, ambiguous or invalid first-definition registration")
-    match = re.fullmatch(r"v1:([1-9][0-9]*):([a-f0-9]{40}):([1-9][0-9]*):([a-zA-Z0-9.,_-]+)", values[0])
-    require(match and int(match[1]) == number and match[2] == head, "registration differs from the exact PR/head")
-    return {"scopes": parse_scopes(match[4]), "team_id": int(match[3]),
+    if branch == "main":
+        match = re.fullmatch(r"v2:([1-9][0-9]*):[A-Za-z0-9_-]{43}", values[0])
+        require(match, "missing main-only first-definition registration")
+        team_id = int(match[1])
+        require(values[0] == main_registration(repository_id, base, head, number, team_id),
+                "main-only registration differs from the exact subject")
+        scopes = ["."]
+    else:
+        require(branch == "dev", "unsupported first-definition target")
+        match = re.fullmatch(r"v1:([1-9][0-9]*):([a-f0-9]{40}):([1-9][0-9]*):([a-zA-Z0-9.,_-]+)", values[0])
+        require(match and int(match[1]) == number and match[2] == head, "registration differs from the exact PR/head")
+        scopes, team_id = parse_scopes(match[4]), int(match[3])
+    return {"scopes": scopes, "team_id": team_id,
             "registration_sha256": hashlib.sha256(values[0].encode("ascii")).hexdigest()}
 
 
@@ -41,7 +68,7 @@ def json_config(name):
     })
 
 
-def required_ci(rules):
+def required_ci(rules, *, strict=False):
     matched = False
     for rule in rules:
         if rule["type"] != "required_status_checks":
@@ -54,8 +81,25 @@ def required_ci(rules):
             if check.get("context") == "CI":
                 app = check.get("integration_id")
                 require(app is None or (type(app) is int and app == 15368), "required CI specifies a different app")
-                matched = True
+                if not strict or parameters.get("strict_required_status_checks_policy") is True:
+                    matched = True
     require(matched, "effective branch rules lack required CI")
+
+
+def required_codeql(rules):
+    matched = False
+    for rule in rules:
+        if rule["type"] != "code_scanning":
+            continue
+        parameters = rule.get("parameters")
+        tools = parameters.get("code_scanning_tools") if isinstance(parameters, dict) else None
+        require(isinstance(tools, list) and all(isinstance(tool, dict) for tool in tools),
+                "malformed code scanning rules")
+        for tool in tools:
+            if (tool.get("tool") == "CodeQL" and tool.get("alerts_threshold") in ("errors", "errors_and_warnings", "all")
+                    and tool.get("security_alerts_threshold") in ("high_or_higher", "medium_or_higher", "all")):
+                matched = True
+    require(matched, "effective branch rules lack required CodeQL protection")
 
 
 LINK = re.compile(r"\[([^\]\n]{1,256})\]\(([^\s)]{1,1024})\)")
@@ -214,3 +258,19 @@ def check_documents(texts, scopes, policy, *, allow_approved=False, allow_suppor
             upstream[kind] = identity, hashlib.sha256(data).hexdigest()
             documents[prefix + kind] = values, bindings
     return documents
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    command = parser.add_subparsers(dest="command", required=True).add_parser(
+        "main-registration", help="print the property value for one main-only root definition")
+    command.add_argument("--repository-id", type=int, required=True)
+    command.add_argument("--base", required=True)
+    command.add_argument("--head", required=True)
+    command.add_argument("--pr", type=int, required=True)
+    command.add_argument("--team-id", type=int, required=True)
+    args = parser.parse_args()
+    try:
+        print(main_registration(args.repository_id, args.base, args.head, args.pr, args.team_id))
+    except ValueError as error:
+        parser.error(str(error))
