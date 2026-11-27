@@ -895,6 +895,26 @@ CI SHALL verify each scope's provisional README Intent, separate Requirements
 and Architecture, their source identities and upstream digests, and the entire
 document-only tree. A change of head or movement beyond the seed ends eligibility.
 
+A private shared-tooling repository with an owner-selected main-only route MAY
+adopt its first root governing definitions directly on protected `main`. The
+protection operator SHALL register this route explicitly for one open,
+same-repository task PR against the repository's parentless, README-only seed.
+The trusted check SHALL bind the registration to the repository's immutable ID,
+the target branch, exact base and head, PR number, root scope and required
+human review team. A development registration cannot authorize this route.
+Missing or changed registration, candidate, base, or required protections
+SHALL fail admission.
+
+The only permitted paths are `README.md`, `docs/governing-source-bindings.json`,
+`AGENTS.md` and `CLAUDE.md`. The trusted check SHALL
+verify the root-only main selection, the actual section bytes and upstream
+bindings, both pointers and all tracked Markdown. It SHALL reject additional
+paths, symlinks, executable modes and competing sources. The complete result
+is produced by the trusted shared workflow under the existing required `CI`
+check. Product code enters through a subsequent reviewed PR after these
+definitions are adopted. The operator retires the registration after the first
+definitions merge or the attempt is withdrawn.
+
 A private repository MAY instead introduce its own required `CI` workflow with
 its first definitions on the same README-only `dev` seed. The workflow SHALL
 match the shared caller template and declare the root and all governing
